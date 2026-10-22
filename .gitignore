@@ -218,3 +218,36 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code save_reply.py hook output
+reply.md
+reply_history.md
+
+   # Data (never commit footage of kids)
+   data/
+   videos/
+   frames/
+   crops/
+   embeddings/
+   outputs/
+   *.mp4
+   *.mov
+   *.avi
+   *.mkv
+   *.npy
+   *.parquet
+   *.duckdb
+
+   # Models and caches
+   models/
+   weights/
+   *.pt
+   *.onnx
+   .cache/
+
+   # Secrets and local config
+   .env
+   *token*
+   .claude/
+   CLAUDE.local.md
+   .DS_Store

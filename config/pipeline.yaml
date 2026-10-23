@@ -1,0 +1,18 @@
+window_s: 8
+overlap_s: 2                   # must be < window_s
+frames_per_window: 4           # >= 1
+min_face_px: 48
+label_threshold: 0.5
+video_phases: [early, mid, showcase, unknown]
+audio_sample_rate: 16000
+moments:
+  primary_group: activity
+  secondary_groups: [category, actor, audio, expression]
+  max_gap_windows: 1           # merge across gaps up to this many windows
+  min_windows: 1               # drop moments shorter than this many windows
+  needs_review_below: 0.6
+  conflict_margin: 0.1
+overrides:                     # only window_s, overlap_s, frames_per_window allowed
+  by_kind:
+    clip: { window_s: 4, overlap_s: 1 }
+  by_video: {}                 # e.g. v03: { frames_per_window: 8 }

@@ -24,7 +24,7 @@ config_hash(labels, pipeline) -> str    # 12 hex chars
 SCHEMAS: dict[str, pa.Schema]           # videos, segments, predictions, moments, runs, reviews
 validate(table: str, data, phases=None) -> pa.Table          # raises SchemaError(table, column, reason)
 write_table(table: str, data, run_id: str) -> Path           # validate, then write {OUTPUT_DIR}/runs/{run_id}/{table}.parquet; refuses to overwrite
-read_table(table: str, root=None) -> pa.Table                # all complete runs (dirs with runs.parquet), via DuckDB glob
+read_table(table: str, root=None) -> pa.Table                # all complete runs (dirs with runs.parquet), concatenated with pyarrow
 append_reviews(rows) -> int                                  # validate + INSERT into reviews.duckdb
 read_reviews() -> pa.Table
 validate_dataset(root) -> None                               # cross-table reference checks

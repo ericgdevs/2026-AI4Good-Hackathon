@@ -17,48 +17,48 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Rename the package:
+- [X] T001 Rename the package:
   - Move the folder with `git mv src/2026_ai4good_hackathon src/tpa_index` (if it is untracked, use a plain `mv`).
   - In `pyproject.toml`, set `name = "tpa-index"` and description `"Searchable, staff-verified timeline of program videos"`, and replace `[project.scripts]` with `tpa-index = "tpa_index.cli:main"`.
   - Replace `src/tpa_index/__init__.py` with a one-line module docstring.
   - Create `src/tpa_index/cli.py` with an argparse `main()` that has subparsers `check`, `mock`, and `segment`, each printing "not implemented" for now.
-- [ ] T002 In `pyproject.toml`, add the pytest dev dependency with `uv add --dev pytest`. Add `[tool.pytest.ini_options]` with `testpaths = ["tests"]`. Run `uv sync` and verify that `uv run python -c "import tpa_index"` and `uv run tpa-index --help` both work.
-- [ ] T003 Append `slurm-*.out` to `.gitignore`. Create the empty directories `config/`, `scripts/slurm/`, and `tests/`.
+- [X] T002 In `pyproject.toml`, add the pytest dev dependency with `uv add --dev pytest`. Add `[tool.pytest.ini_options]` with `testpaths = ["tests"]`. Run `uv sync` and verify that `uv run python -c "import tpa_index"` and `uv run tpa-index --help` both work.
+- [X] T003 Append `slurm-*.out` to `.gitignore`. Create the empty directories `config/`, `scripts/slurm/`, and `tests/`.
 
 ---
 
 ## Phase 2: Foundational (blocks all stories)
 
-- [ ] T004 Create `config/labels.yaml` following `contracts/config.md`:
+- [X] T004 Create `config/labels.yaml` following `contracts/config.md`:
   - Set `guideline_version: "0.1.0"`.
   - Include the full starter vocabulary table, plus the expression group `confident, upset, positive, neutral, negative`.
   - Give every label 3 observable prompt phrasings (no mental-state wording).
   - Give every label a distinct `#RRGGBB` color that is readable on white.
-- [ ] T005 Create `config/pipeline.yaml` exactly as in `contracts/config.md`. Create `config/videos.example.yaml` with 4 mock videos, `mock01` to `mock04`:
+- [X] T005 Create `config/pipeline.yaml` exactly as in `contracts/config.md`. Create `config/videos.example.yaml` with 4 mock videos, `mock01` to `mock04`:
   - filenames `mock/mock_<kind>_0N.mp4`;
   - orientations: 3 landscape and 1 portrait;
   - kinds: live, edited, clip, promo;
   - phases: early, mid, showcase, unknown;
   - splits: `mock04` is `eval`, the rest are `dev`.
-- [ ] T006 Create `src/tpa_index/paths.py` with:
+- [X] T006 Create `src/tpa_index/paths.py` with:
   - `repo_root()`, returning `Path(__file__).resolve().parents[2]`;
   - `load_dotenv(repo_root()/".env", override=False)` at import;
   - `class GuardError(Exception)`;
   - `data_dir()` and `output_dir()`, which read `DATA_DIR` and `OUTPUT_DIR`, return `Path(v).expanduser().resolve()`, and raise `GuardError("DATA_DIR is not set")` (or the `OUTPUT_DIR` equivalent) when unset.
 
   The inside-repo check comes in US2. Do not import torch here.
-- [ ] T007 Create `src/tpa_index/config.py` with:
+- [X] T007 Create `src/tpa_index/config.py` with:
   - `class ConfigError(Exception)`;
   - `load_labels(path=None)`, `load_pipeline(path=None)`, and `load_videos(path=None)`, each using `yaml.safe_load`. Defaults are under `repo_root()/"config"`. `load_videos` returns `videos.local.yaml` when it exists, else `videos.example.yaml`, as a list of dicts;
   - `config_hash(labels, pipeline)`, per research §6.
 
   Full validation comes in US6.
-- [ ] T008 Add `windows(duration_s, window_s, overlap_s) -> list[tuple[float, float]]` to `src/tpa_index/segment.py`, following research §4 (stride, trailing window under half a window folded into the previous one, short video gives one segment). Write `tests/test_windows.py` covering:
+- [X] T008 Add `windows(duration_s, window_s, overlap_s) -> list[tuple[float, float]]` to `src/tpa_index/segment.py`, following research §4 (stride, trailing window under half a window folded into the previous one, short video gives one segment). Write `tests/test_windows.py` covering:
   - 60 s at 8/2: starts `0,6,…,54`, last end `60`;
-  - 50 s: the trailing 2 s window is folded, so the last end is `50`;
+  - 51 s: the trailing 3 s window is folded, so the last segment is `(42, 51)`;
   - 5 s: `[(0, 5)]`;
   - 8/2 with `window_s=4, overlap_s=1`: stride 3.
-- [ ] T009 Create `tests/conftest.py` with:
+- [X] T009 Create `tests/conftest.py` with:
   - an autouse fixture that uses `monkeypatch.setenv` to point `DATA_DIR` at `tmp_path/"data"` and `OUTPUT_DIR` at `tmp_path/"out"` (creating both);
   - fixtures `labels`, `pipeline`, and `example_videos` that load the shipped configs (`load_videos(repo_root()/"config/videos.example.yaml")`).
 
@@ -72,7 +72,7 @@
 
 **Independent test**: `tpa-index mock` writes a dataset in which every table passes validation, all cross-table references resolve, there are no identity columns, and the output is reproducible by seed.
 
-- [ ] T010 [US1] In `src/tpa_index/schema.py`, define `SCHEMAS` for all six tables, with exact column names, types, and nullability from `contracts/tables.md`. Use `pa.list_(pa.string())` for list columns and `pa.timestamp("us", tz="UTC")` for timestamps. Next to it, add a `RULES` dict per table with:
+- [X] T010 [US1] In `src/tpa_index/schema.py`, define `SCHEMAS` for all six tables, with exact column names, types, and nullability from `contracts/tables.md`. Use `pa.list_(pa.string())` for list columns and `pa.timestamp("us", tz="UTC")` for timestamps. Next to it, add a `RULES` dict per table with:
   - `pk` (tuple of columns);
   - `enums` (column → allowed set; `phase` is filled from the `phases` argument);
   - `unit` (columns in 0–1);
@@ -80,7 +80,7 @@
   - `nonneg` (≥ 0).
 
   Use the data-model.md lists.
-- [ ] T011 [US1] In `src/tpa_index/schema.py`, implement `class SchemaError(Exception)`, which takes `(table, column, reason)`, and `validate(table, data, phases=None) -> pa.Table`. `data` is a list of dicts or a `pa.Table`. Apply data-model.md rules 1–7 in order:
+- [X] T011 [US1] In `src/tpa_index/schema.py`, implement `class SchemaError(Exception)`, which takes `(table, column, reason)`, and `validate(table, data, phases=None) -> pa.Table`. `data` is a list of dicts or a `pa.Table`. Apply data-model.md rules 1–7 in order:
   1. exact column set;
   2. `pa.Table.from_pylist(rows, schema)` or `.cast(schema)`, wrapping `pa.ArrowInvalid` or `TypeError` in `SchemaError`;
   3. no nulls in non-nullable fields;
@@ -90,7 +90,7 @@
   7. unique pk, plus the reviews `new_label` rule.
 
   Use pyarrow.compute only. If `phases` is None, load them from `load_pipeline()["video_phases"]`.
-- [ ] T012 [US1] Write `tests/test_schema.py`. Start with one valid row per table, kept in a helper dict `VALID`, and check it passes. Then add one failing case per rule, each asserting that `SchemaError` names the right table and column:
+- [X] T012 [US1] Write `tests/test_schema.py`. Start with one valid row per table, kept in a helper dict `VALID`, and check it passes. Then add one failing case per rule, each asserting that `SchemaError` names the right table and column:
   - missing column;
   - extra `person_id`, `track_id`, or `embedding`;
   - a string in `score`;
@@ -102,21 +102,21 @@
   - duplicate `segment_id`;
   - review `action="edit"` with null `new_label`;
   - review `action="accept"` with a non-null `new_label`.
-- [ ] T013 [US1] In `src/tpa_index/schema.py`, implement:
+- [X] T013 [US1] In `src/tpa_index/schema.py`, implement:
   - `write_table(table, data, run_id, root=None) -> Path`: validate first, then write to `(root or output_dir())/"runs"/run_id/f"{table}.parquet"`. Raise `FileExistsError` if the target already exists. Write to a `.tmp` file, then `os.replace`.
   - `read_table(table, root=None) -> pa.Table`: use DuckDB `read_parquet([...files], union_by_name=true)` over the `runs/*/{table}.parquet` files whose run folder also contains `runs.parquet`, and return `.arrow()` cast to `SCHEMAS[table]`. If there are no files, return `SCHEMAS[table].empty_table()`.
-- [ ] T014 [US1] In `src/tpa_index/schema.py`, implement `append_reviews(rows, root=None) -> int` and `read_reviews(root=None)`, using `(root or output_dir())/"reviews.duckdb"`:
+- [X] T014 [US1] In `src/tpa_index/schema.py`, implement `append_reviews(rows, root=None) -> int` and `read_reviews(root=None)`, using `(root or output_dir())/"reviews.duckdb"`:
   - Fill a missing `review_id` with `uuid4().hex` and a missing `created_at` with UTC now, then validate.
   - Create the table with `CREATE TABLE IF NOT EXISTS reviews AS SELECT * FROM empty_arrow`, then `INSERT INTO reviews SELECT * FROM arrow_tbl`.
   - Guard writes with a module-level `threading.Lock`, and open and close the connection on each call.
   - Provide no update or delete function.
-- [ ] T015 [US1] Add these to `tests/test_schema.py`:
+- [X] T015 [US1] Add these to `tests/test_schema.py`:
   - writing the same table and run twice raises `FileExistsError`;
   - an invalid write leaves no file;
   - `read_table` concatenates two complete runs and skips a run folder without `runs.parquet`;
   - `append_reviews` twice gives `read_reviews().num_rows` equal to the sum;
   - `schema` has no attribute matching `update|delete`.
-- [ ] T016 [US1] Implement `merge_moments(segments, predictions, pipeline, run_id) -> list[dict]` in `src/tpa_index/moments.py`, following research §12:
+- [X] T016 [US1] Implement `merge_moments(segments, predictions, pipeline, run_id) -> list[dict]` in `src/tpa_index/moments.py`, following research §12:
   - Group by video, ordered by `start_s`.
   - Primary candidate: the top `primary_group` label with score ≥ `label_threshold`.
   - Merge consecutive segments with the same label when the gap is ≤ `max_gap_windows * window_s`.
@@ -124,7 +124,7 @@
   - `secondary_labels`, `indicators`, `confidence`, and `needs_review` follow research §12, using `conflict_margin` against the runner-up primary label.
   - `moment_id = f"{video_id}_{round(start_s*1000)}_{label}"`.
   - Return dicts that match the moments schema.
-- [ ] T017 [US1] Write `tests/test_moments.py` with hand-built segments and predictions (8 s windows) checking that:
+- [X] T017 [US1] Write `tests/test_moments.py` with hand-built segments and predictions (8 s windows) checking that:
   - 3 adjacent "singing" segments become 1 moment;
   - a 1-window gap merges and a 2-window gap splits;
   - a lone 5 s trailing segment is dropped;
@@ -132,32 +132,32 @@
   - a runner-up within 0.1 gives `needs_review=True`;
   - indicator and secondary labels above threshold are listed;
   - output passes `validate("moments", …)`.
-- [ ] T018 [US1] In `src/tpa_index/mock.py`, implement `_videos_and_segments(rng, videos_cfg, pipeline)`:
+- [X] T018 [US1] In `src/tpa_index/mock.py`, implement `_videos_and_segments(rng, videos_cfg, pipeline)`:
   - For each example video, set `duration_s = rng.uniform(300, 1500)` and `fps = 30.0`.
   - Build segments with `windows()`, using `segment_id = f"{video_id}_{round(start*1000)}"`.
   - Set signals per segment: `person_count` 0–15, `faces_detected` ≤ `person_count`, `has_speech`, `transcript_chars` (0 when no speech), and `is_idle`. Leave about 5% of the signals null.
   - With 4 videos, the total should land at 200–1000 segments.
-- [ ] T019 [US1] In `src/tpa_index/mock.py`, implement `_predictions(rng, segments, labels, run_id)`:
+- [X] T019 [US1] In `src/tpa_index/mock.py`, implement `_predictions(rng, segments, labels, run_id)`:
   - Per video, walk segments and keep a latent activity that persists for `rng.integers(2, 8)` segments, so moments form.
   - Score the true label with `beta(5, 2)` and the others with `beta(1.5, 6)`. Score the other groups the same way, with their own latent label.
   - Use model `"mock-model"`. Cast scores to float32 in the range 0–1.
-- [ ] T020 [US1] In `src/tpa_index/mock.py`, implement `_reviews(rng, moments, segments, labels)`:
+- [X] T020 [US1] In `src/tpa_index/mock.py`, implement `_reviews(rng, moments, segments, labels)`:
   - Review about 20% of moments and about 5% of segments.
   - Include every `action`, `source`, and `mode` value at least once, with both agreeing (accept) and disagreeing (edit or reject with `new_label`) cases.
   - Use reviewers `mock-staff-a` and `mock-staff-b` and `guideline_version` from labels.
   - Base `created_at` on `2026-01-01T00:00Z + i minutes`, and derive `review_id` from the rng (`rng.bytes(16).hex()`) so output is reproducible.
-- [ ] T021 [US1] In `src/tpa_index/mock.py`, implement `generate(out_root=None, seed=0, n_videos=4) -> str`:
+- [X] T021 [US1] In `src/tpa_index/mock.py`, implement `generate(out_root=None, seed=0, n_videos=4) -> str`:
   - Set `run_id = f"mock-seed{seed}"` and use `np.random.default_rng(seed)`. Take the first `n_videos` example videos.
   - Build videos, segments, predictions, and moments (via `merge_moments`).
   - Build one runs row per mock stage: `segment` and `predict`, both with hardware `"mock-hardware"`, a fixed `started_at`, `runtime_s > 0`, and `config_hash` from `config_hash()`.
   - Call `write_table` for each table, writing `runs` last, then `append_reviews`. Return the `run_id`.
-- [ ] T022 [US1] Add `validate_dataset(root=None)` to `src/tpa_index/schema.py`. It reads all tables and raises `SchemaError` when:
+- [X] T022 [US1] Add `validate_dataset(root=None)` to `src/tpa_index/schema.py`. It reads all tables and raises `SchemaError` when:
   - `segments.video_id` or `moments.video_id` is not in videos;
   - `predictions.segment_id` is not in segments;
   - `predictions.run_id` or `moments.run_id` is not in runs.
 
   Wire `tpa-index mock --seed N --n-videos N` in `src/tpa_index/cli.py` to call `generate` and then `validate_dataset`, and print the row count per table.
-- [ ] T023 [US1] Write `tests/test_mock.py` checking that:
+- [X] T023 [US1] Write `tests/test_mock.py` checking that:
   - `generate()` finishes in under 60 s;
   - all six tables are non-empty and `validate_dataset` passes;
   - there are at least 3 videos and 200–1000 segments;
@@ -176,26 +176,26 @@
 
 **Independent test**: A guard failure exits with code 2 and a message that names only the setting. A forced error on a data file prints only placeholders.
 
-- [ ] T024 [US2] In `src/tpa_index/paths.py`, add `check_guard()`. It resolves both settings (`expanduser().resolve()`, which follows symlinks) and raises `GuardError(f"{name} must point outside the repo")` when `p.is_relative_to(repo_root())`. Make `data_dir()` and `output_dir()` call the check. Never put the path in a message.
-- [ ] T025 [US2] Write `tests/test_paths.py` with:
+- [X] T024 [US2] In `src/tpa_index/paths.py`, add `check_guard()`. It resolves both settings (`expanduser().resolve()`, which follows symlinks) and raises `GuardError(f"{name} must point outside the repo")` when `p.is_relative_to(repo_root())`. Make `data_dir()` and `output_dir()` call the check. Never put the path in a message.
+- [X] T025 [US2] Write `tests/test_paths.py` with:
   - Failure cases, each with `monkeypatch.setenv`: inside the repo (`repo_root()/"data"`), a relative path `"data"` with `monkeypatch.chdir(repo_root())`, `~`-relative to a home-symlinked dir, a symlink in `tmp_path` pointing into the repo, and an unset setting. Each must raise `GuardError`, and the path string must not be in `str(err)`.
   - Passing cases: paths outside the repo.
   - A subprocess check that `import tpa_index.paths, tpa_index.cli` does not load `torch` (`'torch' not in sys.modules`).
-- [ ] T026 [US2] In `src/tpa_index/paths.py`, implement `redact(text)`, following research §9:
+- [X] T026 [US2] In `src/tpa_index/paths.py`, implement `redact(text)`, following research §9:
   - Replace the raw and resolved `DATA_DIR` and `OUTPUT_DIR` strings with `<DATA_DIR>` and `<OUTPUT_DIR>`.
   - For each video in `load_videos()`, replace the relative filename, the basename, and the stem (stems of 4+ characters only) with `<video:{video_id}>`. Longest strings go first.
   - Use a regex to replace `<DATA_DIR>/\S+` with `<DATA_DIR>/<file>`.
   - Cache the replacement list, and add `_reset_redaction_cache()` for tests.
-- [ ] T027 [US2] In `src/tpa_index/paths.py`, implement `install_redaction()`. It is idempotent and does two things:
+- [X] T027 [US2] In `src/tpa_index/paths.py`, implement `install_redaction()`. It is idempotent and does two things:
   - Adds a `logging.Filter` subclass to the root logger's handlers (creating a basic `StreamHandler` if there are none). The filter sets `record.msg = redact(record.getMessage())` and `record.args = ()`.
   - Sets `sys.excepthook` to print `redact("".join(traceback.format_exception(...)))` to stderr.
-- [ ] T028 [US2] Add these to `tests/test_paths.py`:
+- [X] T028 [US2] Add these to `tests/test_paths.py`:
   - `redact` removes the data root, the mock filename, the basename, and the stem;
   - `av.open(str(data_dir()/"mock/mock_live_01.mp4"))` raises an error whose `redact(str(e))` contains no part of the real path;
   - a `caplog` log line holding a data path is redacted;
   - a subprocess script that calls `install_redaction()` and raises `FileNotFoundError(<data path>)` has stderr containing `<DATA_DIR>` and not the path.
-- [ ] T029 [US2] In `src/tpa_index/cli.py`, make `main()` call `install_redaction()` and then `check_guard()` before dispatch. Map `GuardError` to exit 2 and `ConfigError` to exit 3, printing the redacted message to stderr. Add `tests/test_cli.py`, which runs `uv run tpa-index mock` with `OUTPUT_DIR` inside the repo and checks it exits 2 and that the path is not in stdout or stderr.
-- [ ] T030 [US2] Write `tests/test_repo_hygiene.py` checking that:
+- [X] T029 [US2] In `src/tpa_index/cli.py`, make `main()` call `install_redaction()` and then `check_guard()` before dispatch. Map `GuardError` to exit 2 and `ConfigError` to exit 3, printing the redacted message to stderr. Add `tests/test_cli.py`, which runs `uv run tpa-index mock` with `OUTPUT_DIR` inside the repo and checks it exits 2 and that the path is not in stdout or stderr.
+- [X] T030 [US2] Write `tests/test_repo_hygiene.py` checking that:
   - `git check-ignore config/videos.local.yaml .env` succeeds;
   - `.claude/settings.json` `permissions.deny` contains `Read(./config/videos.local.yaml)`;
   - `git ls-files` contains no `.mp4`, `.mov`, `.mkv`, `.avi`, `.wav`, `.parquet`, or `.duckdb` files;

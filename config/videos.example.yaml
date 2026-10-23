@@ -1,0 +1,30 @@
+# Mock example only. Real metadata goes in config/videos.local.yaml (gitignored, never read by assistants).
+videos:
+  - video_id: mock01
+    filename: mock/mock_live_01.mp4      # relative to DATA_DIR
+    orientation: landscape
+    kind: live
+    phase: early
+    cohort: mock-cohort-a
+    split: dev
+  - video_id: mock02
+    filename: mock/mock_edited_02.mp4
+    orientation: landscape
+    kind: edited
+    phase: mid
+    cohort: mock-cohort-a
+    split: dev
+  - video_id: mock03
+    filename: mock/mock_clip_03.mp4
+    orientation: portrait
+    kind: clip
+    phase: showcase
+    cohort: mock-cohort-b
+    split: dev
+  - video_id: mock04
+    filename: mock/mock_promo_04.mp4
+    orientation: landscape
+    kind: promo
+    phase: unknown
+    cohort: mock-cohort-b
+    split: eval

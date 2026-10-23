@@ -1,0 +1,126 @@
+# Label vocabulary. Observable behaviour only (Constitution V); bump guideline_version on any change.
+guideline_version: "0.1.0"
+labels:
+  # activity
+  - name: singing
+    group: activity
+    prompts: ["a person singing", "a group of kids singing together", "someone singing into a microphone"]
+    color: "#1f77b4"
+  - name: dancing
+    group: activity
+    prompts: ["people dancing", "a child dancing on stage", "a group doing choreographed dance moves"]
+    color: "#ff7f0e"
+  - name: acting
+    group: activity
+    prompts: ["kids acting out a scene", "a person performing a role on stage", "actors performing a skit"]
+    color: "#2ca02c"
+  - name: playing_instrument
+    group: activity
+    prompts: ["a person playing a musical instrument", "someone playing drums", "a kid playing piano or guitar"]
+    color: "#d62728"
+  - name: speaking
+    group: activity
+    prompts: ["a person speaking to an audience", "someone reciting a poem", "a kid presenting into a microphone"]
+    color: "#9467bd"
+  - name: rehearsing
+    group: activity
+    prompts: ["a group rehearsing", "kids practicing a routine", "people running through a rehearsal"]
+    color: "#8c564b"
+  # category
+  - name: performance
+    group: category
+    prompts: ["a stage performance in front of an audience", "a live show", "performers on a stage with lights"]
+    color: "#e377c2"
+  - name: practice
+    group: category
+    prompts: ["a practice session in a studio", "an informal practice", "a rehearsal room session"]
+    color: "#7f7f7f"
+  - name: workshop
+    group: category
+    prompts: ["an instructor teaching a workshop", "a class learning a new skill", "a teaching session with a group"]
+    color: "#bcbd22"
+  - name: discussion
+    group: category
+    prompts: ["people sitting and talking in a circle", "a group discussion", "a conversation between participants"]
+    color: "#17becf"
+  # actor
+  - name: solo
+    group: actor
+    prompts: ["one person performing alone", "a solo performer", "a single person in focus"]
+    color: "#393b79"
+  - name: small_group
+    group: actor
+    prompts: ["two or three people performing", "a small group together", "a duo or trio"]
+    color: "#637939"
+  - name: ensemble
+    group: actor
+    prompts: ["a large group performing together", "an ensemble on stage", "many people in a group"]
+    color: "#8c6d31"
+  - name: staff_led
+    group: actor
+    prompts: ["an adult instructor leading the group", "a teacher demonstrating", "staff guiding participants"]
+    color: "#843c39"
+  # audio
+  - name: music
+    group: audio
+    prompts: ["music playing", "a song with instruments", "background music"]
+    color: "#7b4173"
+  - name: speech
+    group: audio
+    prompts: ["a person talking", "spoken words", "someone speaking clearly"]
+    color: "#3182bd"
+  - name: applause
+    group: audio
+    prompts: ["an audience clapping", "applause", "cheering and clapping"]
+    color: "#e6550d"
+  - name: silence
+    group: audio
+    prompts: ["silence", "a quiet room", "no sound"]
+    color: "#969696"
+  # expression (observable, staff-verified proposals only)
+  - name: confident
+    group: expression
+    prompts: ["a person standing tall and performing boldly", "a performer with steady eye contact", "someone presenting with a strong voice"]
+    color: "#31a354"
+  - name: upset
+    group: expression
+    prompts: ["a person frowning or crying", "someone with a visibly upset face", "a performer wiping tears"]
+    color: "#de2d26"
+  - name: positive
+    group: expression
+    prompts: ["people smiling", "a laughing face", "smiling performers"]
+    color: "#fd8d3c"
+  - name: neutral
+    group: expression
+    prompts: ["a neutral face", "a person with a calm expression", "a relaxed face without a smile"]
+    color: "#9ecae1"
+  - name: negative
+    group: expression
+    prompts: ["a person scowling", "a face with a frown", "someone turning away with a frown"]
+    color: "#756bb1"
+  # indicator (program-level aggregates)
+  - name: participation
+    group: indicator
+    prompts: ["kids actively taking part", "participants joining in the activity", "everyone in the group participating"]
+    color: "#08519c"
+  - name: self_expression
+    group: indicator
+    prompts: ["a kid expressing themselves through performance", "a participant sharing their own story", "a personal creative performance"]
+    color: "#a63603"
+  - name: original_work
+    group: indicator
+    prompts: ["kids performing their own original song", "a participant presenting work they wrote", "an original piece created by the group"]
+    color: "#006d2c"
+  # status (staff review states)
+  - name: uncertain
+    group: status
+    prompts: ["an unclear scene", "a hard to interpret moment", "an ambiguous activity"]
+    color: "#525252"
+  - name: mixed
+    group: status
+    prompts: ["several activities at once", "a mixed scene", "different things happening together"]
+    color: "#737373"
+  - name: needs_review
+    group: status
+    prompts: ["a moment that needs staff review", "a scene to check by hand", "an item flagged for review"]
+    color: "#bdbdbd"

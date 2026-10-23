@@ -1,0 +1,251 @@
+"""The six output tables: pyarrow schemas (source of truth), validation on write, Parquet/DuckDB I/O."""
+import os
+import re
+import threading
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+import duckdb
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from tpa_index.paths import output_dir
+
+_s, _f64, _f32, _i32, _b = pa.string(), pa.float64(), pa.float32(), pa.int32(), pa.bool_()
+_ts = pa.timestamp("us", tz="UTC")
+_list = pa.list_(pa.string())
+
+
+def _schema(*fields):
+    return pa.schema([pa.field(name, typ, nullable=nullable) for name, typ, nullable in fields])
+
+
+SCHEMAS: dict[str, pa.Schema] = {
+    "videos": _schema(
+        ("video_id", _s, False), ("filename", _s, False), ("duration_s", _f64, False), ("fps", _f64, False),
+        ("orientation", _s, False), ("kind", _s, False), ("phase", _s, False), ("cohort", _s, True),
+        ("split", _s, False),
+    ),
+    "segments": _schema(
+        ("segment_id", _s, False), ("video_id", _s, False), ("start_s", _f64, False), ("end_s", _f64, False),
+        ("person_count", _i32, True), ("faces_detected", _i32, True), ("has_speech", _b, True),
+        ("transcript_chars", _i32, True), ("is_idle", _b, True),
+    ),
+    "predictions": _schema(
+        ("segment_id", _s, False), ("label", _s, False), ("label_group", _s, False), ("score", _f32, False),
+        ("model", _s, False), ("run_id", _s, False),
+    ),
+    "moments": _schema(
+        ("moment_id", _s, False), ("video_id", _s, False), ("start_s", _f64, False), ("end_s", _f64, False),
+        ("primary_label", _s, False), ("secondary_labels", _list, False), ("indicators", _list, False),
+        ("confidence", _f32, False), ("needs_review", _b, False), ("run_id", _s, False),
+    ),
+    "runs": _schema(
+        ("run_id", _s, False), ("stage", _s, False), ("model", _s, True), ("config_hash", _s, False),
+        ("hardware", _s, False), ("n_segments", _i32, False), ("runtime_s", _f64, False),
+        ("peak_mem_gb", _f64, True), ("started_at", _ts, False),
+    ),
+    "reviews": _schema(
+        ("review_id", _s, False), ("target_type", _s, False), ("target_id", _s, False), ("label", _s, False),
+        ("label_role", _s, False), ("action", _s, False), ("new_label", _s, True), ("source", _s, False),
+        ("mode", _s, False), ("guideline_version", _s, False), ("reviewer", _s, False), ("note", _s, True),
+        ("created_at", _ts, False),
+    ),
+}
+
+LABEL_GROUPS = {"activity", "category", "actor", "audio", "expression", "indicator", "status"}
+
+RULES: dict[str, dict] = {
+    "videos": {
+        "pk": ("video_id",),
+        "enums": {"split": {"dev", "eval"}, "orientation": {"landscape", "portrait"},
+                  "kind": {"live", "edited", "clip", "promo"}, "phase": None},  # phase: from pipeline.yaml
+        "positive": ("duration_s", "fps"),
+    },
+    "segments": {
+        "pk": ("segment_id",),
+        "nonneg": ("start_s", "person_count", "faces_detected", "transcript_chars"),
+        "times": True,
+    },
+    "predictions": {
+        "pk": ("segment_id", "label", "model", "run_id"),
+        "enums": {"label_group": LABEL_GROUPS},
+        "unit": ("score",),
+    },
+    "moments": {"pk": ("moment_id",), "unit": ("confidence",), "nonneg": ("start_s",), "times": True},
+    "runs": {"pk": ("run_id",), "positive": ("runtime_s",), "nonneg": ("n_segments", "peak_mem_gb")},
+    "reviews": {
+        "pk": ("review_id",),
+        "enums": {"target_type": {"segment", "moment"}, "label_role": {"primary", "secondary", "indicator"},
+                  "action": {"accept", "edit", "reject", "defer", "add"}, "source": {"ai", "staff"},
+                  "mode": {"blind", "review"}},
+    },
+}
+
+
+class SchemaError(Exception):
+    def __init__(self, table: str, column: str, reason: str):
+        super().__init__(f"{table}.{column}: {reason}")
+        self.table, self.column, self.reason = table, column, reason
+
+
+def validate(table: str, data, phases=None) -> pa.Table:
+    """Return data as a pa.Table matching SCHEMAS[table], or raise SchemaError."""
+    if table not in SCHEMAS:
+        raise SchemaError(table, "*", "unknown table")
+    schema, rules = SCHEMAS[table], RULES[table]
+    names = schema.names
+
+    # 1. exact column set (this is also what keeps identity columns out)
+    if isinstance(data, pa.Table):
+        cols = list(data.column_names)
+        rows = None
+    else:
+        rows = list(data)
+        cols = list(dict.fromkeys(k for r in rows for k in r)) if rows else names
+        for r in rows:
+            for name in names:
+                if name not in r:
+                    raise SchemaError(table, name, "missing column")
+    for name in names:
+        if name not in cols:
+            raise SchemaError(table, name, "missing column")
+    for name in cols:
+        if name not in names:
+            raise SchemaError(table, name, "unexpected column (not in contract)")
+
+    # 2. types, 3. nulls
+    arrays = []
+    for field in schema:
+        try:
+            if rows is None:
+                arr = data.column(field.name).cast(field.type)
+            else:
+                arr = pa.array([r[field.name] for r in rows], type=field.type)
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, TypeError, ValueError) as e:
+            raise SchemaError(table, field.name, f"wrong type ({type(e).__name__})") from None
+        if not field.nullable and arr.null_count:
+            raise SchemaError(table, field.name, "null in non-nullable column")
+        arrays.append(arr)
+    tbl = pa.Table.from_arrays(arrays, schema=schema)
+
+    # 4. enums
+    for col, allowed in rules.get("enums", {}).items():
+        if allowed is None:
+            if phases is None:
+                from tpa_index.config import load_pipeline
+                phases = load_pipeline()["video_phases"]
+            allowed = set(phases)
+        bad = {v for v in tbl[col].to_pylist() if v is not None and v not in allowed}
+        if bad:
+            raise SchemaError(table, col, f"value not allowed: {sorted(bad)[0]!r}")
+
+    # 5. ranges
+    for kind, test, reason in (("unit", lambda v: 0 <= v <= 1, "must be within 0-1"),
+                               ("positive", lambda v: v > 0, "must be > 0"),
+                               ("nonneg", lambda v: v >= 0, "must be >= 0")):
+        for col in rules.get(kind, ()):
+            if any(v is not None and not test(v) for v in tbl[col].to_pylist()):
+                raise SchemaError(table, col, reason)
+
+    # 6. times
+    if rules.get("times"):
+        if any(e <= s for s, e in zip(tbl["start_s"].to_pylist(), tbl["end_s"].to_pylist())):
+            raise SchemaError(table, "end_s", "must be greater than start_s")
+
+    # 7. primary key, review new_label rule
+    pk = rules["pk"]
+    keys = list(zip(*(tbl[c].to_pylist() for c in pk)))
+    if len(set(keys)) != len(keys):
+        raise SchemaError(table, ",".join(pk), "duplicate primary key")
+    if table == "reviews":
+        for action, new_label in zip(tbl["action"].to_pylist(), tbl["new_label"].to_pylist()):
+            if (action in ("edit", "add")) != (new_label is not None):
+                raise SchemaError(table, "new_label", "required for edit/add and must be empty otherwise")
+    return tbl
+
+
+_RUN_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _runs_root(root) -> Path:
+    return Path(root or output_dir()) / "runs"
+
+
+def write_table(table: str, data, run_id: str, root=None) -> Path:
+    """Validate, then write {root}/runs/{run_id}/{table}.parquet. Never overwrites."""
+    if not _RUN_ID.match(run_id):
+        raise SchemaError(table, "run_id", "run_id may contain only letters, digits, '_', '.', '-'")
+    tbl = validate(table, data)
+    path = _runs_root(root) / run_id / f"{table}.parquet"
+    if path.exists():
+        raise FileExistsError(f"{table} already written for run {run_id}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".parquet.tmp")
+    pq.write_table(tbl, tmp)
+    os.replace(tmp, path)
+    return path
+
+
+def read_table(table: str, root=None) -> pa.Table:
+    """All complete runs (folders that contain runs.parquet) concatenated."""
+    runs = _runs_root(root)
+    files = [d / f"{table}.parquet" for d in sorted(runs.glob("*"))
+             if (d / "runs.parquet").exists() and (d / f"{table}.parquet").exists()] if runs.exists() else []
+    if not files:
+        return SCHEMAS[table].empty_table()
+    return pa.concat_tables([pq.read_table(f).cast(SCHEMAS[table]) for f in files])
+
+
+_reviews_lock = threading.Lock()
+
+
+def _reviews_db(root) -> Path:
+    return Path(root or output_dir()) / "reviews.duckdb"
+
+
+def append_reviews(rows, root=None) -> int:
+    """Append review entries. The log is append-only: there is no update or delete."""
+    rows = rows.to_pylist() if isinstance(rows, pa.Table) else [dict(r) for r in rows]
+    for r in rows:
+        r.setdefault("review_id", uuid.uuid4().hex)
+        r.setdefault("created_at", datetime.now(timezone.utc))
+    tbl = validate("reviews", rows)
+    path = _reviews_db(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _reviews_lock:
+        con = duckdb.connect(str(path))
+        try:
+            con.register("incoming", tbl)
+            con.execute("CREATE TABLE IF NOT EXISTS reviews AS SELECT * FROM incoming LIMIT 0")
+            con.execute("INSERT INTO reviews SELECT * FROM incoming")
+        finally:
+            con.close()
+    return tbl.num_rows
+
+
+def read_reviews(root=None) -> pa.Table:
+    path = _reviews_db(root)
+    if not path.exists():
+        return SCHEMAS["reviews"].empty_table()
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        return con.sql("SELECT * FROM reviews ORDER BY created_at, review_id").to_arrow_table().cast(SCHEMAS["reviews"])
+    finally:
+        con.close()
+
+
+def validate_dataset(root=None) -> None:
+    """Cross-table reference checks over all complete runs."""
+    t = {name: read_table(name, root) for name in ("videos", "segments", "predictions", "moments", "runs")}
+    ids = {
+        "video_id": set(t["videos"]["video_id"].to_pylist()),
+        "segment_id": set(t["segments"]["segment_id"].to_pylist()),
+        "run_id": set(t["runs"]["run_id"].to_pylist()),
+    }
+    for table, col in (("segments", "video_id"), ("moments", "video_id"), ("predictions", "segment_id"),
+                       ("predictions", "run_id"), ("moments", "run_id")):
+        missing = set(t[table][col].to_pylist()) - ids[col]
+        if missing:
+            raise SchemaError(table, col, f"{len(missing)} value(s) not found in the referenced table")

@@ -24,7 +24,7 @@ reviews ── target_id → segments.segment_id | moments.moment_id   (by targe
 | Segment | `segment_id` = `{video_id}_{start_ms}` | Created by the segmenter; signal columns stay null until later features fill them. Those features write a new run, never patch an old one. |
 | Prediction | (`segment_id`, `label`, `model`, `run_id`) | One row per segment × label × model run. |
 | Moment | `moment_id` = `{video_id}_{start_ms}_{primary_label}` | Derived by the merge rules in research §12. |
-| Run | `run_id` = `{stage}-{YYYYmmddTHHMMSS}-{4hex}` | One row per stage execution, written when the stage ends. |
+| Run | `run_id` = `{stage}-{YYYYmmddTHHMMSS}-{4hex}` | One row per successful stage execution, written when the stage ends. Its `runs.parquet` marks the run folder complete; failed runs have none and are ignored by readers. |
 | Review | `review_id` (uuid4 hex) | Append-only. A correction is a new row; there is no update or delete. |
 
 ## Validation rules (applied on every write)

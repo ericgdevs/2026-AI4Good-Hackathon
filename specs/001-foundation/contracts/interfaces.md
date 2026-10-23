@@ -24,7 +24,7 @@ config_hash(labels, pipeline) -> str    # 12 hex chars
 SCHEMAS: dict[str, pa.Schema]           # videos, segments, predictions, moments, runs, reviews
 validate(table: str, data, phases=None) -> pa.Table          # raises SchemaError(table, column, reason)
 write_table(table: str, data, run_id: str) -> Path           # validate, then write {OUTPUT_DIR}/runs/{run_id}/{table}.parquet; refuses to overwrite
-read_table(table: str, root=None) -> pa.Table                # all runs, via DuckDB glob
+read_table(table: str, root=None) -> pa.Table                # all complete runs (dirs with runs.parquet), via DuckDB glob
 append_reviews(rows) -> int                                  # validate + INSERT into reviews.duckdb
 read_reviews() -> pa.Table
 validate_dataset(root) -> None                               # cross-table reference checks
@@ -38,7 +38,8 @@ probe(path) -> dict                            # duration_s, fps, orientation, h
 
 # runs.py
 track_run(stage, model=None, config_hash=...) -> ContextManager[RunContext]
-#   ctx.run_id; ctx.n_segments = ...; on exit writes the runs row (also on error, then re-raises)
+#   ctx.run_id; ctx.n_segments = ...; on success writes runs.parquet (the run's "complete" marker);
+#   on error writes no runs row and re-raises, so read_table skips the incomplete run
 
 # moments.py
 merge_moments(segments, predictions, pipeline, run_id) -> list[dict]
@@ -52,8 +53,8 @@ generate(out_root, seed=0, n_videos=4) -> str  # returns run_id
 | command | does | exit codes |
 |---|---|---|
 | `tpa-index check` | guard, config validity, device (cuda/mps/cpu), hardware name; no paths printed | 0 ok, 2 guard failure, 3 config error |
-| `tpa-index mock [--seed N] [--videos N]` | writes a full mock dataset under `OUTPUT_DIR`, then validates it | 0 / 2 / 3 |
-| `tpa-index segment [--video-id ID ...]` | segments mapped videos (all if none given), writes videos + segments + runs | 0 / 2 / 3 / 1 on processing error |
+| `tpa-index mock [--seed N] [--n-videos N]` | writes a full mock dataset under `OUTPUT_DIR`, then validates it | 0 / 2 / 3 |
+| `tpa-index segment [--videos PATH] [--video-id ID ...]` | segments mapped videos (all if none given), writes videos + segments + runs | 0 / 2 / 3 / 1 on processing error |
 
 Every command calls `install_redaction()` and then `check_guard()` before any other work.
 

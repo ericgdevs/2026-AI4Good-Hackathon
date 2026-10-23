@@ -1,5 +1,16 @@
 {
   "enabledPlugins": {
     "playwright@claude-plugins-official": true
+  },
+  "permissions": {
+    "deny": [
+      "Read(//Volumes/T7/AI4GOOD/**)",
+      "Read(~/tpa-data/**)",
+      "Read(./data/**)",
+      "Read(./config/videos.local.yaml)",
+      "Read(./**/*.mp4)",
+      "Read(./**/*.mov)",
+      "Read(./transcripts/**)"
+    ]
   }
 }

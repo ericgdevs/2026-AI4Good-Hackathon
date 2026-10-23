@@ -223,31 +223,33 @@ __marimo__/
 reply.md
 reply_history.md
 
-   # Data (never commit footage of kids)
-   data/
-   videos/
-   frames/
-   crops/
-   embeddings/
-   outputs/
-   *.mp4
-   *.mov
-   *.avi
-   *.mkv
-   *.npy
-   *.parquet
-   *.duckdb
+# Data (never commit footage of kids)
+data/
+videos/
+frames/
+crops/
+embeddings/
+outputs/
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.npy
+*.parquet
+*.duckdb
 
-   # Models and caches
-   models/
-   weights/
-   *.pt
-   *.onnx
-   .cache/
+# Models and caches
+models/
+weights/
+*.pt
+*.onnx
+.cache/
 
-   # Secrets and local config
-   .env
-   *token*
-   .claude/
-   CLAUDE.local.md
-   .DS_Store
+# Secrets and local config
+.env
+*token*
+.claude/
+CLAUDE.local.md
+config/videos.local.yaml
+*.local.yaml
+.DS_Store

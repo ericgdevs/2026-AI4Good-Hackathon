@@ -1,0 +1,40 @@
+[project]
+name = "2026-ai4good-hackathon"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "ericgdevs", email = "ericgdevs@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "accelerate>=1.15.0",
+    "av>=19.0.2",
+    "duckdb>=2.0.0",
+    "emotiefflib>=1.1.1",
+    "faster-whisper>=1.2.1",
+    "gradio>=6.30.0",
+    "huggingface-hub>=2.3.0",
+    "librosa>=1.0.0",
+    "matplotlib>=3.11.2",
+    "opencv-python>=5.0.0.93",
+    "pandas>=3.1.0",
+    "polars>=2.0.0",
+    "pyarrow>=26.0.0",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.9.1",
+    "soundfile>=0.14.0",
+    "torch>=2.14.1",
+    "torchaudio>=2.11.0",
+    "torchvision>=0.29.1",
+    "transformers>=5.20.2",
+    "ultralytics>=8.4.184",
+]
+
+[project.scripts]
+2026-ai4good-hackathon = "2026_ai4good_hackathon:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"

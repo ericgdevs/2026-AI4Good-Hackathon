@@ -10,7 +10,13 @@
       "Read(./config/videos.local.yaml)",
       "Read(./**/*.mp4)",
       "Read(./**/*.mov)",
-      "Read(./transcripts/**)"
+      "Read(./transcripts/**)",
+      "Read(./**/*.avi)",
+      "Read(./**/*.mkv)",
+      "Read(./**/*.wav)",
+      "Read(./**/*.mp3)",
+      "Read(./**/*.m4a)",
+      "Read(./outputs/**)"
     ]
   }
 }

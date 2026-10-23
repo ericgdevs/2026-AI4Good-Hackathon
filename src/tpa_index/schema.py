@@ -10,6 +10,7 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from tpa_index.config import LABEL_GROUPS
 from tpa_index.paths import output_dir
 
 _s, _f64, _f32, _i32, _b = pa.string(), pa.float64(), pa.float32(), pa.int32(), pa.bool_()
@@ -54,8 +55,6 @@ SCHEMAS: dict[str, pa.Schema] = {
     ),
 }
 
-LABEL_GROUPS = {"activity", "category", "actor", "audio", "expression", "indicator", "status"}
-
 RULES: dict[str, dict] = {
     "videos": {
         "pk": ("video_id",),
@@ -70,7 +69,7 @@ RULES: dict[str, dict] = {
     },
     "predictions": {
         "pk": ("segment_id", "label", "model", "run_id"),
-        "enums": {"label_group": LABEL_GROUPS},
+        "enums": {"label_group": set(LABEL_GROUPS)},
         "unit": ("score",),
     },
     "moments": {"pk": ("moment_id",), "unit": ("confidence",), "nonneg": ("start_s",), "times": True},

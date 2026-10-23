@@ -149,7 +149,7 @@
 - [X] T021 [US1] In `src/tpa_index/mock.py`, implement `generate(out_root=None, seed=0, n_videos=4) -> str`:
   - Set `run_id = f"mock-seed{seed}"` and use `np.random.default_rng(seed)`. Take the first `n_videos` example videos.
   - Build videos, segments, predictions, and moments (via `merge_moments`).
-  - Build one runs row per mock stage: `segment` and `predict`, both with hardware `"mock-hardware"`, a fixed `started_at`, `runtime_s > 0`, and `config_hash` from `config_hash()`.
+  - Build one runs row per mock stage: `mock-segment` and `mock-predict`, both with hardware `"mock-hardware"`, a fixed `started_at`, `runtime_s > 0`, and `config_hash` from `config_hash()`.
   - Call `write_table` for each table, writing `runs` last, then `append_reviews`. Return the `run_id`.
 - [X] T022 [US1] Add `validate_dataset(root=None)` to `src/tpa_index/schema.py`. It reads all tables and raises `SchemaError` when:
   - `segments.video_id` or `moments.video_id` is not in videos;
@@ -211,7 +211,7 @@
 
 **Independent test**: On synthetic landscape, portrait, and no-audio clips, the segment count, IDs, frame shapes, letterbox, and audio length match the config.
 
-- [ ] T031 [US3] Create `tests/clips.py` with `make_clip(path, w, h, seconds=20, fps=10, audio=True)`:
+- [X] T031 [US3] Create `tests/clips.py` with `make_clip(path, w, h, seconds=20, fps=10, audio=True)`:
   - Encode with PyAV using codec `mpeg4` and `pix_fmt yuv420p`.
   - Make each frame a solid colour that changes every second (so sampling is checkable), with a 4-pixel white border so letterbox padding is detectable.
   - When `audio=True`, add an `aac` track with a 440 Hz sine at 16 kHz mono.
@@ -219,19 +219,19 @@
   In `tests/conftest.py`, add:
   - a session fixture `clips` that builds `t01` (160×90), `t02` (90×160), and `t03` (160×90, no audio) under `tmp_path_factory`;
   - a fixture `clip_videos` that points `DATA_DIR` at that folder and returns the matching video dicts (kinds live, clip, live).
-- [ ] T032 [US3] In `src/tpa_index/segment.py`, implement:
+- [X] T032 [US3] In `src/tpa_index/segment.py`, implement:
   - `discover_videos(root=None)`: `rglob` under `data_dir()`, keeping `.mp4 .mov .m4v .mkv .avi` and skipping any path with a part starting with `.`.
   - `probe(path) -> dict`: use PyAV to get `duration_s` (stream duration × time_base, else container duration / 1e6), `fps` (`average_rate`), `orientation` (portrait if h > w, applying the display-matrix rotation if present), and `has_audio`.
-- [ ] T033 [US3] In `src/tpa_index/segment.py`, implement `_letterbox(img)`, which pads an HxWx3 uint8 image with black to a centred square of side max(H, W) and never crops. Also implement `_sample_frames(container, stream, start, end, n)`:
+- [X] T033 [US3] In `src/tpa_index/segment.py`, implement `_letterbox(img)`, which pads an HxWx3 uint8 image with black to a centred square of side max(H, W) and never crops. Also implement `_sample_frames(container, stream, start, end, n)`:
   - Timestamps are `start + (i+0.5)*(end-start)/n`.
   - For each, `container.seek(int(t/stream.time_base), stream=stream, backward=True)`, then decode to the first frame with `frame.time >= t` (`to_ndarray(format="rgb24")`).
   - On a decode error, reuse the nearest good frame in the window. If no frame decodes, raise `RuntimeError("no decodable frames")`.
   - Return an array of shape `(n, S, S, 3)`.
-- [ ] T034 [US3] In `src/tpa_index/segment.py`, implement `_load_audio(path, rate)`. Use `av.AudioResampler(format="flt", layout="mono", rate=rate)` over all audio frames, concatenated into a float32 array. If there is no audio stream, return `None`, and have the caller return `np.zeros(int((end-start)*rate), float32)` per window and log `"video %s has no audio track"` with the video_id only.
-- [ ] T035 [US3] In `src/tpa_index/config.py`, add `effective_settings(pipeline, video)`: defaults, then `overrides.by_kind[video.kind]`, then `overrides.by_video[video.video_id]`, limited to `window_s`, `overlap_s`, and `frames_per_window`. In `src/tpa_index/segment.py`, add:
+- [X] T034 [US3] In `src/tpa_index/segment.py`, implement `_load_audio(path, rate)`. Use `av.AudioResampler(format="flt", layout="mono", rate=rate)` over all audio frames, concatenated into a float32 array. If there is no audio stream, return `None`, and have the caller return `np.zeros(int((end-start)*rate), float32)` per window and log `"video %s has no audio track"` with the video_id only.
+- [X] T035 [US3] In `src/tpa_index/config.py`, add `effective_settings(pipeline, video)`: defaults, then `overrides.by_kind[video.kind]`, then `overrides.by_video[video.video_id]`, limited to `window_s`, `overlap_s`, and `frames_per_window`. In `src/tpa_index/segment.py`, add:
   - `Window = NamedTuple("Window", row=dict, frames=np.ndarray, audio=np.ndarray)`;
   - `segment_video(video, settings, pipeline)`: open `data_dir()/video["filename"]`, probe it, load audio once, then for each `windows(...)` yield a `Window`. The row has all segments columns, with signal columns `None`. Audio is sliced as `audio[int(s*rate):int(e*rate)]`, padded with zeros to the exact length. Close the container in `finally`.
-- [ ] T036 [US3] Write `tests/test_segment.py` checking that:
+- [X] T036 [US3] Write `tests/test_segment.py` checking that:
   - `t01` (20 s, 8/2) gives 3 segments with IDs `t01_0`, `t01_6000`, and `t01_12000`, and the last `end_s` is 20;
   - each window's frames have shape `(4,160,160,3)`;
   - for `t02` (portrait), the left and right padding columns are all 0 and the centre column is non-zero;
@@ -252,26 +252,26 @@
 
 **Independent test**: A dummy stage that allocates memory records plausible numbers. A failing stage re-raises and its run is ignored by `read_table`.
 
-- [ ] T037 [US4] In `src/tpa_index/runs.py`, implement the following, importing torch lazily inside each function:
+- [X] T037 [US4] In `src/tpa_index/runs.py`, implement the following, importing torch lazily inside each function:
   - `device() -> str`: `"cuda"`, `"mps"`, or `"cpu"`.
   - `hardware_name()`: on CUDA, `torch.cuda.get_device_name(0)`; on darwin, `subprocess.run(["sysctl","-n","machdep.cpu.brand_string"])`; otherwise `platform.processor() or platform.machine()`.
   - `_peak_rss_gb()`: `resource.getrusage(RUSAGE_SELF).ru_maxrss`, in bytes on darwin and KiB on Linux, converted to GB.
   - `_peak_mem_gb(dev)`: on CUDA, `max_memory_allocated()/1e9`; on MPS, `max(torch.mps.driver_allocated_memory()/1e9, _peak_rss_gb())`; otherwise `_peak_rss_gb()`. Return `None` and log the reason on any exception.
-- [ ] T038 [US4] In `src/tpa_index/runs.py`, implement a `track_run(stage, model=None, cfg_hash=None, root=None)` contextmanager yielding a `RunContext` dataclass (`run_id`, `n_segments=0`):
+- [X] T038 [US4] In `src/tpa_index/runs.py`, implement a `track_run(stage, model=None, cfg_hash=None, root=None)` contextmanager yielding a `RunContext` dataclass (`run_id`, `n_segments=0`):
   - `run_id = f"{stage}-{utcnow:%Y%m%dT%H%M%S}-{secrets.token_hex(2)}"`.
   - On CUDA, `reset_peak_memory_stats()` first. Use `perf_counter`.
   - On normal exit, `write_table("runs", [row], run_id, root)`, where `cfg_hash` defaults to `config_hash(load_labels(), load_pipeline())`.
   - On exception, write nothing, log `"run %s failed"` (redacted via logging), and re-raise.
-- [ ] T039 [US4] Write `tests/test_runs.py` checking that:
+- [X] T039 [US4] Write `tests/test_runs.py` checking that:
   - a stage allocating `np.ones(50_000_000)` and sleeping 0.1 s records `runtime_s >= 0.1`, `peak_mem_gb > 0.3` (or `None` only if unmeasurable), non-empty `hardware`, and a 12-hex `config_hash`;
   - `config_hash` changes when `pipeline["window_s"]` changes and is equal for identical dicts;
   - a stage that raises `ValueError` re-raises, has no `runs.parquet`, and is skipped by `read_table` even though it wrote `segments.parquet`.
-- [ ] T040 [US4] Wire `tpa-index segment [--videos PATH] [--video-id ID ...]` in `src/tpa_index/cli.py`:
+- [X] T040 [US4] Wire `tpa-index segment [--videos PATH] [--video-id ID ...]` in `src/tpa_index/cli.py`:
   - Load videos (from `--videos`, else `load_videos()`) and filter by ID; an unknown ID raises `ConfigError`.
   - Inside `track_run("segment")`, for each video, probe it to build a videos row (from config fields plus probed `duration_s`, `fps`, and `orientation`), then consume `segment_video` and collect the rows, discarding frames and audio.
   - Write `videos` and `segments` via `write_table` with `ctx.run_id`, and set `ctx.n_segments`.
   - A processing error exits 1 with a redacted message.
-- [ ] T041 [US4] Add to `tests/test_cli.py`: write a temporary videos YAML for `t01`–`t03` in `tmp_path`, then run `uv run tpa-index segment --videos <yaml>` twice. Check that:
+- [X] T041 [US4] Add to `tests/test_cli.py`: write a temporary videos YAML for `t01`–`t03` in `tmp_path`, then run `uv run tpa-index segment --videos <yaml>` twice. Check that:
   - both exit 0;
   - `read_table("segments")` holds 2 identical sets of rows (excluding `run_id`), as a determinism proxy for Mac vs HPC;
   - `read_table("runs")` has 2 rows with `stage == "segment"` and `n_segments` equal to the segment count.
@@ -286,10 +286,10 @@
 
 **Independent test**: `tpa-index check` passes on the Mac. The sbatch file passes a syntax check and contains the required directives.
 
-- [ ] T042 [US5] In `pyproject.toml`, add an explicit `[[tool.uv.index]]` with `name = "pytorch-cu130"`, `url = "https://download.pytorch.org/whl/cu130"`, and `explicit = true`. In `[tool.uv.sources]`, map `torch`, `torchvision`, and `torchaudio` to `{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }`. Run `uv lock`, then verify:
+- [X] T042 [US5] In `pyproject.toml`, add an explicit `[[tool.uv.index]]` with `name = "pytorch-cu130"`, `url = "https://download.pytorch.org/whl/cu130"`, and `explicit = true`. In `[tool.uv.sources]`, map `torch`, `torchvision`, and `torchaudio` to `{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }`. Run `uv lock`, then verify:
   - `uv.lock` lists `+cu130` wheels for linux and pypi wheels for darwin (grep);
   - `uv sync` still works on the Mac.
-- [ ] T043 [US5] Implement `tpa-index check` in `src/tpa_index/cli.py`. It prints:
+- [X] T043 [US5] Implement `tpa-index check` in `src/tpa_index/cli.py`. It prints:
   - `guard: ok`;
   - `configs: ok (N labels, guideline X)`, after loading and validating all three configs;
   - `device: <cuda|mps|cpu>`;
@@ -297,14 +297,14 @@
   - `torch: <version>`.
 
   It never prints paths.
-- [ ] T044 [US5] Create `scripts/slurm/job.sbatch`, following research §15:
+- [X] T044 [US5] Create `scripts/slurm/job.sbatch`, following research §15:
   - `#SBATCH` lines for `--job-name=tpa-index`, `--partition=gpu`, `--gres=gpu:6KSE:1`, `--cpus-per-task=8`, `--mem=32G`, `--time=02:00:00`, and `--output=slurm-%x-%j.out`;
   - a body with `set -euo pipefail`, `cd "$SLURM_SUBMIT_DIR"`, `nvidia-smi -L`, `uv sync --frozen`, and `uv run "$@"`;
   - a usage comment at the top: `sbatch scripts/slurm/job.sbatch tpa-index check`.
-- [ ] T045 [US5] Add to `tests/test_cli.py`:
+- [X] T045 [US5] Add to `tests/test_cli.py`:
   - `tpa-index check` exits 0, its output has `device:` in {cuda, mps, cpu}, and contains neither the `DATA_DIR` nor the `OUTPUT_DIR` string;
   - `bash -n scripts/slurm/job.sbatch` succeeds, and the file contains each required `#SBATCH` directive (each checked by an assertion).
-- [ ] T046 [US5] Write `README.md`, condensed from `quickstart.md`: purpose (one paragraph), install, `.env`, check, mock, segment, HPC sbatch usage, and a data-rules note pointing to the constitution and `.claude/settings.json`. Use no real paths or filenames.
+- [X] T046 [US5] Write `README.md`, condensed from `quickstart.md`: purpose (one paragraph), install, `.env`, check, mock, segment, HPC sbatch usage, and a data-rules note pointing to the constitution and `.claude/settings.json`. Use no real paths or filenames.
 
 ---
 
@@ -314,7 +314,7 @@
 
 **Independent test**: The shipped configs load, and each malformed variant raises `ConfigError` naming the label or key.
 
-- [ ] T047 [US6] In `src/tpa_index/config.py`, add `_check_labels(d)`, called by `load_labels`, which checks:
+- [X] T047 [US6] In `src/tpa_index/config.py`, add `_check_labels(d)`, called by `load_labels`, which checks:
   - `guideline_version` is a string;
   - names are unique;
   - `group` is in the allowed set;
@@ -324,7 +324,7 @@
   - the expression set is exactly the five allowed.
 
   Each failure raises `ConfigError(f"label {name}: {problem}")`.
-- [ ] T048 [US6] In `src/tpa_index/config.py`, add `_check_pipeline(d)`, called by `load_pipeline`. It checks:
+- [X] T048 [US6] In `src/tpa_index/config.py`, add `_check_pipeline(d)`, called by `load_pipeline`. It checks:
   - required keys and types;
   - `0 < overlap_s < window_s` and `frames_per_window >= 1`;
   - `0 <= label_threshold <= 1`;
@@ -336,7 +336,7 @@
   - IDs are unique and match `^[a-z0-9]+$`;
   - filenames are relative with no `..`;
   - the enums are valid and `phase` is in `video_phases`.
-- [ ] T049 [US6] Write `tests/test_config.py` checking that:
+- [X] T049 [US6] Write `tests/test_config.py` checking that:
   - the shipped labels, pipeline, and example videos load;
   - each malformed variant (built by deep-copying the loaded dict and mutating it) raises `ConfigError` naming the entry: 2 prompts, 6 prompts, an unknown group, a bad color, a missing `guideline_version`, `overlap_s >= window_s`, an unknown override key, `phase` not in the list, a filename with `..`;
   - a banned-term check passes: no label name or prompt contains any of `anxious, depressed, adhd, autism, autistic, disabled, disability, trauma, mental, diagnosis, race, ethnicity, gender, age, religion, iq, risk`. Match whole words, case-insensitively.
@@ -345,8 +345,8 @@
 
 ## Phase 9: Polish & Checkpoint
 
-- [ ] T050 Cross-check the code against the contracts. Make sure `SCHEMAS` in `src/tpa_index/schema.py` matches `contracts/tables.md`, and that the function names and signatures in `src/tpa_index/*.py` match `contracts/interfaces.md`. Fix whichever side is wrong (keep the contract unless it is a typo). Delete any unused code.
-- [ ] T051 **Checkpoint (Mac)**:
+- [X] T050 Cross-check the code against the contracts. Make sure `SCHEMAS` in `src/tpa_index/schema.py` matches `contracts/tables.md`, and that the function names and signatures in `src/tpa_index/*.py` match `contracts/interfaces.md`. Fix whichever side is wrong (keep the contract unless it is a typo). Delete any unused code.
+- [X] T051 **Checkpoint (Mac)**:
   1. Run `uv run pytest`. All tests must pass. Record the pass count and duration.
   2. Run the quickstart in a scratch folder outside the repo:
      - Create a temporary `.env` with `DATA_DIR=<scratch>/data` and `OUTPUT_DIR=<scratch>/out`. Back up any existing `.env` first, and restore it after.

@@ -253,3 +253,4 @@ CLAUDE.local.md
 config/videos.local.yaml
 *.local.yaml
 .DS_Store
+slurm-*.out

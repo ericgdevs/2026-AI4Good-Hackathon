@@ -32,12 +32,12 @@ validate_dataset(root) -> None                               # cross-table refer
 # segment.py
 discover_videos(root=None) -> list[Path]       # skips hidden and ._ files
 windows(duration_s, window_s, overlap_s) -> list[tuple[float, float]]
-segment_video(video: dict, settings: dict) -> Iterator[Window]
+segment_video(video: dict, settings: dict, sample_rate=16000) -> Iterator[Window]   # settings = effective_settings(...)
 #   Window = NamedTuple(row: dict, frames: np.ndarray[N, S, S, 3] uint8 letterboxed, audio: np.ndarray[float32] 16 kHz mono)
 probe(path) -> dict                            # duration_s, fps, orientation, has_audio
 
 # runs.py
-track_run(stage, model=None, config_hash=...) -> ContextManager[RunContext]
+track_run(stage, model=None, cfg_hash=None, root=None) -> ContextManager[RunContext]
 #   ctx.run_id; ctx.n_segments = ...; on success writes runs.parquet (the run's "complete" marker);
 #   on error writes no runs row and re-raises, so read_table skips the incomplete run
 

@@ -30,3 +30,26 @@ def pipeline():
 @pytest.fixture
 def example_videos():
     return config.load_videos(config.EXAMPLE_VIDEOS)
+
+
+@pytest.fixture(scope="session")
+def clips(tmp_path_factory):
+    """Synthetic clips only: t01 landscape, t02 portrait, t03 landscape without audio (20 s each)."""
+    from tests.clips import make_clip
+
+    root = tmp_path_factory.mktemp("clips")
+    make_clip(root / "t01.mp4", 160, 90)
+    make_clip(root / "t02.mp4", 90, 160)
+    make_clip(root / "t03.mp4", 160, 90, audio=False)
+    return root
+
+
+@pytest.fixture
+def clip_videos(clips, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(clips))
+    base = {"phase": "early", "cohort": None, "split": "dev"}
+    return {
+        "t01": {**base, "video_id": "t01", "filename": "t01.mp4", "orientation": "landscape", "kind": "live"},
+        "t02": {**base, "video_id": "t02", "filename": "t02.mp4", "orientation": "portrait", "kind": "clip"},
+        "t03": {**base, "video_id": "t03", "filename": "t03.mp4", "orientation": "landscape", "kind": "live"},
+    }

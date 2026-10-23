@@ -106,7 +106,7 @@ def generate(out_root=None, seed: int = 0, n_videos: int = 4) -> str:
         {"run_id": rid, "stage": stage, "model": model, "config_hash": cfg, "hardware": "mock-hardware",
          "n_segments": len(segments), "runtime_s": float(rng.uniform(5, 600)),
          "peak_mem_gb": float(rng.uniform(0.5, 12)), "started_at": BASE_TIME}
-        for rid, stage, model in ((run_id, "segment", None), (predict_run, "predict", "mock-model"))
+        for rid, stage, model in ((run_id, "mock-segment", None), (predict_run, "mock-predict", "mock-model"))
     ]
     for table, rows in (("videos", videos), ("segments", segments), ("predictions", predictions),
                         ("moments", moments), ("runs", runs)):  # runs last: marks the run complete

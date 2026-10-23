@@ -1,6 +1,7 @@
 import argparse
 import sys
 
+from tpa_index import config
 from tpa_index.config import ConfigError, load_labels, load_pipeline, load_videos
 from tpa_index.paths import GuardError, check_guard, data_dir, install_redaction, redact
 
@@ -8,9 +9,13 @@ from tpa_index.paths import GuardError, check_guard, data_dir, install_redaction
 def _check(args) -> int:
     labels = load_labels()
     load_pipeline()
-    load_videos()
+    videos = load_videos()
     print("guard: ok")
     print(f"configs: ok ({len(labels['labels'])} labels, guideline {labels['guideline_version']})")
+    from tpa_index.segment import discover_videos
+
+    mapped = {(data_dir() / v["filename"]).resolve() for v in videos}
+    print(f"unmapped videos: {sum(p.resolve() not in mapped for p in discover_videos())}")  # count only, never names
     import torch
 
     from tpa_index.runs import device, hardware_name
@@ -41,6 +46,8 @@ def _segment(args) -> int:
     from tpa_index.schema import write_table
     from tpa_index.segment import probe, segment_video
 
+    if args.videos is None and not config.LOCAL_VIDEOS.exists():
+        raise ConfigError("create config/videos.local.yaml or pass --videos")
     pipeline = load_pipeline()
     videos = load_videos(args.videos)
     if args.video_id:
@@ -48,26 +55,30 @@ def _segment(args) -> int:
         if unknown:
             raise ConfigError(f"unknown video_id(s): {', '.join(sorted(unknown))}")
         videos = [v for v in videos if v["video_id"] in args.video_id]
-    try:
-        with track_run("segment") as ctx:
-            video_rows, segment_rows = [], []
-            for v in videos:
+    failed = []
+    for v in videos:  # one run per video: a bad file never discards the others' work
+        try:
+            with track_run("segment") as ctx:
                 info = probe(data_dir() / v["filename"])
-                video_rows.append({"video_id": v["video_id"], "filename": v["filename"],
-                                   "duration_s": info["duration_s"], "fps": info["fps"],
-                                   "orientation": info["orientation"], "kind": v["kind"], "phase": v["phase"],
-                                   "cohort": v.get("cohort"), "split": v["split"]})
+                write_table("videos", [{"video_id": v["video_id"], "filename": v["filename"],
+                                        "duration_s": info["duration_s"], "fps": info["fps"],
+                                        "orientation": info["orientation"], "kind": v["kind"],
+                                        "phase": v["phase"], "cohort": v.get("cohort"), "split": v["split"]}],
+                            ctx.run_id)
                 settings = effective_settings(pipeline, v)
-                segment_rows += [w.row for w in segment_video(v, settings, pipeline["audio_sample_rate"])]
-            write_table("videos", video_rows, ctx.run_id)
-            write_table("segments", segment_rows, ctx.run_id)
-            ctx.n_segments = len(segment_rows)
-    except (GuardError, ConfigError):
-        raise
-    except Exception as e:
-        print(redact(f"segment failed: {type(e).__name__}: {e}"), file=sys.stderr)
+                rows = [w.row for w in segment_video(v, settings, pipeline["audio_sample_rate"])]
+                write_table("segments", rows, ctx.run_id)
+                ctx.n_segments = len(rows)
+        except (GuardError, ConfigError):
+            raise
+        except Exception as e:
+            failed.append(v["video_id"])
+            print(redact(f"segment failed for {v['video_id']}: {type(e).__name__}: {e}"), file=sys.stderr)
+            continue
+        print(f"segment run: {ctx.run_id} ({v['video_id']}, {ctx.n_segments} segments)")
+    if failed:
+        print(f"failed videos: {', '.join(failed)}", file=sys.stderr)
         return 1
-    print(f"segment run: {ctx.run_id} ({len(video_rows)} videos, {ctx.n_segments} segments)")
     return 0
 
 

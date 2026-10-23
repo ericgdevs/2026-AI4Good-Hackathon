@@ -128,3 +128,12 @@ def test_reviews_append_only():
 
 def test_read_reviews_without_db_is_empty():
     assert read_reviews().num_rows == 0
+
+
+def test_read_table_filters_by_run_ids():
+    for run_id in ("r1", "r2"):
+        write_table("segments", [row("segments")], run_id)
+        write_table("runs", [row("runs", run_id=run_id)], run_id)
+    assert read_table("segments", run_ids=["r2"]).num_rows == 1
+    assert read_table("runs", run_ids=["r2"])["run_id"].to_pylist() == ["r2"]
+    assert read_table("segments", run_ids=[]).num_rows == 0

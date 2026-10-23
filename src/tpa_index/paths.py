@@ -79,7 +79,7 @@ def redact(text: str) -> str:
         _replacements = _build_replacements()
     for secret, tag in _replacements:
         text = text.replace(secret, tag)
-    return re.sub(r"<DATA_DIR>/[^\s'\"]+", "<DATA_DIR>/<file>", text)
+    return re.sub(r"<DATA_DIR>/[^'\"\n]*", "<DATA_DIR>/<file>", text)  # to quote/EOL: names may contain spaces
 
 
 class _RedactFilter(logging.Filter):

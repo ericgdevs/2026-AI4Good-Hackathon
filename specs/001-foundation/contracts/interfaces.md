@@ -24,7 +24,7 @@ config_hash(labels, pipeline) -> str    # 12 hex chars
 SCHEMAS: dict[str, pa.Schema]           # videos, segments, predictions, moments, runs, reviews
 validate(table: str, data, phases=None) -> pa.Table          # raises SchemaError(table, column, reason)
 write_table(table: str, data, run_id: str) -> Path           # validate, then write {OUTPUT_DIR}/runs/{run_id}/{table}.parquet; refuses to overwrite
-read_table(table: str, root=None) -> pa.Table                # all complete runs (dirs with runs.parquet), concatenated with pyarrow
+read_table(table: str, root=None, run_ids=None) -> pa.Table  # complete runs (dirs with runs.parquet); run_ids picks which
 append_reviews(rows) -> int                                  # validate + INSERT into reviews.duckdb
 read_reviews() -> pa.Table
 validate_dataset(root) -> None                               # cross-table reference checks
@@ -52,9 +52,9 @@ generate(out_root, seed=0, n_videos=4) -> str  # returns run_id
 
 | command | does | exit codes |
 |---|---|---|
-| `tpa-index check` | guard, config validity, device (cuda/mps/cpu), hardware name; no paths printed | 0 ok, 2 guard failure, 3 config error |
+| `tpa-index check` | guard, config validity, unmapped-video count, device (cuda/mps/cpu), hardware name; no paths or names printed | 0 ok, 2 guard failure, 3 config error |
 | `tpa-index mock [--seed N] [--n-videos N]` | writes a full mock dataset under `OUTPUT_DIR`, then validates it | 0 / 2 / 3 |
-| `tpa-index segment [--videos PATH] [--video-id ID ...]` | segments mapped videos (all if none given), writes videos + segments + runs | 0 / 2 / 3 / 1 on processing error |
+| `tpa-index segment [--videos PATH] [--video-id ID ...]` | one run per video (all mapped videos if none given), each writing videos + segments + runs; needs `--videos` or `videos.local.yaml` | 0 / 2 / 3 / 1 if any video failed (IDs listed) |
 
 Every command calls `install_redaction()` and then `check_guard()` before any other work.
 

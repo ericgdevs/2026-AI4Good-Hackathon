@@ -37,6 +37,8 @@ def _clip_yaml(tmp_path, clips):
 
 
 def test_segment_command_is_deterministic(tmp_path, clips):
+    from collections import Counter
+
     import pyarrow.compute as pc
 
     from tpa_index.schema import read_table
@@ -47,13 +49,48 @@ def test_segment_command_is_deterministic(tmp_path, clips):
         assert result.returncode == 0, result.stderr
         assert str(clips) not in result.stdout + result.stderr
     segments, runs = read_table("segments"), read_table("runs")
-    run_ids = sorted(set(runs["run_id"].to_pylist()))
-    assert len(run_ids) == 2 and set(runs["stage"].to_pylist()) == {"segment"}
-    rows = segments.to_pylist()
-    assert rows[: len(rows) // 2] == rows[len(rows) // 2:]  # same rows from both runs
-    assert runs["n_segments"].to_pylist() == [len(rows) // 2] * 2
-    assert read_table("videos").filter(pc.equal(read_table("videos")["video_id"], "t02"))["orientation"][0].as_py() \
-        == "portrait"  # probed, not taken from the YAML
+    assert runs.num_rows == 6 and set(runs["stage"].to_pylist()) == {"segment"}  # one run per video
+    counts = Counter(tuple(sorted(r.items())) for r in segments.to_pylist())
+    assert set(counts.values()) == {2}  # both invocations produced identical rows
+    assert sum(runs["n_segments"].to_pylist()) == segments.num_rows
+    videos = read_table("videos")
+    assert videos.filter(pc.equal(videos["video_id"], "t02"))["orientation"][0].as_py() == "portrait"  # probed
+
+
+def test_one_bad_video_keeps_the_others(tmp_path, clips):
+    from tpa_index.schema import read_table
+
+    path = tmp_path / "mixed.yaml"
+    path.write_text("videos:\n"
+                    "  - {video_id: t01, filename: t01.mp4, orientation: landscape, kind: live, phase: early, split: dev}\n"
+                    "  - {video_id: t09, filename: missing clip.mp4, orientation: landscape, kind: live, phase: early, split: dev}\n")
+    result = run_cli("segment", "--videos", str(path), DATA_DIR=str(clips))
+    assert result.returncode == 1
+    assert "failed videos: t09" in result.stderr and "missing clip" not in result.stderr
+    assert set(read_table("segments")["video_id"].to_pylist()) == {"t01"}
+    assert read_table("runs").num_rows == 1
+
+
+def test_segment_without_local_videos_file_exits_3(monkeypatch, capsys):
+    from tpa_index import cli
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+    assert cli.main(["segment"]) == 3
+    assert "videos.local.yaml" in capsys.readouterr().err
+
+
+def test_check_counts_unmapped_videos(monkeypatch, capsys):
+    from tpa_index import cli
+    from tpa_index.paths import data_dir
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+    (data_dir() / "mock").mkdir()
+    (data_dir() / "mock" / "mock_live_01.mp4").write_bytes(b"")  # listed in the example config
+    (data_dir() / "Spring Show.mp4").write_bytes(b"")  # not listed
+    (data_dir() / "._Spring Show.mp4").write_bytes(b"")  # hidden: ignored
+    assert cli.main(["check"]) == 0
+    out = capsys.readouterr().out
+    assert "unmapped videos: 1" in out and "Spring" not in out
 
 
 def test_segment_unknown_video_id_exits_3(tmp_path, clips):

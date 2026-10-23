@@ -187,11 +187,13 @@ def write_table(table: str, data, run_id: str, root=None) -> Path:
     return path
 
 
-def read_table(table: str, root=None) -> pa.Table:
-    """All complete runs (folders that contain runs.parquet) concatenated."""
+def read_table(table: str, root=None, run_ids=None) -> pa.Table:
+    """Complete runs (folders that contain runs.parquet) concatenated; run_ids limits which run folders are read."""
     runs = _runs_root(root)
+    keep = None if run_ids is None else set(run_ids)
     files = [d / f"{table}.parquet" for d in sorted(runs.glob("*"))
-             if (d / "runs.parquet").exists() and (d / f"{table}.parquet").exists()] if runs.exists() else []
+             if (keep is None or d.name in keep)
+             and (d / "runs.parquet").exists() and (d / f"{table}.parquet").exists()] if runs.exists() else []
     if not files:
         return SCHEMAS[table].empty_table()
     return pa.concat_tables([pq.read_table(f).cast(SCHEMAS[table]) for f in files])

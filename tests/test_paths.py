@@ -56,10 +56,12 @@ def test_guard_does_not_import_torch():
 
 def test_redact_paths_and_filenames():
     root = str(data_dir())
-    text = f"failed on {root}/mock/mock_live_01.mp4 and mock_live_01.mp4 and mock_live_01; out={os.environ['OUTPUT_DIR']}"
-    out = redact(text)
-    assert root not in out and "mock_live_01" not in out and os.environ["OUTPUT_DIR"] not in out
-    assert "<video:mock01>" in out and "<OUTPUT_DIR>" in out
+    full = redact(f"failed on {root}/mock/mock_live_01.mp4: bad header")
+    assert root not in full and "mock_live_01" not in full and full.startswith("failed on <DATA_DIR>/<file>")
+    # everything after an unquoted data path is hidden (names may contain spaces): safe over-redaction
+    assert "bad header" not in full
+    assert redact("retrying mock_live_01.mp4 and mock_live_01") == "retrying <video:mock01> and <video:mock01>"
+    assert redact(f"out={os.environ['OUTPUT_DIR']}") == "out=<OUTPUT_DIR>"
 
 
 def test_redact_third_party_error():
@@ -89,3 +91,8 @@ def test_excepthook_redacts_uncaught_errors():
     assert result.returncode != 0
     assert "<DATA_DIR>" in result.stderr and os.environ["DATA_DIR"] not in result.stderr
     assert "secret_clip" not in result.stderr
+
+
+def test_redact_unlisted_filename_with_spaces():
+    out = redact(f"cannot open '{data_dir()}/Spring Show 2025.mp4': error")
+    assert "Spring" not in out and "Show" not in out and "<DATA_DIR>/<file>" in out

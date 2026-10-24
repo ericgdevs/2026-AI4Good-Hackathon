@@ -88,6 +88,7 @@ src/tpa_index/config.py       CHANGED  validate insights: (keys, labels, conditi
 src/tpa_index/view.py         NEW      check_inputs, segment_view (slices, model calls, flags, signals), human_labels,
                                          verified_labels
 src/tpa_index/rules.py        NEW      condition grammar, apply_fusion, indicator_estimates (missing signal = None)
+src/tpa_index/learned.py      NEW      features, block_ids (shared with the bootstrap), grouped-CV predictions, final model
 src/tpa_index/evaluate.py     NEW      label/primary/category/uncertainty metrics, block_bootstrap, ablation,
                                          signal-indicator table, top-up precision, failure gallery, run_evaluate
 src/tpa_index/indicators.py   NEW      staff_led, time classes, youth indicators, tags, headline, optional index,
@@ -139,6 +140,15 @@ tests/test_cli.py             CHANGED  evaluate/insights exit codes and dry-run 
 2. **Main model**: the most common non-rules model in the official predictions (as `cli._main_model`). AST and EmotiEffLib names come from their official stage runs' `runs.model`.
 3. **Top-up**: segments only in the top-up queue are reported precision-only in `topup.csv`, never pooled.
 4. **The bootstrap** reuses per-segment arrays (match flags, primaries) so 1,000 resamples take well under a second.
+
+## Learned system (added 2026-10-24)
+
+Real results showed the top-10% thresholds miscalibrated for this footage. Examples: performance at precision 100% / recall 15%, spoken word at 73% / 12%, while dance and modeling_runway over-fire.
+- **New module `learned.py`:** standardized logistic regressions on every official per-segment signal (scikit-learn, already locked). Primary is multinomial; activity, category and actor are one-vs-rest with balanced class weights.
+- **Third ablation row:** the models are evaluated by grouped 5-fold cross-validation over the bootstrap blocks, so no block is in both train and test, and reported with the same metrics, CIs and signal-based indicators.
+- **Final model:** fit on all labels; it predicts every segment and is written to `learned_predictions.csv`.
+- **Insights:** refits the same final model (deterministic) when `insights.labels_source: learned`, the default, instead of reading a previous folder. That keeps insights independent of result-folder order.
+- **New tests:** no fold shares a block between train and test; same seed gives the same output; no filename or text in outputs.
 
 ## Decisions on the flags (2026-10-24)
 

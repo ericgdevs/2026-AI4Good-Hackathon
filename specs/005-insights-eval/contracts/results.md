@@ -37,6 +37,7 @@
 |---|---|
 | `staff-verified` | every contributing segment's label is verified by staff (blind label or review decision) |
 | `model estimate (unvalidated)` | no contributing segment is verified |
+| `model estimate (learned)` | a per-segment prediction of the final learned model (`learned_predictions.csv`) |
 | `mixed (NN% staff-verified)` | NN = round(100 × verified_share); 1 ≤ NN ≤ 99 |
 | `metric` | an evaluation number (model vs blind labels); carries an interval instead of a verified share |
 
@@ -49,10 +50,11 @@ Every indicator row also has `verified_share` (0–1) as a number, so readers ne
 | `metrics.csv` | one row per (system, scope, group, label, metric) |
 | `metrics.json` | the same rows plus headline numbers, the eval-set description and limitations |
 | `confusion.csv` | system, human_primary, model_primary, count |
-| `signal_indicators.csv` | per indicator: support, tp, fp, fn, precision, recall, f1, ci_low, ci_high, not_available |
+| `signal_indicators.csv` | per indicator: support, tp, fp, fn, precision, recall, f1, ci_low, ci_high, not_available, status, tag, system (`zero-shot` or the learned system; added at the end) |
 | `ablation.csv` | one row per system: n_segments, primary_accuracy (+ CI), macro_f1_activity/category/actor (+ CI), kappa_primary/category (+ CI), rule fire counts |
 | `topup.csv` | label, predicted_positive, tp, precision (top-up labels only; empty with header if none) |
 | `failure_gallery.csv` | rank, segment_id, video_id, model_primary, human_primary, model_strength |
+| `learned_predictions.csv` | final learned model, every official segment: segment_id, video_id, primary, primary_prob, activities, categories, actors, tag (`model estimate (learned)`); label lists are `;`-joined |
 | `ablation.png`, `per_label_f1.png`, `confusion.png`, `coverage.png` | charts |
 | `summary.md` | slide text: headline numbers with support and 95% CI, kappa sentence, limitations |
 | `manifest.json` | written last |
@@ -61,7 +63,7 @@ Every indicator row also has `verified_share` (0–1) as a number, so readers ne
 
 `system, scope, group, label, metric, value, ci_low, ci_high, support, n_segments, status, tag`
 
-- `system`: `zero-shot` | `zero-shot + signal rules`.
+- `system`: `zero-shot` | `zero-shot + signal rules` | `learned (cross-validated on our labels)`.
 - `scope`: `all` | a video ID.
 - `group`: `activity` | `category` | `actor` | `primary` | `uncertainty`.
 - `metric`: `precision` | `recall` | `f1` | `macro_f1` | `accuracy` | `accuracy_real_activity` | `kappa` | `rate` | `coverage` | `accuracy_confident` | `accuracy_flagged`.

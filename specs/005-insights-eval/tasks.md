@@ -176,13 +176,33 @@
 
 ---
 
+## Phase 3b: Learned system (US2, added after real results)
+
+- [X] T029a [US2] In `src/tpa_index/view.py`, add the raw per-segment scores to `segment_view`: `visual_scores` (every main-model label, null included), `audio_scores` (or None without an audio run), `expr_scores` (or None without faces) and `transcript_chars`.
+- [X] T029b [US2] Create `src/tpa_index/learned.py` with:
+  - `features`, `block_ids` (moved out of `block_bootstrap`, so both share one block definition);
+  - `cross_validated`: grouped K-fold (`GroupKFold`, `min(folds, n_blocks)` splits) with `StandardScaler` + `LogisticRegression` (multinomial primary; balanced one-vs-rest for activity, category and actor), seed from `insights.learned.seed`;
+  - `fit_final` and `learned_view`.
+
+  Add `insights.learned` and `insights.labels_source` to `config/pipeline.yaml`, with validation in `config.py`.
+- [X] T029c [US2] In `src/tpa_index/evaluate.py` and `report.py`:
+  - add the third system "learned (cross-validated on our labels)" to `run_evaluate` (metrics, CIs, kappa, ablation row);
+  - add a `system` column at the end of `signal_indicators.csv`, with rows for zero-shot and learned;
+  - write `learned_predictions.csv` (final model, every official segment, tag `model estimate (learned)`);
+  - add the learned line to the limitations and `summary.md`.
+- [X] T029d [P] [US2] Create `tests/test_learned.py`:
+  - `test_no_block_in_train_and_test` (every fold's train and test block sets are disjoint, and each test row's block is absent from its training rows);
+  - `test_learned_deterministic` (same seed gives identical predictions and metrics);
+  - `test_learned_predictions_cover_all_segments_without_text` (every official segment once; no filename or sentinel in `learned_predictions.csv`);
+  - the third ablation row has the same `n_segments` as the others.
+
 ## Phase 4: `tpa-index insights` (US3), Checkpoint 2
 
 **Goal**: youth-only indicators per video and phase, every number tagged, plus the early-vs-showcase headline.
 **Independent test**: T030–T038 pass.
 
 - [ ] T030 [US3] Create `src/tpa_index/indicators.py` with `time_classes(view, verified, pipeline)`, which gives each segment one class: `idle` (`is_idle`), `staff_verified`, `staff_model` or `youth`. The rules are in `data-model.md`; idle wins. It returns the class plus a `verified` flag per segment, True when the label groups the indicator uses are verified.
-- [ ] T031 [US3] In `src/tpa_index/indicators.py`, add `tag(verified_share)`, returning the exact strings from `contracts/results.md`, and `youth_indicators(view, verified, estimates, pipeline, scope_rows)`. It computes every FR-022 indicator per video, per phase (`early`, `mid` if present, `showcase`) and for `all`, using `slice_s` time over youth segments only. Each row has the `indicators.csv` columns, `verified_share` (verified youth time / contributing time) and its tag.
+- [ ] T031 [US3] (Model fallback per `insights.labels_source`: `learned` by default, which refits `learned.fit_final` and uses `learned_view`; or `zero-shot`.) In `src/tpa_index/indicators.py`, add `tag(verified_share)`, returning the exact strings from `contracts/results.md`, and `youth_indicators(view, verified, estimates, pipeline, scope_rows)`. It computes every FR-022 indicator per video, per phase (`early`, `mid` if present, `showcase`) and for `all`, using `slice_s` time over youth segments only. Each row has the `indicators.csv` columns, `verified_share` (verified youth time / contributing time) and its tag.
   - **verified first**: a segment's verified labels replace the model's for the groups that are verified;
   - **solo moments**: contiguous runs of `solo_on_stage` segments (staff tag, else the rule estimate);
   - **audience response**: the union of performance intervals each extended by `applause_after_s`, intersected with applause slices, each second once;

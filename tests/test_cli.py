@@ -482,7 +482,7 @@ def test_signals_done_skipped_and_failed_lines(monkeypatch, clip_videos, pipelin
 
 # ---- evaluate (005): mock world only ---------------------------------------------------------------------------
 EVALUATE_FILES = {"metrics.csv", "metrics.json", "confusion.csv", "signal_indicators.csv", "ablation.csv",
-                  "topup.csv", "failure_gallery.csv", "summary.md", "manifest.json"}
+                  "topup.csv", "failure_gallery.csv", "learned_predictions.csv", "summary.md", "manifest.json"}
 
 
 def _evaluate_cli(tmp_path, monkeypatch, **kw):

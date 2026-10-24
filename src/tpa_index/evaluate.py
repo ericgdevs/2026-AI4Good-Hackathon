@@ -9,6 +9,7 @@ import pandas as pd
 from tpa_index.view import GROUPS, UNCERTAIN
 
 SYSTEMS = ("zero-shot", "zero-shot + signal rules")
+LEARNED = "learned (cross-validated on our labels)"
 LIMITATIONS = [
     "single labeler: no human-vs-human agreement",
     "small eval set from two videos, most segments from v04; read every number with its 95% CI",
@@ -16,6 +17,8 @@ LIMITATIONS = [
     "model actor and category scores are weak, so staff exclusion is mostly reliable only on reviewed clips",
     "audio conditions use a fixed 0.5 AST probability, not a dev-tuned threshold",
     "review-mode decisions are per moment: one decision verifies every segment in that moment",
+    "the learned system is trained on our ~206 labels from two videos: its cross-validated row is the fair number; "
+    "the final model's predictions on labeled segments are in-sample",
 ]
 
 
@@ -131,14 +134,26 @@ def uncertainty_metrics(df: pd.DataFrame) -> dict:
             "n_confident": int((~flagged).sum()), "n_flagged": int(flagged.sum())}
 
 
+def block_ids(df: pd.DataFrame, block: int) -> np.ndarray:
+    """Block number per row (positional): each video's rows in time order, cut into runs of `block`. Shared by the
+    bootstrap and the learned system's cross-validation folds."""
+    ids = np.zeros(len(df), dtype=int)
+    next_id = 0
+    for _, g in df.groupby("video_id", sort=True):
+        idx = g.sort_values("start_s").index.to_numpy()
+        for i in range(0, len(idx), block):
+            ids[idx[i:i + block]] = next_id
+            next_id += 1
+    return ids
+
+
 def block_bootstrap(df: pd.DataFrame, stat_fn, block: int, resamples: int, seed: int):
     """95% percentile CI. Each video's rows (time order) are cut into blocks of `block`; blocks are drawn with
     replacement until the resample is as large as the original, then trimmed. stat_fn takes positional indices.
     Returns (low, high, n_valid); resamples where the statistic is undefined are skipped."""
-    blocks = []
-    for _, g in df.groupby("video_id", sort=True):
-        idx = g.sort_values("start_s").index.to_numpy()
-        blocks += [idx[i:i + block] for i in range(0, len(idx), block)]
+    ids = block_ids(df, block)
+    order = df.sort_values(["video_id", "start_s"]).index.to_numpy()
+    blocks = [order[ids[order] == b] for b in dict.fromkeys(ids[order])]
     n, rng, values = len(df), np.random.default_rng(seed), []
     if not blocks:
         return None, None, 0
@@ -224,7 +239,8 @@ def system_metrics(system: str, df: pd.DataFrame, labels: dict, pipeline: dict) 
     return {"rows": rows, "headline": head, "confusion": confusion}
 
 
-def signal_indicator_table(df: pd.DataFrame, estimates: pd.DataFrame, rules: dict, pipeline: dict) -> list[dict]:
+def signal_indicator_table(df: pd.DataFrame, estimates: pd.DataFrame, rules: dict, pipeline: dict,
+                           system: str = SYSTEMS[0]) -> list[dict]:
     """Signal-based indicator estimates vs the human indicator labels on the evaluation set."""
     ins = pipeline["insights"]
     out = []
@@ -250,7 +266,9 @@ def signal_indicator_table(df: pd.DataFrame, estimates: pd.DataFrame, rules: dic
                     "precision": (tp / (tp + fp) if tp + fp else 0.0) if ok else None,
                     "recall": tp / support if ok else None, "f1": stat(np.arange(len(df))) if ok else None,
                     "ci_low": lo, "ci_high": hi, "not_available": int((~avail).sum()),
-                    "status": "ok" if ok else "too few to score", "tag": "model estimate (unvalidated)"})
+                    "status": "ok" if ok else "too few to score",
+                    "tag": "model estimate (learned)" if system == LEARNED else "model estimate (unvalidated)",
+                    "system": system})
     return out
 
 
@@ -299,17 +317,27 @@ def run_evaluate(pipeline: dict, labels: dict, root=None) -> dict:
         heads.append(res["headline"])
         if system == SYSTEMS[0]:
             base_df = df
+    from tpa_index.learned import cross_validated, fit_final
+
+    learned_df, _ = cross_validated(base_df, labels, pipeline)
+    res = system_metrics(LEARNED, learned_df, labels, pipeline)
+    rows += res["rows"]
+    confusion += res["confusion"]
+    heads.append(res["headline"])
     estimates = indicator_estimates(view, ins["indicator_rules"], ctx)
     signal = signal_indicator_table(base_df, estimates, ins["indicator_rules"], pipeline)
+    signal += signal_indicator_table(learned_df, indicator_estimates(learned_df, ins["indicator_rules"], ctx),
+                                     ins["indicator_rules"], pipeline, system=LEARNED)
+    final = fit_final(base_df, view, labels, pipeline)
     ablation = [{"system": h["system"], "n_segments": h["n_segments"],
                  "primary_accuracy": h["primary_accuracy"], "primary_accuracy_ci_low": h["primary_accuracy_ci"][0],
                  "primary_accuracy_ci_high": h["primary_accuracy_ci"][1],
                  **{f"macro_f1_{g}{s}": (h[f"macro_f1_{g}"] if s == "" else h[f"macro_f1_{g}_ci"][s == "_ci_high"])
                     for g in GROUPS for s in ("", "_ci_low", "_ci_high")},
                  "kappa_primary": h["kappa_primary"], "kappa_category": h["kappa_category"],
-                 "rules_fired": "" if h["system"] == SYSTEMS[0] else ";".join(
+                 "rules_fired": "" if h["system"] != SYSTEMS[1] else ";".join(
                      f"{k}:{v['fired']}" for k, v in fire.items()),
-                 "rules_not_applicable": "" if h["system"] == SYSTEMS[0] else ";".join(
+                 "rules_not_applicable": "" if h["system"] != SYSTEMS[1] else ";".join(
                      f"{k}:{v['not_applicable']}" for k, v in fire.items())} for h in heads]
     eval_ids = set(base_df["segment_id"])
     versions = sorted({r["guideline_version"] for r in read_reviews(root).to_pylist()
@@ -318,6 +346,8 @@ def run_evaluate(pipeline: dict, labels: dict, root=None) -> dict:
     return {"kind": "evaluate", "metrics": rows, "confusion": confusion, "signal_indicators": signal,
             "ablation": ablation, "topup": topup_precision(view, human, labels),
             "failure_gallery": failure_gallery(base_df, ins["failure_gallery"]), "headline": heads,
+            "learned_predictions": [{k: (";".join(v) if isinstance(v, list) else v) for k, v in r.items()
+                                     if k != "_model"} for r in final.to_dict("records")],
             "eval_set": {**eval_set, "category_kappa_excluded": heads[0]["category_kappa_excluded"]},
             "limitations": LIMITATIONS, "guideline_versions": versions,
             "official_runs": {k: v for k, v in official.items() if v}, "config_hash": config_hash(labels, pipeline)}

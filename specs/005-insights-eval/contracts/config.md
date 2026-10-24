@@ -9,6 +9,8 @@ insights:
   failure_gallery: 20
   applause_after_s: 10             # applause within this many seconds after a performance counts as response
   audio_threshold: 0.5             # fixed AST probability for every audio condition (NOT the calibrated top-10% value)
+  learned: {folds: 5, C: 1.0, max_iter: 2000, seed: 2026}   # logistic regressions on official signals (no embeddings)
+  labels_source: learned           # insights model fallback: learned | zero-shot
   primary_like: [singing, lyricism_spoken_word, acting_theater, dance]   # "performing" primaries (used by rules)
   fusion:                          # system "zero-shot + signal rules": drop a visual call unless a condition holds
     - {label: singing, require_any: [{audio: singing_voice}, {audio: music}]}
@@ -43,6 +45,7 @@ A condition whose signal is missing for the segment (no official run, or a null 
 - Fusion `label`, `clears` and `primary_in` entries are model-scored visual labels. `audio` entries are audio labels. `indicator_rules` keys are `indicator`-group labels from `labels.yaml`.
 - Unknown condition keys are rejected, naming the key.
 - `{indicator: x}` may only refer to a rule defined earlier in the block.
+- `learned.folds` is an integer ≥ 2; `learned.max_iter` an integer ≥ 1; `learned.C` > 0; `labels_source` ∈ {learned, zero-shot}.
 
 ## Thresholds
 

@@ -369,6 +369,13 @@ def _check_insights(d: dict, labels: dict) -> None:
         raise ConfigError(f"{where}: applause_after_s must be >= 0")
     if not 0 < _number(ins, "audio_threshold", where) < 1:
         raise ConfigError(f"{where}: audio_threshold must be within (0, 1)")
+    lc = ins.get("learned")
+    if not isinstance(lc, dict) or not isinstance(lc.get("folds"), int) or lc["folds"] < 2 \
+            or not isinstance(lc.get("max_iter"), int) or lc["max_iter"] < 1 or not isinstance(lc.get("seed"), int) \
+            or not isinstance(lc.get("C"), (int, float)) or lc["C"] <= 0:
+        raise ConfigError(f"{where}.learned: needs folds (int >= 2), C (> 0), max_iter (int >= 1) and seed (int)")
+    if ins.get("labels_source") not in ("learned", "zero-shot"):
+        raise ConfigError(f"{where}.labels_source: must be learned or zero-shot")
     names = {"audio": {lab["name"] for lab in model_labels(labels, {"audio"})},
              "activity": {lab["name"] for lab in model_labels(labels, {"activity"})},
              "visual": {lab["name"] for lab in model_labels(labels, set(d["visual_groups"]))}}

@@ -36,6 +36,14 @@ uncertainty_metrics(eval_df) -> dict
 block_bootstrap(eval_df, stat_fn, block, resamples, seed) -> (low, high, n_valid)
 run_evaluate(pipeline, labels, root=None) -> dict       # everything for the evaluate result folder
 
+# learned.py (new): logistic regressions on official per-segment signals (no embeddings)
+features(view) -> (np.ndarray, list[str])           # missing signal -> 0 + a "<source>_missing" column
+block_ids(df, block) -> np.ndarray                  # same blocks as block_bootstrap (shared helper)
+cross_validated(df, X, labels, cfg, block) -> pd.DataFrame   # view-like model columns per labeled row, each from a
+                                                             # model that never saw its block
+fit_final(df, X_all, view, labels, cfg) -> pd.DataFrame      # predictions for every official segment
+learned_view(view, preds) -> pd.DataFrame           # the view with model columns replaced (for metrics and insights)
+
 # indicators.py (new)
 staff_led(view, verified) -> Series[bool], source Series["verified"|"model"|None]
 youth_indicators(view, verified, estimates, pipeline) -> list[dict]   # rows of indicators.csv

@@ -133,6 +133,9 @@ def segment_view(pipeline: dict, labels: dict, root=None) -> pd.DataFrame:
             "moment_id": moment["moment_id"] if moment else None,
             "audio_ok": {lab: (a.get(lab, 0.0) >= cut if vid in audio_videos else None) for lab in audio_labels},
             "expr_top": (max(expr_labels, key=lambda lab: e.get(lab, 0.0)) if faces and e else None),
+            "transcript_chars": s["transcript_chars"],  # a count only; transcript text is never read
+            "visual_scores": dict(sc), "audio_scores": dict(a) if vid in audio_videos else None,
+            "expr_scores": dict(e) if faces and e else None,
         })
     return pd.DataFrame(rows)
 

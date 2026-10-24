@@ -72,6 +72,8 @@ insights:                        # 005 evaluate / insights (read-only; aggregate
   failure_gallery: 20
   applause_after_s: 10           # applause within this many seconds after a performance counts as response
   audio_threshold: 0.5           # fixed AST probability for audio conditions (not the calibrated top-10% value)
+  learned: {folds: 5, C: 1.0, max_iter: 2000, seed: 2026}   # logistic regressions on official signals (no embeddings)
+  labels_source: learned         # insights model fallback: learned | zero-shot
   primary_like: [singing, lyricism_spoken_word, acting_theater, dance]   # "performing" primaries used by rules
   fusion:                        # "zero-shot + signal rules": drop a visual activity unless a condition holds
     - {label: singing, require_any: [{audio: singing_voice}, {audio: music}]}

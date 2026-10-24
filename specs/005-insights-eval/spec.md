@@ -192,6 +192,7 @@ Only after Stories 1–4 are done: a TPA Expression Index. It is 0–100, a prog
   - the eval-set size and the v04 share;
   - model actor and category scores are weak, so staff exclusion is mostly reliable only on reviewed clips;
   - audio conditions use a fixed 0.5 AST probability, not a dev-tuned threshold;
+  - the learned system is trained on about 206 labels from two videos; its cross-validated row is the fair number, and the final model's predictions on labeled segments are in-sample;
   - review-mode decisions are per moment, so one decision verifies every segment in that moment;
   - intervals are wide (about 205 labels, mostly from v04, about 21 bootstrap blocks);
   - no number may be shown without its interval.
@@ -204,7 +205,12 @@ Only after Stories 1–4 are done: a TPA Expression Index. It is 0–100, a prog
 
   A rule that removes a label can make the segment's primary change to the next cleared label, or to `uncertain_mixed` if none is left.
 - **FR-015**: Visual conditions use the calibrated per-model thresholds (dev videos only). Audio conditions use a fixed AST probability threshold from config (`insights.audio_threshold`, default 0.5), because the calibrated top-10% cut sits near 0.95 for `music` and `speech` and would veto real singing. The ablation never fits anything on eval labels.
-- **FR-016**: The ablation table has one row per system ("zero-shot", "zero-shot + signal rules") with the same metric columns on the same segments. It reports how often each rule fired and how often it was not applicable.
+- **FR-016**: The ablation table has one row per system ("zero-shot", "zero-shot + signal rules", "learned (cross-validated on our labels)") with the same metric columns on the same segments. It reports how often each rule fired and how often it was not applicable.
+- **FR-016a** (added 2026-10-24, after real results showed miscalibrated top-10% thresholds): the **learned** system.
+  - **Features:** every official per-segment signal: all SigLIP label scores (activity, category, actor, null), the 5 AST probabilities, `has_speech`, `transcript_chars`, `person_count`, `faces_detected` and the expression scores. A missing signal becomes 0 plus a "missing" flag. No embeddings, no frames.
+  - **Models:** primary = multinomial logistic regression with `uncertain_mixed` as a class; activities, category and actor = one-vs-rest logistic regression with `class_weight="balanced"`. Features are standardized, with a fixed seed.
+  - **Honest evaluation:** grouped cross-validation on the eval labels, where the groups are the bootstrap blocks (10 consecutive labeled segments per video), with 5 folds (fewer if there are fewer blocks). Every prediction comes from a model that never saw its block. Same metrics, CIs and kappa as the other rows, and the signal-based indicators are recomputed on the learned labels.
+  - **Final model:** fit on all labels; its predictions for every segment of every video are written to the result folder, tagged `model estimate (learned)`. Predictions on the labeled eval segments are in-sample, so only the cross-validated row is a fair accuracy.
 - **FR-017**: Signal-based indicator estimates, rule-based, from config, always tagged "model estimate (unvalidated)":
   - `solo_on_stage` = `person_count == 1` AND (`performance` clears its threshold OR the model primary is one of `singing`, `lyricism_spoken_word`, `acting_theater`, `dance`);
   - `group_performance` = `person_count >= 2` AND the same activity condition;
@@ -214,7 +220,7 @@ Only after Stories 1–4 are done: a TPA Expression Index. It is 0–100, a prog
 
 **Indicators (Part 2)**
 
-- **FR-018**: Each indicator is computed per video and per phase, from verified labels first and model output above threshold as fallback. Each value carries a tag: "staff-verified", "model estimate (unvalidated)" or "mixed (x% staff-verified)". A value without a tag MUST NOT be written.
+- **FR-018**: Each indicator is computed per video and per phase, from verified labels first, then model output as fallback. The model fallback is the learned final model by default (`insights.labels_source: learned`), or zero-shot (`zero-shot`). Each value carries a tag: "staff-verified", "model estimate (unvalidated)" or "mixed (x% staff-verified)". A value without a tag MUST NOT be written.
 - **FR-019**: Time base: each segment contributes its stride (window minus overlap from the video's effective settings); the last segment of a video contributes its own length minus the overlap with the previous one. Video totals never exceed the video's duration.
 - **FR-020**: Youth-only. Staff-led segments are excluded from every TPA-facing numerator and denominator.
   - **With a verified label:** staff-led when the human chose `actor_staff_facilitation` without `actor_participant`, or `instruction` without `actor_participant`.

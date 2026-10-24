@@ -14,7 +14,7 @@ COLUMNS = {
                     "n_segments", "status", "tag"],
     "confusion.csv": ["system", "human_primary", "model_primary", "count"],
     "signal_indicators.csv": ["indicator", "support", "tp", "fp", "fn", "precision", "recall", "f1", "ci_low",
-                              "ci_high", "not_available", "status", "tag"],
+                              "ci_high", "not_available", "status", "tag", "system"],
     "ablation.csv": ["system", "n_segments", "primary_accuracy", "primary_accuracy_ci_low", "primary_accuracy_ci_high",
                      "macro_f1_activity", "macro_f1_activity_ci_low", "macro_f1_activity_ci_high",
                      "macro_f1_category", "macro_f1_category_ci_low", "macro_f1_category_ci_high",
@@ -22,9 +22,12 @@ COLUMNS = {
                      "kappa_category", "rules_fired", "rules_not_applicable"],
     "topup.csv": ["label", "predicted_positive", "tp", "precision"],
     "failure_gallery.csv": ["rank", "segment_id", "video_id", "model_primary", "human_primary", "model_strength"],
+    "learned_predictions.csv": ["segment_id", "video_id", "primary", "primary_prob", "activities", "categories",
+                                "actors", "tag"],
 }
 TABLES = {"metrics.csv": "metrics", "confusion.csv": "confusion", "signal_indicators.csv": "signal_indicators",
-          "ablation.csv": "ablation", "topup.csv": "topup", "failure_gallery.csv": "failure_gallery"}
+          "ablation.csv": "ablation", "topup.csv": "topup", "failure_gallery.csv": "failure_gallery",
+          "learned_predictions.csv": "learned_predictions"}
 
 
 def results_root(root=None) -> Path:
@@ -93,13 +96,15 @@ def evaluate_summary(p: dict) -> str:
                   f" {h['kappa_primary_sentence']}",
                   f"- Kappa, category: {_ci(h['kappa_category'], h['kappa_category_ci'], pct=False)}, "
                   f"n={n - h['category_kappa_excluded']}). {h['kappa_category_sentence']}", ""]
-    lines += ["## Signal-based indicators (model estimate, unvalidated)", "",
-              "| indicator | support | precision | recall | F1 (95% CI) | not available |", "|---|---|---|---|---|---|"]
+    lines += ["## Signal-based indicators", "",
+              "| system | indicator | support | precision | recall | F1 (95% CI) | not available |",
+              "|---|---|---|---|---|---|---|"]
     for r in p["signal_indicators"]:
         f1 = "too few to score" if r["status"] != "ok" else _ci(r["f1"], (r["ci_low"], r["ci_high"])) + ")"
         prec = "" if r["precision"] is None else f"{100 * r['precision']:.0f}%"
         rec = "" if r["recall"] is None else f"{100 * r['recall']:.0f}%"
-        lines.append(f"| {r['indicator']} | {r['support']} | {prec} | {rec} | {f1} | {r['not_available']} |")
+        lines.append(f"| {r['system']} | {r['indicator']} | {r['support']} | {prec} | {rec} | {f1} | "
+                     f"{r['not_available']} |")
     lines += ["", "## Limitations", "", *[f"- {x}" for x in p["limitations"]], ""]
     return "\n".join(lines)
 

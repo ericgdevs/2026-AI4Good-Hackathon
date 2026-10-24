@@ -67,9 +67,11 @@ def test_block_bootstrap_whole_blocks_per_video():
 def test_ablation_rows_same_segments(world):
     """SC-009: both systems are scored on the identical segment set; fusion changes only its own row."""
     out = run_evaluate(world["pipeline"], world["labels"])
-    a, b = out["ablation"]
-    assert a["system"] == "zero-shot" and b["system"] == "zero-shot + signal rules"
-    assert a["n_segments"] == b["n_segments"] == out["eval_set"]["labeled_eval_segments"]
+    a, b, c = out["ablation"]
+    assert (a["system"], b["system"], c["system"]) == ("zero-shot", "zero-shot + signal rules",
+                                                       "learned (cross-validated on our labels)")
+    assert a["n_segments"] == b["n_segments"] == c["n_segments"] == out["eval_set"]["labeled_eval_segments"]
+    assert c["rules_fired"] == ""
     view = segment_view(world["pipeline"], world["labels"])
     df, _ = eval_frame(view, human_labels(world["labels"], world["pipeline"]))
     assert world["fusion_segment"] in set(df["segment_id"])
@@ -113,7 +115,8 @@ def test_missing_people_run_stops_evaluate(tmp_path, monkeypatch):
 
 def test_signal_indicator_table(world):
     out = run_evaluate(world["pipeline"], world["labels"])
-    table = {r["indicator"]: r for r in out["signal_indicators"]}
+    table = {r["indicator"]: r for r in out["signal_indicators"] if r["system"] == "zero-shot"}
+    assert {r["system"] for r in out["signal_indicators"]} == {"zero-shot", "learned (cross-validated on our labels)"}
     assert set(table) == {"solo_on_stage", "group_performance", "voice_projection"}
     assert table["group_performance"]["status"] == "ok" and table["group_performance"]["f1"] > 0.5
     assert table["solo_on_stage"]["status"] == "too few to score"

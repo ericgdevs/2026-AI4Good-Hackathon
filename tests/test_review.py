@@ -209,16 +209,27 @@ def test_sample_larger_than_eval_set_takes_all(mock_official, pipeline):
     assert n == len(eval_segments())
 
 
-def test_resume_and_progress_per_reviewer(mock_official, pipeline, labels):
+def test_main_sample_is_shared_overlap_is_per_reviewer(mock_official, pipeline, labels):
     from tpa_index.review import blind_rows
 
     build_main_queues(_app(pipeline, sample_size=20, overlap_size=5))
     queue = load_queue("main")
     primary = checklist(labels, pipeline)["primary"][0]
-    for q in queue[:3]:
-        append_reviews(blind_rows(q, primary, [], False, "mock-staff-a", labels, pipeline))
-    assert next_position("main", "mock-staff-a") == 3 and progress("main", "mock-staff-a") == (3, 20)
-    assert next_position("main", "mock-staff-b") == 0 and progress("main", "mock-staff-b") == (0, 20)
+
+    def label(items, reviewer):
+        for q in items:
+            append_reviews(blind_rows(q, primary, [], False, reviewer, labels, pipeline))
+
+    label(queue[:5], "mock-staff-a")  # A labels positions 0-4
+    assert next_position("main", "mock-staff-a") == 5
+    assert next_position("main", "mock-staff-b") == 5  # B continues where the team stopped
+    assert next_position("overlap", "mock-staff-b") == 0  # overlap: B labels the first items themselves
+    assert progress("overlap", "mock-staff-b") == (0, 5) and progress("overlap", "mock-staff-a") == (5, 5)
+    label(queue[5:8], "mock-staff-b")
+    assert progress("main", "mock-staff-a") == (8, 20) == progress("main", "mock-staff-b")  # team total
+    assert next_position("main", "mock-staff-a") == 8
+    label(queue[8:], "mock-staff-a")
+    assert next_position("main", "mock-staff-b") is None
 
 
 def test_segment_stage_fallback(tmp_path, monkeypatch, pipeline):

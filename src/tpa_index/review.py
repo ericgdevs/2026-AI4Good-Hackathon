@@ -97,20 +97,24 @@ def build_main_queues(app_cfg: dict, root=None) -> int:
     return len(main)
 
 
-def _done_segments(reviewer: str, root=None) -> set[str]:
+def _done_segments(queue: str, reviewer: str, root=None) -> set[str]:
+    """Blind-labeled segments that count as done. The main sample is shared: a segment any reviewer labeled is done,
+    so reviewers split it. Overlap and top-up stay per reviewer (overlap measures agreement between labelers)."""
     from tpa_index.schema import read_reviews
 
-    return {r["target_id"] for r in read_reviews(root).to_pylist() if r["mode"] == "blind" and r["reviewer"] == reviewer}
+    return {r["target_id"] for r in read_reviews(root).to_pylist()
+            if r["mode"] == "blind" and (queue == "main" or r["reviewer"] == reviewer)}
 
 
 def next_position(queue: str, reviewer: str, root=None) -> int | None:
-    """First queue position this reviewer has not saved yet (resume point); None when finished."""
-    done = _done_segments(reviewer, root)
+    """First queue position still to label (resume point); None when finished."""
+    done = _done_segments(queue, reviewer, root)
     return next((q["position"] for q in load_queue(queue, root) if q["segment_id"] not in done), None)
 
 
 def progress(queue: str, reviewer: str, root=None) -> tuple[int, int]:
-    items, done = load_queue(queue, root), _done_segments(reviewer, root)
+    """(done, total); for the main sample, done is the team total."""
+    items, done = load_queue(queue, root), _done_segments(queue, reviewer, root)
     return sum(q["segment_id"] in done for q in items), len(items)
 
 

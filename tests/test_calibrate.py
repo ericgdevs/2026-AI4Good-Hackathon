@@ -100,3 +100,80 @@ def test_idle_threshold_fallback_and_override(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "THRESHOLDS_LOCAL", local)
     p = load_pipeline()
     assert idle_threshold(p, "hpc") == 0.04 and idle_threshold(p, "mac") == p["idle"]["score_threshold"]
+
+
+# ---- 004: audio and expression stages through the unchanged calibrate rules ---------------------------------------
+AST, ENET = "ast-finetuned-audioset-10-10-0.4593", "enet_b0_8_va_mtl"
+STAGE_LABELS = {"audio": ["singing_voice", "music", "speech", "applause", "silence"],
+                "expression": ["positive", "neutral", "negative", "upset"]}
+
+
+def _stage_runs(tmp_path, monkeypatch, eval_score=0.5):
+    """One official audio and one expression run per video (2 dev, 1 eval), 30 segments each."""
+    from datetime import datetime, timezone
+
+    from tpa_index import cli, schema
+    from tpa_index.schema import write_table
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+    rng = np.random.default_rng(0)
+    official = {"audio": [], "expression": []}
+    for vid, split in (("v1", "dev"), ("v2", "dev"), ("v3", "eval")):
+        for stage, model in (("audio", AST), ("expression", ENET)):
+            rid = f"{stage}-20261024T000000-{vid}"
+            write_table("videos", [{"video_id": vid, "filename": f"mock/{vid}.mp4", "duration_s": 200.0, "fps": 30.0,
+                                    "orientation": "landscape", "kind": "live", "phase": "early", "cohort": None,
+                                    "split": split}], rid)
+            segs = [{"segment_id": f"{vid}_{i * 6000}", "video_id": vid, "start_s": i * 6.0, "end_s": i * 6.0 + 8,
+                     "person_count": None, "faces_detected": 1 if stage == "expression" else None,
+                     "has_speech": None, "transcript_chars": None, "is_idle": None, "idle_score": None,
+                     "visual_change": None} for i in range(30)]
+            write_table("segments", segs, rid)
+            write_table("predictions", [
+                {"segment_id": s["segment_id"], "label": label, "label_group": stage, "model": model, "run_id": rid,
+                 "score": eval_score if split == "eval" else float(rng.uniform(0, 1))}
+                for s in segs for label in STAGE_LABELS[stage]], rid)
+            write_table("runs", [{"run_id": rid, "stage": stage, "model": model, "config_hash": "0" * 12,
+                                  "hardware": "test", "n_segments": 30, "runtime_s": 1.0, "peak_mem_gb": None,
+                                  "started_at": datetime(2026, 10, 24, tzinfo=timezone.utc), "git_commit": None}], rid)
+            official[stage].append(rid)
+    path = tmp_path / "official.yaml"
+    path.write_text(yaml.safe_dump(official))
+    monkeypatch.setattr(schema, "OFFICIAL_RUNS", path)
+    return cli
+
+
+def test_calibrate_audio_and_expression_stages(tmp_path, monkeypatch, capsys):
+    cli = _stage_runs(tmp_path, monkeypatch)
+    config.THRESHOLDS_LOCAL.write_text(yaml.safe_dump({"label_thresholds": {"siglip2-base-patch16-224": {"singing": 0.1}},
+                                                       "idle_thresholds": {"siglip2-base-patch16-224": 0.2}}))
+    assert cli.main(["calibrate", "--stage", "audio", "--split", "dev"]) == 0
+    out = capsys.readouterr().out
+    assert "labels in scored groups without scores: none" in out
+    assert cli.main(["calibrate", "--stage", "expression", "--split", "dev"]) == 0
+    out = capsys.readouterr().out
+    assert "labels in scored groups without scores: confident" in out
+    data = yaml.safe_load(config.THRESHOLDS_LOCAL.read_text())
+    assert set(data["label_thresholds"][AST]) == set(STAGE_LABELS["audio"])
+    assert set(data["label_thresholds"][ENET]) == set(STAGE_LABELS["expression"])
+    assert data["label_thresholds"]["siglip2-base-patch16-224"] == {"singing": 0.1}  # visual block kept
+    assert data["idle_thresholds"] == {"siglip2-base-patch16-224": 0.2}  # no idle threshold for these stages
+
+
+def test_calibrate_stage_thresholds_ignore_eval(tmp_path, monkeypatch):
+    """SC-009: changing every eval-split score changes no proposed threshold."""
+    proposed = []
+    for eval_score in (0.0, 1.0):
+        (tmp_path / str(eval_score) / "out").mkdir(parents=True)
+        monkeypatch.setenv("OUTPUT_DIR", str(tmp_path / str(eval_score) / "out"))
+        cli = _stage_runs(tmp_path / str(eval_score), monkeypatch, eval_score)
+        target = tmp_path / f"thr-{eval_score}.yaml"
+        monkeypatch.setattr(config, "THRESHOLDS_LOCAL", target)
+        assert cli.main(["calibrate", "--stage", "audio", "--split", "dev"]) == 0
+        proposed.append(yaml.safe_load(target.read_text())["label_thresholds"][AST])
+    assert proposed[0] == proposed[1]
+
+
+def test_calibrate_stage_refuses_eval(tmp_path, monkeypatch):
+    cli = _stage_runs(tmp_path, monkeypatch)
+    assert cli.main(["calibrate", "--stage", "expression", "--split", "eval"]) == 3

@@ -129,3 +129,70 @@ def test_moments_and_calibrate_rebuild_runs_with_old_config_hash(tmp_path, monke
     assert cli.main(["calibrate", "--stage", "predict", "--split", "dev", "--dry-run"]) == 0
     rebuilt = [r["run_id"] for r in read_table("runs").to_pylist() if r["stage"] == "moments"]
     assert rebuilt and read_table("moments", run_ids=rebuilt).num_rows > 0
+
+
+# ---- read_signals (004) -------------------------------------------------------------------------------------------
+def _signal_run(run_id, stage, video_id, segment_ids, **values):
+    write_table("videos", [row("videos", video_id=video_id, filename=f"mock/{video_id}.mp4")], run_id)
+    write_table("segments", [row("segments", segment_id=s, video_id=video_id, **values) for s in segment_ids], run_id)
+    write_table("runs", [row("runs", run_id=run_id, stage=stage)], run_id)
+
+
+def test_read_signals_joins_official_stage_columns(tmp_path, monkeypatch):
+    from tpa_index.schema import read_signals
+
+    _run("p1", ["v1", "v2", "v3"])
+    _signal_run("people-1", "people", "v1", ["v1_0"], person_count=4)
+    _signal_run("people-2", "people", "v2", ["v2_0"], person_count=7)
+    _signal_run("expression-1", "expression", "v1", ["v1_0"], faces_detected=2)
+    _official(tmp_path, monkeypatch, "predict: [p1]\npeople: [people-1, people-2]\nexpression: [expression-1]\n")
+    rows = {r["video_id"]: r for r in read_signals().to_pylist()}
+    assert len(rows) == 3
+    assert (rows["v1"]["person_count"], rows["v2"]["person_count"], rows["v3"]["person_count"]) == (4, 7, None)
+    assert rows["v1"]["faces_detected"] == 2 and rows["v2"]["faces_detected"] is None
+    assert all(r["has_speech"] is None and r["transcript_chars"] is None for r in rows.values())  # no transcript runs
+
+
+def test_read_signals_missing_segment_names_stage_and_video(tmp_path, monkeypatch):
+    from tpa_index.schema import read_signals
+
+    _run("p1", ["v1"])
+    _signal_run("transcript-1", "transcript", "v1", ["v1_6000"], has_speech=True, transcript_chars=3)
+    _official(tmp_path, monkeypatch, "predict: [p1]\ntranscript: [transcript-1]\n")
+    with pytest.raises(SchemaError, match="official transcript run transcript-1 misses segments of video v1"):
+        read_signals()
+
+
+def test_read_signals_two_runs_for_one_video(tmp_path, monkeypatch):
+    from tpa_index.schema import read_signals
+
+    _run("p1", ["v1"])
+    _signal_run("people-1", "people", "v1", ["v1_0"], person_count=1)
+    _signal_run("people-2", "people", "v1", ["v1_0"], person_count=2)
+    _official(tmp_path, monkeypatch, "predict: [p1]\npeople: [people-1, people-2]\n")
+    with pytest.raises(SchemaError, match="both cover video v1"):
+        read_signals()
+
+
+def test_default_reads_ignore_signal_runs(tmp_path, monkeypatch):
+    """US3-AS2: listing audio/expression runs changes nothing in the default official reads."""
+    _run("p1", ["v1"])
+    _official(tmp_path, monkeypatch, "predict: [p1]\n")
+    before = {t: read_official(t).to_pylist() for t in ("segments", "predictions", "moments")}
+    _signal_run("audio-1", "audio", "v1", ["v1_0"])
+    write_table("predictions", [row("predictions", segment_id="v1_0", label="music", label_group="audio",
+                                    model="ast", run_id="audio-x")], "audio-x")
+    _official(tmp_path, monkeypatch, "predict: [p1]\naudio: [audio-1]\nexpression: []\n")
+    assert {t: read_official(t).to_pylist() for t in before} == before
+    assert read_official("segments", stage="audio").num_rows == 1
+
+
+def test_repo_official_runs_has_signal_sections():
+    """004: the repo file lists the four signal stages (empty until the team adds run IDs); 002 lists untouched."""
+    from tpa_index.paths import repo_root
+    from tpa_index.schema import load_official
+
+    data = load_official(repo_root() / "config/official_runs.yaml")
+    assert all(data[s] == [] for s in ("transcript", "audio", "people", "expression"))
+    assert len(data["segment"]) == len(data["predict"]) == len(data["moments"]) == 12
+    assert all(r.startswith(f"{s}-") for s in ("segment", "predict", "moments") for r in data[s])

@@ -415,3 +415,32 @@ def find_complete_run(stage: str, video_id: str, model: str, cfg_hash: str, root
                     and video_id in _run_videos(d.name, root):
                 found.append((r["started_at"], r["run_id"]))
     return max(found)[1] if found else None
+
+
+SIGNAL_SOURCES = {"transcript": ("has_speech", "transcript_chars"), "people": ("person_count",),
+                  "expression": ("faces_detected",)}
+
+
+def read_signals(root=None) -> pa.Table:
+    """Official segments with the 004 signal columns filled from each stage's official run (null where a stage has
+    no official run for the video). read_official itself is unchanged."""
+    base = read_official("segments", root=root)
+    if not base.num_rows:
+        base = read_official("segments", stage="segment", root=root)
+    rows = base.to_pylist()
+    official = load_official()
+    by_video: dict[str, list[dict]] = {}
+    for r in rows:
+        r.update(dict.fromkeys(c for cols in SIGNAL_SOURCES.values() for c in cols))  # null unless a stage ran
+        by_video.setdefault(r["video_id"], []).append(r)
+    for stage, cols in SIGNAL_SOURCES.items():
+        for vid, run_id in _official_by_video(official, stage, root).items():
+            if vid not in by_video:
+                continue
+            values = {s["segment_id"]: s for s in read_table("segments", root, run_ids=[run_id]).to_pylist()}
+            for r in by_video[vid]:
+                if r["segment_id"] not in values:
+                    raise SchemaError(stage, "segment_id", f"official {stage} run {run_id} misses segments of video {vid}")
+                for c in cols:
+                    r[c] = values[r["segment_id"]][c]
+    return pa.Table.from_pylist(rows, schema=SCHEMAS["segments"]) if rows else SCHEMAS["segments"].empty_table()

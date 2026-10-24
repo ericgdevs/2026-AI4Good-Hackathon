@@ -251,6 +251,10 @@ def _calibrate(args) -> int:
         clearing = "-" if value is None else int((scores[label] >= value).sum())
         shown = "too few" if value is None else f"{value:.4f}"
         print(f"{label:<24} {shown:>9} {n:>6} {clearing:>8}  {by or ''}")
+    groups = {p["label_group"] for p in preds.to_pylist() if p["model"] == model}
+    unscored = [lab["name"] for lab in config.model_labels(load_labels(), groups - {cal["null_group"]})
+                if lab["name"] not in scores]
+    print(f"labels in scored groups without scores: {', '.join(unscored) if unscored else 'none'}")
     for by, name in (("null", "the null floor"), ("min", "min_threshold")):
         hit = [label for label, (_, b) in proposals.items() if b == by]
         print(f"labels at {name}: {', '.join(hit) if hit else 'none'}")

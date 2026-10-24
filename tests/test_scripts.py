@@ -193,3 +193,55 @@ def test_output_sync_skips_transcript_json(tmp_path):
     copied = local / "runs/transcript-20261024T000000-0001"
     assert (copied / "segments.parquet").exists() and (copied / "runs.parquet").exists()
     assert not list(local.rglob("transcript*.json"))
+
+
+# ---- 004: signals job and weights download (stubbed tools; nothing downloaded, no GPU) ----------------------------
+SIGNALS = repo_root() / "scripts/slurm/signals.sbatch"
+WEIGHTS = repo_root() / "scripts/download_weights.sh"
+
+
+def _stub_bin(tmp_path, **scripts):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    for name, body in scripts.items():
+        (bin_dir / name).write_text(f"#!/bin/bash\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    return bin_dir
+
+
+def test_signals_sbatch_syntax_and_directives():
+    assert subprocess.run(["bash", "-n", str(SIGNALS)]).returncode == 0
+    text = SIGNALS.read_text()
+    for directive in ("--partition=gpu", "--gres=gpu:6KSE:1", "--cpus-per-task=8", "--mem=64G",
+                      "--time=03:00:00", "--output=slurm-%x-%j.out"):
+        assert f"#SBATCH {directive}" in text, directive
+    for line in ('export HF_HOME="$HOME/hf-cache"', "export HF_HUB_OFFLINE=1", "export YOLO_OFFLINE=1",
+                 'export TPA_WEIGHTS_DIR="$HOME/hf-cache/tpa-weights"', "uv sync --frozen",
+                 'uv run --frozen tpa-index signals "$@"'):
+        assert line in text, line
+    assert "--stages transcript,audio" in text and "--stages people,expression" in text
+
+
+def test_signals_sbatch_prepends_cuda12_libs_and_passes_args(tmp_path):
+    bin_dir = _stub_bin(tmp_path, **{
+        "nvidia-smi": "echo GPU 0",
+        "uv": 'case "$*" in *python*) echo "/w/nvidia/cublas/lib:/w/nvidia/cudnn/lib";; '
+              '*tpa-index*) echo "LD=$LD_LIBRARY_PATH YOLO=$YOLO_OFFLINE W=$TPA_WEIGHTS_DIR ARGS=$*";; esac'})
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path), "SLURM_SUBMIT_DIR": str(tmp_path),
+           "LD_LIBRARY_PATH": "/old"}
+    result = subprocess.run(["bash", str(SIGNALS), "--stages", "people,expression", "--video-id", "v03"],
+                            capture_output=True, text=True, env=env)
+    assert result.returncode == 0, result.stderr
+    assert "LD=/w/nvidia/cublas/lib:/w/nvidia/cudnn/lib:/old" in result.stdout
+    assert f"YOLO=1 W={tmp_path}/hf-cache/tpa-weights" in result.stdout
+    assert result.stdout.rstrip().endswith("signals --stages people,expression --video-id v03")
+
+
+def test_download_weights_script_refuses_in_job(tmp_path):
+    assert subprocess.run(["bash", "-n", str(WEIGHTS)]).returncode == 0
+    marker = tmp_path / "called"
+    bin_dir = _stub_bin(tmp_path, uv=f"touch {marker}", curl=f"touch {marker}")
+    result = subprocess.run(["bash", str(WEIGHTS)], capture_output=True, text=True,
+                            env={"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path), "SLURM_JOB_ID": "1"})
+    assert result.returncode == 2 and "login node" in result.stderr
+    assert not marker.exists()

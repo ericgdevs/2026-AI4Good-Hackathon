@@ -207,40 +207,40 @@
 **Goal**: later specs can read the signals, thresholds can be calibrated, and HPC can run both jobs.
 **Independent test**: T047 to T053 pass.
 
-- [ ] T046 [US3] In `src/tpa_index/schema.py`, add `read_signals(root=None) -> pa.Table`. The base is `read_official("segments", root=root)`, else `read_official("segments", stage="segment", root=root)`. For each stage and its columns (transcript: `has_speech`, `transcript_chars`; people: `person_count`; expression: `faces_detected`), use `_official_by_video(load_official(), stage, root)` and that run's segments. Overwrite those columns by segment_id for the covered videos and leave them null elsewhere. If an official stage run lacks an official segment_id of its video, raise `SchemaError(stage, "segment_id", f"official {stage} run {run_id} misses segments of video {vid}")`. Return a table matching `SCHEMAS["segments"]`. Do not modify `read_official`.
-- [ ] T047 [P] [US3] In `tests/test_official.py`, test `read_signals`: official people runs for 2 of 3 mock videos fill `person_count` for those videos and leave it null for the third; `has_speech` is null with no official transcript runs; a stage run missing a segment raises naming the stage and video; two people runs for one video raise the existing "both cover video" error; `read_official("segments")` and `read_official("predictions")` return the same rows before and after official audio and expression runs are listed (US3-AS2).
-- [ ] T048 [P] [US2] **SC-005 test**: in `tests/test_signals_privacy.py`, add `test_official_002_runs_unchanged`.
+- [X] T046 [US3] In `src/tpa_index/schema.py`, add `read_signals(root=None) -> pa.Table`. The base is `read_official("segments", root=root)`, else `read_official("segments", stage="segment", root=root)`. For each stage and its columns (transcript: `has_speech`, `transcript_chars`; people: `person_count`; expression: `faces_detected`), use `_official_by_video(load_official(), stage, root)` and that run's segments. Overwrite those columns by segment_id for the covered videos and leave them null elsewhere. If an official stage run lacks an official segment_id of its video, raise `SchemaError(stage, "segment_id", f"official {stage} run {run_id} misses segments of video {vid}")`. Return a table matching `SCHEMAS["segments"]`. Do not modify `read_official`.
+- [X] T047 [P] [US3] In `tests/test_official.py`, test `read_signals`: official people runs for 2 of 3 mock videos fill `person_count` for those videos and leave it null for the third; `has_speech` is null with no official transcript runs; a stage run missing a segment raises naming the stage and video; two people runs for one video raise the existing "both cover video" error; `read_official("segments")` and `read_official("predictions")` return the same rows before and after official audio and expression runs are listed (US3-AS2).
+- [X] T048 [P] [US2] **SC-005 test**: in `tests/test_signals_privacy.py`, add `test_official_002_runs_unchanged`.
   - Create mock official segment, predict and moments runs and list them in the tmp `official_runs.yaml`.
   - Record the sha256 of every file under those run folders, the bytes of `official_runs.yaml`, and `read_official` results for segments, predictions and moments.
   - Run all four stages with fakes, then append the new sections with the new run IDs to `official_runs.yaml` in the way the team will (text append).
   - Assert every recorded file hash is unchanged, the original bytes are a prefix of the new file, and the default `read_official` results are equal.
-- [ ] T049 [US4] In `src/tpa_index/cli.py` `_calibrate`, add one generic line after the label table: `labels in scored groups without scores: <names or none>`. Scored groups are the `label_group` values of the model's dev predictions; the names are labels of those groups in `labels.yaml` with `source: model` and no dev scores. Confirm `--stage` already accepts any stage name (it does: a free string); add `choices` only if needed for help text. No other calibrate change.
-- [ ] T050 [P] [US4] In `tests/test_calibrate.py`, write mock official audio and expression runs over dev and eval videos (fake predictions with `label_group` audio and expression, models `ast-finetuned-audioset-10-10-0.4593` and `enet_b0_8_va_mtl`). Then test:
+- [X] T049 [US4] In `src/tpa_index/cli.py` `_calibrate`, add one generic line after the label table: `labels in scored groups without scores: <names or none>`. Scored groups are the `label_group` values of the model's dev predictions; the names are labels of those groups in `labels.yaml` with `source: model` and no dev scores. Confirm `--stage` already accepts any stage name (it does: a free string); add `choices` only if needed for help text. No other calibrate change.
+- [X] T050 [P] [US4] In `tests/test_calibrate.py`, write mock official audio and expression runs over dev and eval videos (fake predictions with `label_group` audio and expression, models `ast-finetuned-audioset-10-10-0.4593` and `enet_b0_8_va_mtl`). Then test:
   - `calibrate --stage audio` writes thresholds for all five audio labels under the AST model;
   - `--stage expression` writes `positive`, `neutral`, `negative` and `upset` and prints `confident` in the "without scores" line;
   - changing an eval-split score changes no threshold (**SC-009**);
   - the visual model's block already in the thresholds file is kept;
   - no idle threshold is written for these stages;
   - `--split eval` exits 3.
-- [ ] T051 [US1] Append to `config/official_runs.yaml`, after the `moments` list, with existing bytes untouched: a comment line `# 004 signal stages (one run per video per stage)`, then `transcript: []`, `audio: []`, `people: []`, `expression: []`. In `tests/test_official.py`, add a test that the repo file loads, that each new stage is an empty list, and that the segment, predict and moments lists still match their current run IDs.
-- [ ] T052 [P] [US1] Create `scripts/slurm/signals.sbatch`, modelled on `scripts/slurm/predict.sbatch`:
+- [X] T051 [US1] Append to `config/official_runs.yaml`, after the `moments` list, with existing bytes untouched: a comment line `# 004 signal stages (one run per video per stage)`, then `transcript: []`, `audio: []`, `people: []`, `expression: []`. In `tests/test_official.py`, add a test that the repo file loads, that each new stage is an empty list, and that the segment, predict and moments lists still match their current run IDs.
+- [X] T052 [P] [US1] Create `scripts/slurm/signals.sbatch`, modelled on `scripts/slurm/predict.sbatch`:
   - directives: `--job-name=tpa-signals`, `--partition=gpu`, `--gres=gpu:6KSE:1`, `--cpus-per-task=8`, `--mem=64G`, `--time=03:00:00`, `--output=slurm-%x-%j.out`;
   - env: `HF_HOME=$HOME/hf-cache`, `HF_HUB_OFFLINE=1`, `YOLO_OFFLINE=1`, `TPA_WEIGHTS_DIR=$HOME/hf-cache/tpa-weights`;
   - body: `nvidia-smi -L`, `uv sync --frozen`, `uv run tpa-index signals "$@"`;
   - usage comments for the two submissions (`--stages transcript,audio` and `--stages people,expression`) and for resubmitting to resume.
   - In `tests/test_scripts.py`, add `test_signals_sbatch_syntax_and_directives` (`bash -n` plus every directive and env line present), and `test_download_weights_script_refuses_in_job` (`bash -n scripts/download_weights.sh`; running it with `SLURM_JOB_ID=1` and a stub `PATH` exits 2 before any download).
-- [ ] T053 [P] Create `docs/weights.md`.
+- [X] T053 [P] Create `docs/weights.md`.
   - A table with one row per weight (faster-whisper large-v3, base and tiny; AST; YuNet; yolo11n and yolo11m; EmotiEffLib enet_b0_8_va_mtl ONNX): source (HF repo or GitHub release URL), version or commit, licence (check each upstream licence page when filling), sha256 (`TBD: run scripts/download_weights.sh` until known), and which machine uses it.
   - A "Known limitations" section: `person_count` includes the audience; `has_speech` can include sung lyrics; transcript peak memory on CUDA is approximate (ctranslate2 allocates outside torch); people and expression runtimes overlap (shared pass), so do not sum them; expression labels are unvalidated observable-expression suggestions, never feelings.
   - A note that the GitHub sources are a clarification of Principle II (spec FR-009a).
-- [ ] T054 **Checkpoint 3**: `uv run pytest` passes; `bash -n` passes on both scripts; `config/official_runs.yaml` has the four empty sections; `docs/weights.md` exists. Running `tpa-index calibrate --stage audio --split dev --dry-run` in the T033 scratch setup (after listing the mock audio runs as official in a scratch `TPA_OFFICIAL_RUNS` file) prints thresholds for the five audio labels.
+- [X] T054 **Checkpoint 3**: `uv run pytest` passes; `bash -n` passes on both scripts; `config/official_runs.yaml` has the four empty sections; `docs/weights.md` exists. Running `tpa-index calibrate --stage audio --split dev --dry-run` in the T033 scratch setup (after listing the mock audio runs as official in a scratch `TPA_OFFICIAL_RUNS` file) prints thresholds for the five audio labels.
 
 ---
 
 ## Phase 6: Polish and cross-cutting
 
-- [ ] T055 [P] Update `specs/004-signals/contracts/interfaces.md` with the deviations made during implementation: add `scripts/download_weights.sh` to the Scripts table; document the CUDA-failure message from T023 (it names the missing library, with no automatic CPU fallback); record any signature changes.
-- [ ] T056 Final hygiene:
+- [X] T055 [P] Update `specs/004-signals/contracts/interfaces.md` with the deviations made during implementation: add `scripts/download_weights.sh` to the Scripts table; document the CUDA-failure message from T023 (it names the missing library, with no automatic CPU fallback); record any signature changes.
+- [X] T056 Final hygiene:
   - run `uv run pytest` and `uv run pytest tests/test_repo_hygiene.py`;
   - `git status --short` shows no data files, no `*.parquet`, `*.wav` or `transcript*.json`, and no `.local.yaml`;
   - `git diff --stat -- .venv` is empty and no file under `.venv` was edited;

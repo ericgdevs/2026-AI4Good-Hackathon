@@ -238,3 +238,54 @@ def test_no_image_files_after_job_b(clip_videos, pipeline, labels, tmp_path, mon
                   "expression": FakeExpressionScorer(EXPR_LABELS, faces_per_frame=2, fail_on_call=fail)}
         signals.run_signals([clip_videos["t01"]], list(models), models, pipeline, labels, force=True)
         assert _stray_files(tmp_path / "scratch", tmp_path / "out") == []
+
+
+def test_official_002_runs_unchanged(clip_videos, pipeline, labels, tmp_path, monkeypatch):
+    """SC-005: official segment, predict and moments runs and the existing official_runs.yaml sections are
+    byte-identical after all four stages run; the default official reads return the same rows."""
+    import hashlib
+
+    from tests.fakes import FakeExpressionScorer, FakePersonCounter
+    from tests.test_schema import row
+    from tests.test_signals import official_clip_runs
+
+    monkeypatch.setenv("TPA_SCRATCH_DIR", str(tmp_path / "scratch"))
+    vids = [clip_videos["t01"], clip_videos["t03"]]
+    (seg_a, seg_b) = official_clip_runs(vids, pipeline, tmp_path, monkeypatch)
+    official = {"segment": [seg_a, seg_b], "predict": [], "moments": []}
+    for seg_run in (seg_a, seg_b):
+        vid = seg_run.rsplit("-", 1)[1]
+        for stage in ("predict", "moments"):
+            rid = f"{stage}-20261024T000000-{vid}"
+            segs = schema.read_table("segments", run_ids=[seg_run]).to_pylist()
+            schema.write_table("videos", schema.read_table("videos", run_ids=[seg_run]), rid)
+            schema.write_table("segments", segs, rid)
+            schema.write_table("predictions", [row("predictions", segment_id=s["segment_id"], model="m",
+                                                   run_id=rid) for s in segs], rid)
+            schema.write_table("moments", [row("moments", moment_id=f"{vid}_0_singing", video_id=vid,
+                                               run_id=rid)], rid)
+            schema.write_table("runs", [row("runs", run_id=rid, stage=stage)], rid)
+            official[stage].append(rid)
+    yaml_path = tmp_path / "official.yaml"
+    yaml_path.write_text("".join(f"{k}:\n" + "".join(f"  - {r}\n" for r in v) for k, v in official.items()))
+    monkeypatch.setattr(schema, "OFFICIAL_RUNS", yaml_path)
+
+    def hashes():
+        return {str(p.relative_to(tmp_path)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for rid in sum(official.values(), []) for p in (tmp_path / "out/runs" / rid).iterdir()}
+
+    before_files, before_yaml = hashes(), yaml_path.read_bytes()
+    before_reads = {t: schema.read_official(t).to_pylist() for t in ("segments", "predictions", "moments")}
+    models = {"transcript": FakeTranscriber(), "audio": FakeAudioTagger(AUDIO_LABELS),
+              "people": FakePersonCounter(), "expression": FakeExpressionScorer(EXPR_LABELS)}
+    results = signals.run_signals(vids, list(models), models, pipeline, labels)
+    assert all(v.startswith("done:") for v in results.values())
+    with open(yaml_path, "a") as f:  # how the team lists the new runs: append sections, never edit existing ones
+        f.write("# 004 signal stages (one run per video per stage)\n")
+        for stage in ("transcript", "audio", "people", "expression"):
+            f.write(f"{stage}:\n" + "".join(f"  - {status.split(':')[1]}\n"
+                                            for (v, s), status in sorted(results.items()) if s == stage))
+    assert hashes() == before_files
+    assert yaml_path.read_bytes().startswith(before_yaml)
+    assert {t: schema.read_official(t).to_pylist() for t in before_reads} == before_reads
+    assert schema.read_signals().num_rows == len(before_reads["segments"])

@@ -47,7 +47,7 @@ def _videos_and_segments(rng, videos_cfg, pipeline):
     return videos, segments
 
 
-def _predictions(rng, segments, labels, run_id):
+def _predictions(rng, segments, labels, run_id, null_group=None):
     by_group: dict[str, list[str]] = {}
     for lab in model_labels(labels):  # rules labels are never model-scored
         by_group.setdefault(lab["group"], []).append(lab["name"])
@@ -64,7 +64,10 @@ def _predictions(rng, segments, labels, run_id):
                 true, left = names[int(rng.integers(len(names)))], int(rng.integers(2, 8))
             latent[group] = (true, left - 1)
             for name in names:
-                score = rng.beta(5, 2) if name == true else rng.beta(1.5, 6)
+                if group == null_group:  # unrelated prompts: pure low noise, like a real model
+                    score = rng.beta(1, 30)
+                else:
+                    score = rng.beta(5, 2) if name == true else rng.beta(1.5, 6)
                 rows.append({"segment_id": seg["segment_id"], "label": name, "label_group": group,
                              "score": float(np.float32(score)), "model": "mock-model", "run_id": run_id})
     return rows
@@ -108,7 +111,7 @@ def generate(out_root=None, seed: int = 0, n_videos: int = 4) -> str:
     run_id = f"mock-seed{seed}"
     predict_run = f"{run_id}-predict"
     videos, segments = _videos_and_segments(rng, load_videos(EXAMPLE_VIDEOS)[:n_videos], pipeline)
-    predictions = _predictions(rng, segments, labels, predict_run)
+    predictions = _predictions(rng, segments, labels, predict_run, pipeline["calibrate"]["null_group"])
     predictions += rules_rows(segments, predictions, pipeline, labels, "mock-model", predict_run)
     moments = []
     for v in videos:

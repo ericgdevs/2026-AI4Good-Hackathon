@@ -92,7 +92,7 @@ def test_edit_requires_new_label():
 
 
 def test_accept_forbids_new_label():
-    _bad("reviews", [row("reviews", new_label="dancing")], "new_label")
+    _bad("reviews", [row("reviews", new_label="dance")], "new_label")
 
 
 def test_write_refuses_overwrite(tmp_path):

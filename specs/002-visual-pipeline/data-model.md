@@ -10,7 +10,7 @@
 |---|---|---|
 | `videos.parquet` | 1 | same fields as the segment stage (probed) |
 | `segments.parquet` | 1 per window | `is_idle`, `idle_score` and `visual_change` filled; other signals null |
-| `predictions.parquet` | segments × (visual labels + 1) | main model: one row per visual label scored by the model. `rules`: one `uncertain_mixed` row. Optional motion model: one row per motion label. |
+| `predictions.parquet` | segments × (visual + null labels + 1) | main model: one row per visual label and per null-group label (`label_group` "null"; noise floor only, never a result). `rules`: one `uncertain_mixed` row. Optional motion model: one row per motion label. |
 | `moments.parquet` | merged | from main-model rows only, non-idle segments only, using the video's effective `window_s` |
 | `runs.parquet` | 1 | written last (completion marker); `stage = "predict"`, `model` = main model id |
 
@@ -21,7 +21,8 @@
   - `needs_review`: carried by the existing `moments.needs_review` column. No prediction rows.
 - `uncertain` and `mixed` are removed.
 - A label's `source` is `model` (the default) or `rules`. Rules labels need no prompts. Every other label rule from 001 still applies.
-- Visual groups (`pipeline.yaml: visual_groups`): category, actor, activity. Status is rules-only. Audio, expression and indicator labels are not scored in 002.
+- Visual groups (`pipeline.yaml: visual_groups`): category, actor, activity. Status is rules-only. Indicators are `source: staff` (no prompts, never scored). Audio and expression labels are not scored in 002. The `"null"` group (`calibrate.null_group`) is scored by predict for the noise floor and excluded from every result.
+- Guideline 0.3.0 replaces the 002 starter vocabulary with the approved one (`specs/001-foundation/contracts/config.md`).
 
 ## Derived per-segment fields (computed, not stored as columns)
 
@@ -70,12 +71,13 @@ Errors name the run ID, never a path.
 
 ```yaml
 label_thresholds:
-  siglip2-so400m-patch14-384: {singing: 0.14, dancing: 0.11}   # key = predictions.model
+  siglip2-so400m-patch14-384: {singing: 0.14, dance: 0.11}   # key = predictions.model
 idle_thresholds:
   siglip2-so400m-patch14-384: 0.03
 ```
 
 Calibration rules:
-- label threshold = max(percentile `(100 − calibrate.top_pct)` of dev scores, `calibrate.min_threshold`);
+- null floor = percentile `calibrate.null_percentile` (default 99) of each dev segment's max null-group score;
+- label threshold = max(percentile `(100 − calibrate.top_pct)` of dev scores, null floor, `calibrate.min_threshold` (default 0.0, hand override));
 - idle threshold = percentile `(100 − idle.calibrate_top_pct)` of `idle_score` over dev segments with `visual_change < idle.change_threshold`;
 - labels with fewer than `calibrate.min_segments` dev segments, and an idle set that small, keep the fallback.

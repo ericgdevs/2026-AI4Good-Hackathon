@@ -59,7 +59,7 @@ Checked on 2026-10-23 against the locked environment (transformers 5.20.2, torch
 
 - **Decision**: `models.motion.enabled: false`. When it is on, X-CLIP runs on the same windows with its own frame sampling.
   - `xclip-base-patch32` was trained with exactly 8 frames, and its frame-position embedding is sized to `num_frames`. A second `segment_video` pass with `frames_per_window: 8` feeds it.
-  - It scores only `models.motion.labels` (default `dancing`, `acting`).
+  - It scores only `models.motion.labels` (default `dance`, `acting_theater`).
   - X-CLIP has no sigmoid bias, so its 0–1 score is a softmax over `[motion labels…, "other activity"]`. The `"other activity"` prompt is in config.
   - Rows are written under model `xclip-base-patch32`. These scores are relative, not independent; that is documented so evaluation compares them fairly.
 - **Alternatives**: Feed 4 frames. Not possible: the position embedding shape doesn't match.
@@ -140,3 +140,12 @@ Checked on 2026-10-23 against the locked environment (transformers 5.20.2, torch
   - It writes a **new run per video** with `stage = "moments"`, containing `videos` (copied), `predictions` (rules rows only, recomputed), `moments` and `runs`. Model rows are never copied or changed. The runs row's `model` is the main model id, and its `config_hash` includes the thresholds.
   - Predict runs are never modified (runs are immutable).
 - **Reading after a rebuild**: `read_official("moments")` uses `official_runs.yaml: moments` if it is non-empty, else `predict`. `read_official("predictions")` returns the predict run's model rows plus, when a moments run is official for that video, that run's recomputed `uncertain_mixed` rows in place of the predict run's.
+
+## 18. Null-prompt noise floor (guideline 0.3.0)
+
+- **Problem**: A pure top-percentile rule passes `top_pct`% of segments for every label, including one that never appears in the dev videos. Those segments become fake moments. A fixed absolute floor (`min_threshold`) doesn't transfer between models, whose score scales differ.
+- **Decision**: A `"null"` group of 5 deliberately unrelated labels (a plate of food, a red circle, a parked car, printed text, a fruit bowl), 3 prompts each. Predict scores and stores them like visual labels.
+  - The null floor per model is the `null_percentile` (99) of each dev segment's **max** null score: roughly the highest score pure noise reaches.
+  - Label threshold = max(label percentile, null floor, `min_threshold`), with `min_threshold` defaulting to 0.0 as a hand override.
+  - The null group is excluded from primary/secondary labels, `uncertain_mixed`, moments, `needs_review` and the calibrate table. Fewer than `min_segments` dev segments with null scores means the floor is not applied, and calibrate says so.
+- **Alternatives**: A fixed per-model absolute floor. Rejected: it needs hand-tuning per model, and nothing ties it to the noise level in this footage.

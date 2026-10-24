@@ -8,6 +8,7 @@ from tpa_index.schema import validate
 from tpa_index.score import predict_video
 
 VISUAL = {"category", "actor", "activity"}
+NULL = "null"
 
 
 def run(video, pipeline, labels, fake=None, **kw):
@@ -21,10 +22,11 @@ def model_rows(out, model="fake"):
 def test_one_score_per_segment_and_visual_label(clip_videos, pipeline, labels):
     out = run(clip_videos["t01"], pipeline, labels)
     visual = {lab["name"] for lab in model_labels(labels, VISUAL)}
+    nulls = {lab["name"] for lab in model_labels(labels, {NULL})}
     rows = model_rows(out)
-    assert len(rows) == len(out["segments"]) * len(visual)
-    assert {r["label"] for r in rows} == visual
-    assert {r["label_group"] for r in rows} <= VISUAL  # no audio/expression/indicator/status model rows
+    assert len(rows) == len(out["segments"]) * (len(visual) + len(nulls))
+    assert {r["label"] for r in rows} == visual | nulls
+    assert {r["label_group"] for r in rows} == VISUAL | {NULL}  # no audio/expression/indicator/status rows
     assert all(0 <= r["score"] <= 1 and r["run_id"] == "predict-test" for r in rows)
     assert validate("predictions", out["predictions"]).num_rows == len(out["predictions"])
     assert validate("segments", out["segments"]).num_rows == len(out["segments"])
@@ -77,7 +79,7 @@ def test_clear_activity_is_primary_and_certain(clip_videos, pipeline, labels):
 
 def test_two_equal_activities_are_uncertain_and_need_review(clip_videos, pipeline, labels):
     fake = FakeEmbedder()
-    _steer_activities(fake, labels, {"singing", "dancing"})
+    _steer_activities(fake, labels, {"singing", "dance"})
     out = run(clip_videos["t01"], pipeline, labels, fake)
     assert set(_rules(out).values()) == {1.0}
     assert out["moments"] and all(m["needs_review"] for m in out["moments"])
@@ -94,7 +96,7 @@ def test_thresholds_above_every_score_give_no_moments(clip_videos, pipeline, lab
 
 def test_clip_kind_moments_follow_its_window(clip_videos, pipeline, labels):
     fake = FakeEmbedder()
-    _steer_activities(fake, labels, {"acting"})
+    _steer_activities(fake, labels, {"acting_theater"})
     out = run(clip_videos["t02"], pipeline, labels, fake)  # kind clip: 4 s windows, 3 s stride
     starts = sorted(s["start_s"] for s in out["segments"])
     assert starts[:3] == [0, 3, 6]
@@ -141,9 +143,9 @@ def test_motion_model_adds_rows_under_its_own_name(clip_videos, pipeline, labels
     from tests.fakes import FakeMotion
 
     base = run(clip_videos["t01"], pipeline, labels)
-    out = run(clip_videos["t01"], pipeline, labels, motion=FakeMotion(["dancing", "acting"]))
+    out = run(clip_videos["t01"], pipeline, labels, motion=FakeMotion(["dance", "acting_theater"]))
     motion_rows = [p for p in out["predictions"] if p["model"] == "fake-motion"]
-    assert {r["label"] for r in motion_rows} == {"dancing", "acting"}
+    assert {r["label"] for r in motion_rows} == {"dance", "acting_theater"}
     assert len(motion_rows) == 2 * len(out["segments"])
     assert {r["segment_id"] for r in motion_rows} == {s["segment_id"] for s in out["segments"]}
     assert model_rows(out) == model_rows(base)  # main-model rows unchanged
@@ -162,3 +164,16 @@ def test_idle_inputs_are_stored(clip_videos, pipeline, labels):
     p["overrides"]["by_video"] = {"t04": {"frames_per_window": 1}}
     single = run(clip_videos["t04"], p, labels)
     assert all(s["visual_change"] is None and s["idle_score"] is not None for s in single["segments"])
+
+
+def test_null_labels_never_become_results(clip_videos, pipeline, labels):
+    fake = FakeEmbedder()
+    nulls = {lab["name"] for lab in model_labels(labels, {NULL})}
+    for lab in labels["labels"]:  # make the null prompts match every window strongly
+        if lab["name"] in nulls:
+            for prompt in lab["prompts"]:
+                fake.steer(prompt, fake.base)
+    out = run(clip_videos["t01"], pipeline, labels, fake)
+    assert out["moments"] == []  # null prompts can't create a primary label
+    rules = [p for p in out["predictions"] if p["model"] == "rules"]
+    assert {p["score"] for p in rules} == {1.0}  # no activity cleared: uncertain; null scores ignored

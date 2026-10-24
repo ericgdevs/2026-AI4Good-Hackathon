@@ -3,7 +3,7 @@
 ## config/labels.yaml
 
 - `guideline_version: "0.2.0"`
-- Each label may have a new optional `source: model | rules` field. The default is `model`. A rules label has no `prompts` and needs no `color` contrast rule beyond `#RRGGBB`.
+- Each label may have a new optional `source: model | rules | staff` field. The default is `model`. `rules` labels are computed flags; `staff` labels (the indicators) are set by staff only. Neither has prompts. A rules label has no `prompts` and needs no `color` contrast rule beyond `#RRGGBB`.
 - The status group is now:
 
 ```yaml
@@ -33,7 +33,7 @@ models:
   motion:
     enabled: false
     id: microsoft/xclip-base-patch32
-    labels: [dancing, acting]                # must be activity labels
+    labels: [dance, acting_theater]          # must be activity labels
     frames_per_window: 8                     # X-CLIP needs exactly its trained frame count
     other_prompt: "people doing some other activity"
   batch_windows: {cuda: 64, mps: 8, cpu: 4}
@@ -47,7 +47,9 @@ idle:
   calibrate_top_pct: 20          # idle percentile, separate from the label one (idle share differs from any label's)
 calibrate:
   top_pct: 10                    # label thresholds: (100 - top_pct) percentile of dev scores
-  min_threshold: 0.05            # absolute floor, so labels absent from dev data don't produce fake moments
+  min_threshold: 0.0             # hand override; the null floor does the automatic flooring
+  null_group: "null"             # quoted: bare null is YAML for nothing; scored by predict, never a result
+  null_percentile: 99            # null floor = this percentile of each dev segment's max null score
   min_segments: 20               # fewer dev segments than this: keep the fallback
 ```
 
@@ -71,6 +73,8 @@ Validation:
 - both idle thresholds are in [0, 1];
 - `0 < idle.calibrate_top_pct < 100` and `0 < calibrate.top_pct < 100`;
 - `0 ≤ calibrate.min_threshold ≤ 1`;
+- `0 < calibrate.null_percentile ≤ 100`;
+- `calibrate.null_group` is a quoted string naming a group with model labels, and not a visual, primary or secondary group;
 - `calibrate.min_segments ≥ 1`.
 
 ## config/official_runs.yaml (new, committed)

@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 from tpa_index.paths import repo_root
 
 RUN = "import sys; from tpa_index.cli import main; sys.exit(main(sys.argv[1:]))"
@@ -211,7 +213,7 @@ def _official_mock(tmp_path, monkeypatch, extra=""):
     return cli
 
 
-def _crafted_run(label="acting", score=0.001):
+def _crafted_run(label="acting_theater", score=0.001):
     """Copy of the mock run in which one label never scores above `score`."""
     from tpa_index.schema import read_table, write_table
 
@@ -237,7 +239,9 @@ def test_calibrate_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):
     cli = _official_mock(tmp_path, monkeypatch)
     assert cli.main(["calibrate", "--dry-run"]) == 0
     out = capsys.readouterr().out
-    assert "labels at the floor (min_threshold): none" in out and "idle score_threshold:" in out
+    assert "labels at the null floor: none" in out and "labels at min_threshold: none" in out
+    assert "null floor: 0." in out and "idle score_threshold:" in out
+    assert "null_food_plate" not in out  # null labels never get a threshold row
     assert not config.THRESHOLDS_LOCAL.exists()
 
 
@@ -247,13 +251,15 @@ def test_calibrate_writes_labels_idle_and_reports_floor(tmp_path, monkeypatch, c
     from tpa_index import config
 
     cli = _official_mock(tmp_path, monkeypatch)
-    _crafted_run("acting")
+    _crafted_run("acting_theater")
     (tmp_path / "official.yaml").write_text("predict: [crafted]\n")
     assert cli.main(["calibrate"]) == 0
     out = capsys.readouterr().out
-    assert "labels at the floor (min_threshold): acting" in out
+    assert "labels at the null floor: acting_theater" in out
+    floor = float(next(line for line in out.splitlines() if line.startswith("null floor:")).split()[2])
     data = yaml.safe_load(config.THRESHOLDS_LOCAL.read_text())
-    assert data["label_thresholds"]["mock-model"]["acting"] == 0.05
+    assert data["label_thresholds"]["mock-model"]["acting_theater"] == pytest.approx(floor, abs=1e-4)
+    assert not any(k.startswith("null_") for k in data["label_thresholds"]["mock-model"])
     assert set(data["idle_thresholds"]) == {"mock-model"}
     before = data["idle_thresholds"]["mock-model"]
     assert cli.main(["calibrate", "--idle-top-pct", "60"]) == 0
@@ -310,7 +316,7 @@ def test_moments_rebuild_recomputes_idle(tmp_path, monkeypatch):
 
 def test_calibrate_refuses_mixed_models_unless_named(tmp_path, monkeypatch, capsys):
     cli = _official_mock(tmp_path, monkeypatch)
-    _crafted_run("acting")
+    _crafted_run("acting_theater")
     from tpa_index.schema import read_table, write_table
 
     rows = read_table("predictions", run_ids=["crafted"]).to_pylist()

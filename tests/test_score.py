@@ -1,32 +1,32 @@
 from tpa_index.score import uncertain_mixed
 
-ACT = ["singing", "dancing", "acting"]
-T = {"singing": 0.5, "dancing": 0.5, "acting": 0.5, "music": 0.5, "solo": 0.5}
+ACT = ["singing", "dance", "acting_theater"]
+T = {"singing": 0.5, "dance": 0.5, "acting_theater": 0.5, "music": 0.5, "actor_participant": 0.5}
 
 
 def test_clear_winner():
-    scores = {"singing": 0.9, "dancing": 0.2, "acting": 0.1, "music": 0.7, "solo": 0.6}
+    scores = {"singing": 0.9, "dance": 0.2, "acting_theater": 0.1, "music": 0.7, "actor_participant": 0.6}
     assert not uncertain_mixed({k: scores[k] for k in ACT}, T, 0.1)
 
 
 def test_nothing_clears():
-    scores = {"singing": 0.3, "dancing": 0.2, "acting": 0.1, "music": 0.7, "solo": 0.1}
+    scores = {"singing": 0.3, "dance": 0.2, "acting_theater": 0.1, "music": 0.7, "actor_participant": 0.1}
     assert uncertain_mixed({k: scores[k] for k in ACT}, T, 0.1)
 
 
 def test_close_top_two_is_uncertain():
-    assert uncertain_mixed({"singing": 0.80, "dancing": 0.75, "acting": 0.1}, T, 0.1)
-    assert not uncertain_mixed({"singing": 0.80, "dancing": 0.65, "acting": 0.1}, T, 0.1)
+    assert uncertain_mixed({"singing": 0.80, "dance": 0.75, "acting_theater": 0.1}, T, 0.1)
+    assert not uncertain_mixed({"singing": 0.80, "dance": 0.65, "acting_theater": 0.1}, T, 0.1)
 
 
 def test_runner_up_below_threshold_still_counts_for_closeness():
-    assert uncertain_mixed({"singing": 0.55, "dancing": 0.49, "acting": 0.1}, T, 0.1)
+    assert uncertain_mixed({"singing": 0.55, "dance": 0.49, "acting_theater": 0.1}, T, 0.1)
 
 
 def test_per_label_threshold_is_used():
-    scores = {"singing": 0.40, "dancing": 0.20, "acting": 0.05}
-    low = {**T, "dancing": 0.15}  # singing below its 0.5; dancing clears its 0.15
-    # dancing wins on its own threshold, but uncleared singing scores higher: too close to call
+    scores = {"singing": 0.40, "dance": 0.20, "acting_theater": 0.05}
+    low = {**T, "dance": 0.15}  # singing below its 0.5; dance clears its 0.15
+    # dance wins on its own threshold, but uncleared singing scores higher: too close to call
     assert uncertain_mixed(scores, low, 0.1)
 
 

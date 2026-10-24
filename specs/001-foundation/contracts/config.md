@@ -19,23 +19,27 @@ labels:
 Rules:
 
 - `name` is unique.
-- `group` must be in the allowed set.
+- `group` must be in the allowed set (activity, category, actor, audio, expression, indicator, status, "null").
 - `prompts` must have 3–5 entries.
 - `color` must match `#RRGGBB`.
 - Every group needs at least one label.
 - Expression labels are exactly `confident`, `upset`, `positive`, `neutral`, `negative`.
 - No clinical, psychological, health, disability, demographic or mental-state labels (Constitution V). A banned-term list is checked in the tests.
 
-Starter vocabulary (wording owned by the team):
+Approved vocabulary (guideline 0.3.0; wording owned by the team; `config/labels.yaml` is the source of truth):
 
-| group | labels |
-|---|---|
-| activity | singing, dancing, acting, playing_instrument, speaking, rehearsing |
-| category | performance, practice, workshop, discussion |
-| actor | solo, small_group, ensemble, staff_led |
-| audio | music, speech, applause, silence |
-| indicator | participation, self_expression, original_work |
-| status | uncertain, mixed, needs_review |
+| group | labels | source |
+|---|---|---|
+| category | performance, creative_practice, participation, instruction | model |
+| actor | actor_participant, actor_staff_facilitation | model |
+| activity | singing, songwriting, lyricism_spoken_word, dance, acting_theater, visual_arts, recording_arts, instrument, film_production, podcast_interview, modeling_runway, fashion_design, audience_watching | model |
+| audio | music, speech, applause, silence | model (scored from 004) |
+| expression | confident, upset, positive, neutral, negative | model (scored from 004) |
+| indicator | solo_on_stage, group_performance, voice_projection, sustained_participation, presenting_to_peers, original_work | staff (no prompts) |
+| status | uncertain_mixed, needs_review | rules (no prompts) |
+| "null" | null_food_plate, null_red_circle, null_parked_car, null_printed_text, null_fruit_bowl | model; noise floor for calibrate only, never a result |
+
+Model labels have 3 concrete, visual prompts each (what a camera sees; no feelings, no judgments about people). The group name `"null"` must be quoted in YAML.
 
 ## config/pipeline.yaml (committed)
 

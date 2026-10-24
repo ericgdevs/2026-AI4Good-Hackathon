@@ -28,7 +28,8 @@ def _load(path: Path) -> dict:
         raise ConfigError(f"cannot load {Path(path).name}: {type(e).__name__}") from None
 
 
-LABEL_GROUPS = ("activity", "category", "actor", "audio", "expression", "indicator", "status")
+LABEL_GROUPS = ("activity", "category", "actor", "audio", "expression", "indicator", "status", "null")
+SOURCES = ("model", "rules", "staff")  # rules: computed flags; staff: set by staff only. Neither has prompts
 EXPRESSIONS = {"confident", "upset", "positive", "neutral", "negative"}
 OVERRIDABLE = ("window_s", "overlap_s", "frames_per_window")
 
@@ -50,12 +51,12 @@ def _check_labels(d: dict) -> dict:
         if lab.get("group") not in LABEL_GROUPS:
             raise ConfigError(f"label {name}: unknown group {lab.get('group')!r}")
         source = lab.get("source", "model")
-        if source not in ("model", "rules"):
-            raise ConfigError(f"label {name}: source must be 'model' or 'rules'")
+        if source not in SOURCES:
+            raise ConfigError(f"label {name}: source must be one of {', '.join(SOURCES)}")
         prompts = lab.get("prompts")
-        if source == "rules":
+        if source != "model":
             if prompts:
-                raise ConfigError(f"label {name}: rules labels must not have prompts")
+                raise ConfigError(f"label {name}: {source} labels must not have prompts")
         elif not isinstance(prompts, list) or not 3 <= len(prompts) <= 5 or not all(isinstance(x, str) and x for x in prompts):
             raise ConfigError(f"label {name}: needs 3-5 prompt phrasings")
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(lab.get("color", ""))):
@@ -151,6 +152,13 @@ def _check_pipeline(d: dict) -> dict:
         if not 0 < block[key] < 100:
             raise ConfigError(f"{where}: {key} must be within (0, 100)")
     _number(cal, "min_threshold", "pipeline.calibrate")
+    _number(cal, "null_percentile", "pipeline.calibrate")
+    if not 0 < cal["null_percentile"] <= 100:
+        raise ConfigError("pipeline.calibrate: null_percentile must be within (0, 100]")
+    if not isinstance(cal.get("null_group"), str):
+        raise ConfigError("pipeline.calibrate: null_group must be a quoted group name (bare null is not a name)")
+    if cal["null_group"] in d["visual_groups"] or cal["null_group"] in [m.get("primary_group"), *(m.get("secondary_groups") or [])]:
+        raise ConfigError("pipeline.calibrate: null_group must not be a visual, primary or secondary group")
     if not 0 <= cal["min_threshold"] <= 1:
         raise ConfigError("pipeline.calibrate: min_threshold must be within 0-1")
     if not isinstance(cal.get("min_segments"), int) or cal["min_segments"] < 1:
@@ -205,10 +213,10 @@ def load_labels(path=None) -> dict:
 
 def _check_pipeline_labels(d: dict, labels: dict) -> dict:
     """Checks that need the label vocabulary."""
-    groups = set(d["visual_groups"])
+    groups = set(d["visual_groups"]) | {d["calibrate"]["null_group"]}
     for g in groups:
         if not model_labels(labels, {g}):
-            raise ConfigError(f"pipeline: visual group {g} has no model-scored labels")
+            raise ConfigError(f"pipeline: group {g} (visual or null) has no model-scored labels")
     scored = {lab["name"] for lab in model_labels(labels)}
     for model, per_label in d["label_thresholds"].items():
         for label in per_label:

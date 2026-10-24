@@ -93,7 +93,8 @@ def predict_video(video: dict, pipeline: dict, labels: dict, embedder, run_id: s
                  "fps": info["fps"], "orientation": info["orientation"], "kind": video["kind"],
                  "phase": video["phase"], "cohort": video.get("cohort"), "split": video["split"]}
     settings = effective_settings(pipeline, video)
-    scored = model_labels(labels, set(pipeline["visual_groups"]))
+    # null labels are scored and stored for the calibrate noise floor; nothing downstream treats them as results
+    scored = model_labels(labels, set(pipeline["visual_groups"]) | {pipeline["calibrate"]["null_group"]})
     names = [lab["name"] for lab in scored]
     group_of = {lab["name"]: lab["group"] for lab in scored}
     emb = label_embeddings(embedder, scored)

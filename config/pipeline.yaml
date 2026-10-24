@@ -25,7 +25,7 @@ models:
   motion:
     enabled: false
     id: microsoft/xclip-base-patch32
-    labels: [dancing, acting]                # must be activity labels
+    labels: [dance, acting_theater]          # must be activity labels
     frames_per_window: 8                     # X-CLIP needs exactly its trained frame count
     other_prompt: "people doing some other activity"
   batch_windows: {cuda: 64, mps: 8, cpu: 4}
@@ -39,5 +39,7 @@ idle:
   calibrate_top_pct: 20          # idle percentile, separate from labels (idle share differs from any label's)
 calibrate:
   top_pct: 10                    # label thresholds: (100 - top_pct) percentile of dev scores
-  min_threshold: 0.05            # absolute floor, so labels absent from dev data don't produce fake moments
+  min_threshold: 0.0             # hand override; the null floor below does the automatic flooring
+  null_group: "null"             # quoted: bare null is YAML for nothing. Scored by predict, never a result
+  null_percentile: 99            # null floor = this percentile of each dev segment's max null score
   min_segments: 20               # fewer dev segments than this: keep the fallback

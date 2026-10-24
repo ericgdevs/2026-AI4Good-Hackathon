@@ -26,17 +26,39 @@ def dev_scores(predictions, videos, model: str) -> dict[str, np.ndarray]:
     return {label: np.asarray(v, np.float64) for label, v in out.items()}
 
 
-def propose_thresholds(predictions, videos, model: str, top_pct: float, min_segments: int,
-                       min_threshold: float) -> dict[str, tuple[float | None, bool]]:
-    """label -> (threshold, floored). threshold = max(percentile, min_threshold); None if too few dev segments.
-    The floor keeps a label that never occurs in the dev videos from passing top_pct% of segments anyway."""
+def null_floor(predictions, videos, model: str, null_labels: set[str], null_percentile: float,
+               min_segments: int) -> tuple[float | None, int]:
+    """(floor, n): the null_percentile of each dev segment's highest null-prompt score. None if too few segments.
+    Unrelated prompts show how high pure noise scores; a real label must beat that."""
+    dev = _dev_videos(videos)
+    per_segment: dict[str, float] = {}
+    for p in _rows(predictions):
+        if p["model"] == model and p["label"] in null_labels and p["segment_id"].rsplit("_", 1)[0] in dev:
+            per_segment[p["segment_id"]] = max(per_segment.get(p["segment_id"], 0.0), p["score"])
+    if len(per_segment) < min_segments:
+        return None, len(per_segment)
+    return float(np.percentile(list(per_segment.values()), null_percentile)), len(per_segment)
+
+
+def propose_thresholds(predictions, videos, model: str, top_pct: float, min_segments: int, min_threshold: float,
+                       null_labels: set[str] = frozenset(), floor: float | None = None
+                       ) -> dict[str, tuple[float | None, str | None]]:
+    """label -> (threshold, floored_by). threshold = max(percentile, null floor, min_threshold);
+    floored_by is "null" or "min" when a floor won, None otherwise. Null labels themselves are never proposed."""
     out = {}
     for label, scores in sorted(dev_scores(predictions, videos, model).items()):
+        if label in null_labels:
+            continue
         if len(scores) < min_segments:
-            out[label] = (None, False)
+            out[label] = (None, None)
             continue
         value = float(np.percentile(scores, 100 - top_pct))
-        out[label] = (max(value, min_threshold), value < min_threshold)
+        best, by = value, None
+        if floor is not None and floor > best:
+            best, by = floor, "null"
+        if min_threshold > best:
+            best, by = min_threshold, "min"
+        out[label] = (best, by)
     return out
 
 

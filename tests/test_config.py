@@ -96,10 +96,10 @@ def test_vocabulary_has_no_banned_terms(labels):
     assert not words.findall(text)
 
 
-def test_shipped_labels_are_guideline_0_2_0(labels):
+def test_shipped_labels_are_guideline_0_3_0(labels):
     from tpa_index.config import model_labels, rules_labels
 
-    assert labels["guideline_version"] == "0.2.0"
+    assert labels["guideline_version"] == "0.3.0"
     assert {lab["name"] for lab in rules_labels(labels)} == {"uncertain_mixed", "needs_review"}
     assert not {"uncertain", "mixed"} & {lab["name"] for lab in labels["labels"]}
     assert all(lab["group"] != "status" for lab in model_labels(labels))
@@ -122,7 +122,7 @@ def test_model_label_without_prompts_fails(labels):
 
 def test_unknown_source_fails(labels):
     with pytest.raises(ConfigError, match="source"):
-        _check_labels(_labels_with(labels, source="staff"))
+        _check_labels(_labels_with(labels, source="robot"))
 
 
 @pytest.mark.parametrize("change,match", [
@@ -146,7 +146,7 @@ def test_bad_pipeline_keys(pipeline, change, match):
     (lambda p: p["models"]["motion"].update(labels=["music"]), "music is not an activity label"),
     (lambda p: p.update(label_thresholds={"m": {"nope": 0.2}}), "nope: not a model-scored label"),
     (lambda p: p.update(label_thresholds={"m": {"uncertain_mixed": 0.2}}), "uncertain_mixed: not a model-scored"),
-    (lambda p: p.update(visual_groups=["status"]), "status has no model-scored labels"),
+    (lambda p: p.update(visual_groups=["status"]), "group status \\(visual or null\\) has no model-scored labels"),
 ])
 def test_pipeline_checks_against_labels(pipeline, labels, change, match):
     from tpa_index.config import _check_pipeline_labels
@@ -168,7 +168,7 @@ def test_threshold_fallback_and_overrides(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "THRESHOLDS_LOCAL", local)
     p = load_pipeline()
     assert threshold(p, "m1", "singing") == 0.12
-    assert threshold(p, "m1", "dancing") == p["label_threshold"]
+    assert threshold(p, "m1", "dance") == p["label_threshold"]
     assert threshold(p, "m2", "singing") == p["label_threshold"]  # another model's threshold never applies
 
 
@@ -178,13 +178,13 @@ def test_local_thresholds_win_over_pipeline(tmp_path, monkeypatch):
 
     pipe = tmp_path / "pipeline.yaml"
     base = yaml.safe_load((config.CONFIG_DIR / "pipeline.yaml").read_text())
-    base["label_thresholds"] = {"m1": {"singing": 0.3, "dancing": 0.4}}
+    base["label_thresholds"] = {"m1": {"singing": 0.3, "dance": 0.4}}
     pipe.write_text(yaml.safe_dump(base))
     local = tmp_path / "thresholds.local.yaml"
     local.write_text("label_thresholds:\n  m1: {singing: 0.12}\n")
     monkeypatch.setattr(config, "THRESHOLDS_LOCAL", local)
     p = load_pipeline(pipe)
-    assert (threshold(p, "m1", "singing"), threshold(p, "m1", "dancing")) == (0.12, 0.4)
+    assert (threshold(p, "m1", "singing"), threshold(p, "m1", "dance")) == (0.12, 0.4)
 
 
 @pytest.mark.parametrize("change,match", [
@@ -196,6 +196,39 @@ def test_local_thresholds_win_over_pipeline(tmp_path, monkeypatch):
     (lambda p: p.pop("calibrate"), "calibrate section"),
 ])
 def test_bad_calibrate_settings(pipeline, change, match):
+    bad = copy.deepcopy(pipeline)
+    change(bad)
+    with pytest.raises(ConfigError, match=match):
+        _check_pipeline(bad)
+
+
+def test_approved_vocabulary(labels):
+    from tpa_index.config import model_labels
+
+    by_group = lambda g: [lab["name"] for lab in labels["labels"] if lab["group"] == g]  # noqa: E731
+    assert by_group("category") == ["performance", "creative_practice", "participation", "instruction"]
+    assert by_group("actor") == ["actor_participant", "actor_staff_facilitation"]
+    assert len(by_group("activity")) == 13 and "audience_watching" in by_group("activity")
+    assert all(lab.get("source") == "staff" and not lab.get("prompts")
+               for lab in labels["labels"] if lab["group"] == "indicator")
+    assert len(model_labels(labels, {"null"})) == 5
+    assert all(len(lab["prompts"]) == 3 for lab in model_labels(labels, {"category", "actor", "activity"}))
+
+
+def test_staff_label_with_prompts_fails(labels):
+    bad = copy.deepcopy(labels)
+    staff = next(lab for lab in bad["labels"] if lab.get("source") == "staff")
+    staff["prompts"] = ["a", "b", "c"]
+    with pytest.raises(ConfigError, match="staff labels must not have prompts"):
+        _check_labels(bad)
+
+
+@pytest.mark.parametrize("change,match", [
+    (lambda p: p["calibrate"].update(null_group=None), "quoted group name"),
+    (lambda p: p["calibrate"].update(null_group="activity"), "must not be a visual"),
+    (lambda p: p["calibrate"].update(null_percentile=0), "null_percentile"),
+])
+def test_bad_null_settings(pipeline, change, match):
     bad = copy.deepcopy(pipeline)
     change(bad)
     with pytest.raises(ConfigError, match=match):

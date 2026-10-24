@@ -1,65 +1,87 @@
 # Label vocabulary. Observable behaviour only (Constitution V); bump guideline_version on any change.
-guideline_version: "0.2.0"
+# Prompts describe what a camera sees: no feelings, no judgments about people.
+# source: model (default, scored by a model) | rules (computed flags) | staff (set by staff only, no prompts).
+guideline_version: "0.3.0"
 labels:
-  # activity
-  - name: singing
-    group: activity
-    prompts: ["a person singing", "a group of kids singing together", "someone singing into a microphone"]
-    color: "#1f77b4"
-  - name: dancing
-    group: activity
-    prompts: ["people dancing", "a child dancing on stage", "a group doing choreographed dance moves"]
-    color: "#ff7f0e"
-  - name: acting
-    group: activity
-    prompts: ["kids acting out a scene", "a person performing a role on stage", "actors performing a skit"]
-    color: "#2ca02c"
-  - name: playing_instrument
-    group: activity
-    prompts: ["a person playing a musical instrument", "someone playing drums", "a kid playing piano or guitar"]
-    color: "#d62728"
-  - name: speaking
-    group: activity
-    prompts: ["a person speaking to an audience", "someone reciting a poem", "a kid presenting into a microphone"]
-    color: "#9467bd"
-  - name: rehearsing
-    group: activity
-    prompts: ["a group rehearsing", "kids practicing a routine", "people running through a rehearsal"]
-    color: "#8c564b"
   # category
   - name: performance
     group: category
-    prompts: ["a stage performance in front of an audience", "a live show", "performers on a stage with lights"]
+    prompts: ["teens performing on a stage for an audience", "young performers on a lit stage facing a seated audience", "a group of teens presenting a show to a crowd"]
     color: "#e377c2"
-  - name: practice
+  - name: creative_practice
     group: category
-    prompts: ["a practice session in a studio", "an informal practice", "a rehearsal room session"]
+    prompts: ["teens practicing art in a workshop room", "young people rehearsing together in a studio", "teens working on creative projects at tables"]
     color: "#7f7f7f"
-  - name: workshop
+  - name: participation
     group: category
-    prompts: ["an instructor teaching a workshop", "a class learning a new skill", "a teaching session with a group"]
+    prompts: ["a group of teens actively taking part in an activity together", "teens standing in a circle doing a group exercise", "many teens moving and joining in at the same time"]
     color: "#bcbd22"
-  - name: discussion
+  - name: instruction
     group: category
-    prompts: ["people sitting and talking in a circle", "a group discussion", "a conversation between participants"]
+    prompts: ["an adult teaching a group of teens", "an adult standing in front of seated teens giving directions", "an instructor pointing at a whiteboard while teens watch"]
     color: "#17becf"
   # actor
-  - name: solo
+  - name: actor_participant
     group: actor
-    prompts: ["one person performing alone", "a solo performer", "a single person in focus"]
+    prompts: ["teens doing the activity themselves", "young people performing the task with their own hands", "teens at the center of the activity"]
     color: "#393b79"
-  - name: small_group
+  - name: actor_staff_facilitation
     group: actor
-    prompts: ["two or three people performing", "a small group together", "a duo or trio"]
-    color: "#637939"
-  - name: ensemble
-    group: actor
-    prompts: ["a large group performing together", "an ensemble on stage", "many people in a group"]
-    color: "#8c6d31"
-  - name: staff_led
-    group: actor
-    prompts: ["an adult instructor leading the group", "a teacher demonstrating", "staff guiding participants"]
+    prompts: ["an adult leading an activity for teens", "an adult demonstrating a move while teens watch", "an adult instructor speaking to a group"]
     color: "#843c39"
+  # activity
+  - name: singing
+    group: activity
+    prompts: ["a teen singing into a microphone", "a group of teens singing together", "a singer on stage holding a microphone"]
+    color: "#1f77b4"
+  - name: songwriting
+    group: activity
+    prompts: ["teens writing lyrics in notebooks", "a teen writing words on a page with a pen", "young people sitting at a table with notebooks and pens"]
+    color: "#aec7e8"
+  - name: lyricism_spoken_word
+    group: activity
+    prompts: ["a teen reciting poetry to an audience", "a young person rapping into a microphone on stage", "a performer speaking verses to a crowd"]
+    color: "#9467bd"
+  - name: dance
+    group: activity
+    prompts: ["teens dancing", "a group doing choreographed dance moves", "a dancer moving across a stage"]
+    color: "#ff7f0e"
+  - name: acting_theater
+    group: activity
+    prompts: ["teens acting out a scene on stage", "young actors performing a play", "two performers acting a scene facing each other"]
+    color: "#2ca02c"
+  - name: visual_arts
+    group: activity
+    prompts: ["teens painting on canvas", "a young person drawing on paper", "teens with paint brushes at an easel"]
+    color: "#98df8a"
+  - name: recording_arts
+    group: activity
+    prompts: ["a teen recording vocals in a studio booth", "a young person making beats on a laptop", "hands tapping a drum pad next to a laptop"]
+    color: "#c5b0d5"
+  - name: instrument
+    group: activity
+    prompts: ["a teen playing a musical instrument", "a young person playing drums", "a teen playing piano or guitar"]
+    color: "#d62728"
+  - name: film_production
+    group: activity
+    prompts: ["a teen operating a video camera", "young people filming a scene with a camera on a tripod", "a teen holding a camera pointed at actors"]
+    color: "#8c564b"
+  - name: podcast_interview
+    group: activity
+    prompts: ["teens talking into microphones at a table", "two people seated across a table with podcast microphones", "a teen wearing headphones speaking into a microphone"]
+    color: "#c49c94"
+  - name: modeling_runway
+    group: activity
+    prompts: ["a teen walking a runway", "young models walking in a line down a runway", "a teen posing at the end of a catwalk"]
+    color: "#f7b6d2"
+  - name: fashion_design
+    group: activity
+    prompts: ["a teen sewing fabric at a sewing machine", "young people designing clothes on a mannequin", "a teen cutting fabric on a table"]
+    color: "#dbdb8d"
+  - name: audience_watching
+    group: activity
+    prompts: ["people seated watching a performance", "an audience in rows of chairs facing a stage", "a crowd watching a show"]
+    color: "#9edae5"
   # audio
   - name: music
     group: audio
@@ -98,19 +120,34 @@ labels:
     group: expression
     prompts: ["a person scowling", "a face with a frown", "someone turning away with a frown"]
     color: "#756bb1"
-  # indicator (program-level aggregates)
-  - name: participation
-    group: indicator
-    prompts: ["kids actively taking part", "participants joining in the activity", "everyone in the group participating"]
-    color: "#08519c"
-  - name: self_expression
-    group: indicator
-    prompts: ["a kid expressing themselves through performance", "a participant sharing their own story", "a personal creative performance"]
-    color: "#a63603"
-  - name: original_work
-    group: indicator
-    prompts: ["kids performing their own original song", "a participant presenting work they wrote", "an original piece created by the group"]
-    color: "#006d2c"
+  # indicator (set by staff only, never model-scored)
+  - {name: solo_on_stage, group: indicator, source: staff, color: "#08519c"}
+  - {name: group_performance, group: indicator, source: staff, color: "#3182bd"}
+  - {name: voice_projection, group: indicator, source: staff, color: "#6baed6"}
+  - {name: sustained_participation, group: indicator, source: staff, color: "#a63603"}
+  - {name: presenting_to_peers, group: indicator, source: staff, color: "#e6550d"}
+  - {name: original_work, group: indicator, source: staff, color: "#006d2c"}
+  # null: deliberately unrelated prompts; their scores set the noise floor in calibrate. Never a result.
+  - name: null_food_plate
+    group: "null"            # quoted: bare null is YAML for "nothing"
+    prompts: ["a plate of food on a table", "a dinner plate with a meal", "a close-up of a plate of food"]
+    color: "#d9d9d9"
+  - name: null_red_circle
+    group: "null"
+    prompts: ["a red circle on a white background", "a simple red dot on white", "a flat red circle graphic"]
+    color: "#cccccc"
+  - name: null_parked_car
+    group: "null"
+    prompts: ["a parked car on a street", "a car parked by the curb", "a single car on an empty road"]
+    color: "#bfbfbf"
+  - name: null_printed_text
+    group: "null"
+    prompts: ["a page of printed text", "a close-up of a printed document", "black text on a white sheet of paper"]
+    color: "#b3b3b3"
+  - name: null_fruit_bowl
+    group: "null"
+    prompts: ["a bowl of fruit", "apples and bananas in a bowl", "a fruit bowl on a kitchen counter"]
+    color: "#a6a6a6"
   # status (rule-derived, never scored by a model)
   - name: uncertain_mixed
     group: status

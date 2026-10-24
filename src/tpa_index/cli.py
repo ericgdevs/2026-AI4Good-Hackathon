@@ -163,8 +163,8 @@ def _calibration_model(predictions, stage: str, requested: str | None) -> str:
 
 
 def _calibrate(args) -> int:
-    from tpa_index.calibrate import (dev_scores, idle_candidates, propose_idle_threshold, propose_thresholds,
-                                     write_local_thresholds)
+    from tpa_index.calibrate import (dev_scores, idle_candidates, null_floor, propose_idle_threshold,
+                                     propose_thresholds, write_local_thresholds)
     from tpa_index.schema import read_official
 
     if args.split != "dev":
@@ -179,18 +179,24 @@ def _calibrate(args) -> int:
         raise ConfigError(f"no official dev runs for stage {args.stage}")
     model = _calibration_model(preds, args.stage, args.model)
     dev_ids = sorted(v["video_id"] for v in videos.to_pylist() if v["split"] == "dev")
-    proposals = propose_thresholds(preds, videos, model, top_pct, cal["min_segments"], cal["min_threshold"])
+    null_labels = {lab["name"] for lab in load_labels()["labels"] if lab["group"] == cal["null_group"]}
+    floor, n_null = null_floor(preds, videos, model, null_labels, cal["null_percentile"], cal["min_segments"])
+    proposals = propose_thresholds(preds, videos, model, top_pct, cal["min_segments"], cal["min_threshold"],
+                                   null_labels, floor)
     scores = dev_scores(preds, videos, model)
-    print(f"model: {model}  label top_pct: {top_pct}  floor: {cal['min_threshold']}")
+    print(f"model: {model}  label top_pct: {top_pct}  min_threshold: {cal['min_threshold']}")
     print(f"dev videos used: {', '.join(dev_ids)}")
-    print(f"{'label':<20} {'threshold':>9} {'n_dev':>6} {'clearing':>8}  floored")
-    for label, (value, floored) in proposals.items():
+    floor_shown = "too few null scores, not applied" if floor is None else f"{floor:.4f}"
+    print(f"null floor: {floor_shown} (p{cal['null_percentile']} of max null score over {n_null} dev segments)")
+    print(f"{'label':<24} {'threshold':>9} {'n_dev':>6} {'clearing':>8}  floored_by")
+    for label, (value, by) in proposals.items():
         n = len(scores[label])
         clearing = "-" if value is None else int((scores[label] >= value).sum())
         shown = "too few" if value is None else f"{value:.4f}"
-        print(f"{label:<20} {shown:>9} {n:>6} {clearing:>8}  {'yes' if floored else ''}")
-    at_floor = [label for label, (_, floored) in proposals.items() if floored]
-    print(f"labels at the floor (min_threshold): {', '.join(at_floor) if at_floor else 'none'}")
+        print(f"{label:<24} {shown:>9} {n:>6} {clearing:>8}  {by or ''}")
+    for by, name in (("null", "the null floor"), ("min", "min_threshold")):
+        hit = [label for label, (_, b) in proposals.items() if b == by]
+        print(f"labels at {name}: {', '.join(hit) if hit else 'none'}")
     idle_value = propose_idle_threshold(segs, videos, idle_top_pct, idle["change_threshold"], cal["min_segments"])
     n_idle = len(idle_candidates(segs, videos, idle["change_threshold"]))
     idle_shown = "too few, keeps fallback" if idle_value is None else f"{idle_value:.4f}"

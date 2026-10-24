@@ -21,7 +21,8 @@ def test_real_model_scores_a_synthetic_clip(clip_videos, pipeline, labels, monke
     embedder = SiglipEmbedder(MODEL, "cpu")
     out = predict_video(clip_videos["t01"], pipeline, labels, embedder, "predict-slow")
     rows = [p for p in out["predictions"] if p["model"] == embedder.name]
-    assert len(rows) == len(out["segments"]) * len(model_labels(labels, set(pipeline["visual_groups"])))
+    groups = set(pipeline["visual_groups"]) | {pipeline["calibrate"]["null_group"]}
+    assert len(rows) == len(out["segments"]) * len(model_labels(labels, groups))
     assert all(0 < r["score"] < 1 for r in rows)
     again = predict_video(clip_videos["t01"], pipeline, labels, embedder, "predict-slow")
     again_rows = [p for p in again["predictions"] if p["model"] == embedder.name]

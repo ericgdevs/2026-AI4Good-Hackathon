@@ -6,7 +6,7 @@ from tpa_index.schema import validate
 PIPE = {"window_s": 8, "label_threshold": 0.5, "label_thresholds": {},
         "moments": {"primary_group": "activity", "secondary_groups": ["audio"], "max_gap_windows": 1,
                     "min_windows": 1, "needs_review_margin": 0.2}}
-GROUPS = {"singing": "activity", "dancing": "activity", "music": "audio", "participation": "indicator"}
+GROUPS = {"singing": "activity", "dance": "activity", "music": "audio", "solo_on_stage": "indicator"}
 
 
 def make(spec, length=8, idle=(), flagged=()):
@@ -82,11 +82,11 @@ def test_per_label_threshold_and_model_filter():
     segs, preds = make([(0, {"singing": 0.9})])
     assert merge_moments(segs, preds, p, "r1", model="m1") == []  # 0.9 < 0.95 for m1
     assert len(merge_moments(segs, preds, p, "r1", model=None)) == 1  # global 0.5 applies without a model
-    other = [dict(x, model="m2", score=0.99) for x in preds if x["model"] == "m1" and x["label"] == "dancing"]
+    other = [dict(x, model="m2", score=0.99) for x in preds if x["model"] == "m1" and x["label"] == "dance"]
     assert merge_moments(segs, preds + other, p, "r1", model="m1") == []  # m2 rows ignored for m1
 
 
 def test_secondary_and_indicators_listed_and_valid():
-    m = merge_moments(*make([(0, {"singing": 0.9, "music": 0.8, "participation": 0.7})]), PIPE, "r1")
-    assert m[0]["secondary_labels"] == ["music"] and m[0]["indicators"] == ["participation"]
+    m = merge_moments(*make([(0, {"singing": 0.9, "music": 0.8, "solo_on_stage": 0.7})]), PIPE, "r1")
+    assert m[0]["secondary_labels"] == ["music"] and m[0]["indicators"] == ["solo_on_stage"]
     assert validate("moments", m).num_rows == 1

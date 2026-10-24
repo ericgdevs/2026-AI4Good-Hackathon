@@ -5,7 +5,7 @@ import os
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"  # before gradio is imported anywhere
 
 from tpa_index import review  # noqa: E402
-from tpa_index.config import load_labels, load_pipeline  # noqa: E402
+from tpa_index.config import load_labels, load_pipeline, load_theme  # noqa: E402
 from tpa_index.paths import redact  # noqa: E402
 
 QUEUE_NAMES = {"Main sample": "main", "Overlap set (second labeler)": "overlap", "Top-up": "topup"}
@@ -348,9 +348,11 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
     blind = BlindController(cutter, root, labels, pipeline)
     rv = ReviewController(cutter, root, blind.labels, blind.pipeline)
     cl = blind.checklist
-    with gr.Blocks(analytics_enabled=False, title="TPA review") as demo:
+    palette = load_theme()
+    with gr.Blocks(analytics_enabled=False, title="TPA video index") as demo:
         demo.blind, demo.review = blind, rv
-        gr.Markdown("## TPA review (local only)")
+        gr.Markdown("## TPA video index (local only)")
+        gr.Markdown(palette["credit"], elem_id="app-credit-header")
         with gr.Row():
             reviewer = gr.Textbox(label="Reviewer", placeholder=REVIEWER_HINT, elem_id="reviewer", scale=3)
             reload_btn = gr.Button("Reload data", scale=1)
@@ -456,26 +458,46 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
 
         reload_btn.click(reload, None, [queue, topup_note, video, lock_note])
         start_btn.click(lambda: blind.queue_choices()[1], None, topup_note)
+        gr.Markdown(palette["credit"], elem_id="app-credit-footer")
     return demo
 
 
 def theme():
+    """Light theme from config/theme.yaml (no colour is written in code)."""
     import gradio as gr
 
-    return gr.themes.Default(font=["system-ui", "sans-serif"], font_mono=["ui-monospace", "monospace"])
+    p = load_theme()
+    return gr.themes.Default(font=["system-ui", "sans-serif"], font_mono=["ui-monospace", "monospace"]).set(
+        body_background_fill=p["background"], background_fill_primary=p["surface"],
+        background_fill_secondary=p["background"], block_background_fill=p["surface"],
+        body_text_color=p["text"], body_text_color_subdued=p["text_secondary"], table_text_color=p["text"],
+        block_title_text_color=p["accent_deep"], block_label_text_color=p["text_secondary"],
+        color_accent=p["accent"], color_accent_soft=p["background"], border_color_accent=p["accent"],
+        link_text_color=p["accent_deep"], link_text_color_hover=p["accent"], link_text_color_visited=p["accent_deep"],
+        button_primary_background_fill=p["accent"], button_primary_background_fill_hover=p["accent_deep"],
+        button_primary_border_color=p["accent"], button_primary_text_color=p["surface"],
+        button_primary_text_color_hover=p["surface"],
+    )
+
+
+def page_css() -> str:
+    return f"h1, h2, h3 {{ color: {load_theme()['accent_deep']}; }}"  # deep accent for headers, from theme.yaml
 
 
 def launch_kwargs(session, port: int) -> dict:
     """The only launch settings the app ever uses: loopback, no sharing, no monitoring, light theme."""
     return dict(server_name="127.0.0.1", server_port=port, share=False, enable_monitoring=False, inbrowser=False,
-                allowed_paths=[str(session)], theme=theme(), js=PAGE_JS, ssr_mode=False, quiet=True,
+                allowed_paths=[str(session)], theme=theme(), js=PAGE_JS, css=page_css(), ssr_mode=False, quiet=True,
                 footer_links=[])
 
 
 def launch(port: int | None = None) -> None:
     from tpa_index.clips import ClipCutter, register_cleanup, session_dir
 
+    from tpa_index.config import check_guideline
+
     pipeline = load_pipeline()
+    print(check_guideline(load_labels()))  # refuses a vocabulary change without a guideline bump
     session = session_dir()
     # clips already inside Gradio's cache folder are served in place (no copy), so cut()'s deletion applies
     os.environ["GRADIO_TEMP_DIR"] = str(session)

@@ -1,0 +1,21 @@
+video_id,start_s,end_s,primary_label,secondary_labels,indicators,contextual_observation,confidence,source,review_decision,guideline_version,reviewer_note,review_date
+mock01,0.0,8.0,acting_theater,speech;instruction;applause,,,0.877,ai,pending,0.5.0,,
+mock01,12.0,20.0,acting_theater,upset;instruction;speech;actor_participant,,,0.794,ai,accepted,0.5.0,,2026-01-01
+mock01,24.0,38.0,singing,upset;speech;instruction;actor_participant,,,0.623,staff,edited,0.5.0,relabelled by staff,2026-01-01
+mock01,36.0,50.0,singing,applause;performance;upset;actor_participant,,,0.684,ai,rejected,0.5.0,not this activity,2026-01-01
+mock01,48.0,62.0,modeling_runway,performance;applause;actor_staff_facilitation,,,0.693,ai,deferred,0.5.0,unclear from this angle,2026-01-01
+mock01,60.0,80.0,acting_theater,actor_staff_facilitation;applause;performance;confident,,,0.8,ai,rejected,0.5.0,,2026-01-01
+mock01,78.0,98.0,dance,confident;music;actor_participant,,,0.849,ai,accepted,0.5.0,,2026-01-01
+mock01,96.0,104.0,songwriting,performance;actor_participant;confident;music,,,0.831,ai,accepted,0.5.0,,2026-01-01
+mock01,114.0,122.0,songwriting,creative_practice;actor_participant;music;speech;upset,,,0.753,ai,deferred,0.5.0,,2026-01-01
+mock01,120.0,128.0,acting_theater,creative_practice;actor_participant;speech,solo_on_stage,,0.506,staff,accepted,0.5.0,added by staff,2026-01-01
+mock01,138.0,194.0,visual_arts,negative;music,,staging_issue: framing cuts off the left side,0.772,ai,accepted,0.5.0,framing cuts off the left side,2026-01-01
+mock01,198.0,224.0,lyricism_spoken_word,performance;singing_voice;actor_staff_facilitation,,,0.851,ai,pending,0.5.0,,
+mock01,222.0,242.0,film_production,actor_staff_facilitation;upset;instruction;singing_voice;music,,,0.593,ai,accepted,0.5.0,,2026-01-01
+mock01,240.0,266.0,singing,actor_staff_facilitation;instruction;music,,,0.735,staff,edited,0.5.0,relabelled by staff,2026-01-01
+mock01,276.0,320.0,modeling_runway,performance;confident;applause;actor_staff_facilitation,,,0.75,ai,rejected,0.5.0,,2026-01-01
+mock01,318.0,344.0,songwriting,performance;confident,,,0.669,ai,deferred,0.5.0,,2026-01-01
+mock01,342.0,350.0,dance,participation;confident;actor_staff_facilitation;music,,,0.708,ai,pending,0.5.0,,
+mock01,348.0,362.0,songwriting,neutral;participation;silence;actor_participant,,,0.799,ai,accepted,0.5.0,clear example,2026-01-01
+mock01,360.0,392.0,lyricism_spoken_word,actor_participant;silence;neutral;participation,,,0.72,ai,pending,0.5.0,,
+mock01,390.0,404.0,fashion_design,creative_practice;upset;actor_staff_facilitation;singing_voice,,,0.708,ai,pending,0.5.0,,

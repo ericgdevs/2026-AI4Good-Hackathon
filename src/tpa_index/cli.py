@@ -13,6 +13,7 @@ def _check(args) -> int:
     videos = load_videos()
     print("guard: ok")
     print(f"configs: ok ({len(labels['labels'])} labels, guideline {labels['guideline_version']})")
+    print(config.check_guideline(labels))
     from tpa_index.segment import discover_videos
 
     mapped = {(data_dir() / v["filename"]).resolve() for v in videos}
@@ -360,6 +361,30 @@ def _app(args) -> int:
     return 0
 
 
+def _export(args) -> int:
+    from tpa_index import export
+
+    if args.sample:
+        paths = export.write_sample()
+        print(f"sample written (mock data only): {', '.join(p.name for p in paths)}")
+        return 0
+    counts, paths = export.export_official(verified_only=args.verified_only)
+    print("records: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    print(f"written: {', '.join(p.name for p in paths)} (+ annotations-latest.json/.csv)")  # names only, no paths
+    return 0
+
+
+def _benchmark(args) -> int:
+    from tpa_index import benchmark
+
+    results = benchmark.run_benchmark(args.video_id, args.videos)
+    summary = benchmark.summarize(results)
+    paths = benchmark.write_summary(summary)
+    print(benchmark.markdown(summary))
+    print(f"summary written: {', '.join(p.name for p in paths)}")  # names only, no paths
+    return 0 if all(r["error"] is None and r["run_ids"] for r in results) else 1
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="tpa-index")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -399,6 +424,15 @@ def main(argv=None) -> int:
     pred = sub.choices["predict"]
     pred.add_argument("--kind", action="append", help="only videos of this kind (repeatable), e.g. promo")
     pred.add_argument("--model", help="model id (default: models.main.hpc on cuda, models.main.mac otherwise)")
+    # ---- 006: export and benchmark ----
+    exp = sub.add_parser("export", help="official annotation export (JSON + CSV) to OUTPUT_DIR/exports")
+    exp.add_argument("--verified-only", action="store_true", help="leave out moments whose primary was rejected")
+    exp.add_argument("--sample", action="store_true", help="write the Devpost sample from mock data to docs/samples")
+    exp.set_defaults(func=_export)
+    bench = sub.add_parser("benchmark", help="run every stage for one video on this machine; Mac vs HPC summary")
+    bench.add_argument("--video-id", required=True, help="the video to time (typed at run time, never stored)")
+    bench.add_argument("--videos", help="videos YAML (default: config/videos.local.yaml)")
+    bench.set_defaults(func=_benchmark)
     args = parser.parse_args(argv)
 
     install_redaction()

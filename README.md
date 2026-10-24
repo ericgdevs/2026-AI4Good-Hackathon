@@ -90,6 +90,24 @@ Enter a reviewer (first name or role, never a participant's name), then pick a t
 
 The app listens on 127.0.0.1 only, never creates a share link and sends no telemetry. Clips are cut on demand into a temporary folder outside the repo and deleted when the next clip is shown and when the app exits.
 
+## Annotation export (006)
+
+```bash
+uv run tpa-index export                   # official moments + review log -> OUTPUT_DIR/exports/
+uv run tpa-index export --verified-only   # leave out moments whose primary label was rejected
+uv run tpa-index export --sample          # Devpost sample from mock data only -> docs/samples/
+```
+
+One record per official moment, in the case's 13 fields (`specs/006-export-demo/contracts/export-format.md`), as JSON and CSV. Each label shows its latest review; `review_decision` follows the primary label. Each run writes `annotations-{time}-{hex}-g{guideline}.json/.csv` (never overwritten) and refreshes `annotations-latest.json/.csv`. No reviewer names, filenames or transcript text.
+
+## Mac benchmark (006)
+
+```bash
+uv run tpa-index benchmark --video-id <id>   # type the id at run time; never commit it
+```
+
+Runs segment, predict, transcript, audio, people, expression and moments for one video on this machine (Mac model sizes from `pipeline.yaml`). Use a promo that already has every official stage, because the signal stages and moments work on the official segments. Each stage writes its usual runs row (`tpa-index runs`). The summary (`OUTPUT_DIR/benchmarks/benchmark-*.md/.json`) compares the Mac with the official HPC runs per hour of video, per stage and end to end. Processing time excludes model loading, which is shown once per stage. Benchmark runs never go into `config/official_runs.yaml`.
+
 ## Data rules
 
 See `.specify/memory/constitution.md`. In short: no footage, filenames, or metadata in git or in AI assistant context; no identity (faces, tracks, embeddings); no judgments about people; every AI label is a suggestion that staff review. Assistant read-deny rules are in `.claude/settings.json`.

@@ -1,0 +1,4 @@
+# One line per released guideline version: its vocabulary fingerprint (label names, groups, sources and observation
+# types; prompts, colours, descriptions and display names are left out). Written by hand from `tpa-index check`.
+# `check` and the app refuse a vocabulary change that keeps a recorded version: bump guideline_version first.
+"0.5.0": "ce8320c66ef3"

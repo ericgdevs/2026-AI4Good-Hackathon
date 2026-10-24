@@ -459,3 +459,60 @@ def effective_settings(pipeline: dict, video: dict) -> dict:
     out.update((overrides.get("by_kind") or {}).get(video.get("kind"), {}))
     out.update((overrides.get("by_video") or {}).get(video.get("video_id"), {}))
     return out
+
+
+# ---- 006: app theme (config/theme.yaml) --------------------------------------------------------------------------
+THEME = CONFIG_DIR / "theme.yaml"
+THEME_COLOURS = ("background", "surface", "text", "text_secondary", "accent", "accent_deep")
+AA = 4.5  # WCAG AA, normal text
+
+
+def contrast_ratio(a: str, b: str) -> float:
+    """WCAG contrast ratio between two #RRGGBB colours."""
+    def lum(h):
+        c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        c = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def load_theme(path=None) -> dict:
+    d = _load(Path(path or THEME))
+    hexes = [d.get(k) for k in THEME_COLOURS] + list(d.get("chart_series") or [])
+    if not all(isinstance(h, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", h) for h in hexes):
+        raise ConfigError("theme: every colour must be #RRGGBB")
+    if len(d.get("chart_series") or []) < 3:
+        raise ConfigError("theme: chart_series needs at least 3 colours")
+    if not isinstance(d.get("credit"), str) or not d["credit"].strip():
+        raise ConfigError("theme: credit text required")
+    pairs = [(fg, bg) for fg in ("text", "text_secondary", "accent", "accent_deep") for bg in ("background", "surface")]
+    for fg, bg in [*pairs, ("surface", "accent")]:  # surface on accent = primary button text
+        ratio = contrast_ratio(d[fg], d[bg])
+        if ratio < AA:
+            raise ConfigError(f"theme: {fg} on {bg} has contrast {ratio:.2f}, below WCAG AA {AA}")
+    return d
+
+
+# ---- 006: guideline history (refuse a vocabulary change without a guideline bump) ----------------------------------
+GUIDELINE_HISTORY = Path(os.environ.get("TPA_GUIDELINE_HISTORY", CONFIG_DIR / "guideline_history.yaml"))
+
+
+def guideline_fingerprint(labels: dict) -> str:
+    """Vocabulary only: label (name, group, source) and observation-type names. Prompts, colours, descriptions and
+    display names are presentation, not guideline content."""
+    vocab = {"labels": sorted([lab["name"], lab["group"], lab.get("source", "model")] for lab in labels["labels"]),
+             "observations": sorted(observation_types(labels))}
+    return hashlib.sha256(json.dumps(vocab, sort_keys=True).encode()).hexdigest()[:12]
+
+
+def check_guideline(labels: dict, path=None) -> str:
+    """Status line for `check`; raises if the current version is recorded with a different vocabulary."""
+    path = Path(path or GUIDELINE_HISTORY)
+    history = (yaml.safe_load(path.read_text()) or {}) if path.exists() else {}
+    version, fp = labels["guideline_version"], guideline_fingerprint(labels)
+    if version not in history:
+        return f'guideline: {version} not recorded; add to config/guideline_history.yaml:  "{version}": "{fp}"'
+    if history[version] != fp:
+        raise ConfigError(f"labels: vocabulary changed without bumping guideline_version ({version})")
+    return f"guideline: ok ({version})"

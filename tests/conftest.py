@@ -20,6 +20,9 @@ def _isolated_env(tmp_path, monkeypatch):
     no_official = tmp_path / "no-official-runs.yaml"
     monkeypatch.setenv("TPA_OFFICIAL_RUNS", str(no_official))
     monkeypatch.setattr(schema, "OFFICIAL_RUNS", no_official)
+    shipped_history = config.CONFIG_DIR / "guideline_history.yaml"  # tracked config, not data; tests may override
+    monkeypatch.setenv("TPA_GUIDELINE_HISTORY", str(shipped_history))
+    monkeypatch.setattr(config, "GUIDELINE_HISTORY", shipped_history)
     paths._reset_redaction_cache()
     yield
     paths._reset_redaction_cache()

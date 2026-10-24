@@ -86,9 +86,9 @@ Every indicator row also has `verified_share` (0–1) as a number, so readers ne
 
 `indicator, scope_type, scope, value, unit, numerator, denominator, base, tag, verified_share, status`
 
-- `indicator`: `performance_share` | `active_participation_share` | `solo_moments_count` | `solo_moments_minutes` | `youth_voice_minutes` | `activity_share:<label>` | `activity_diversity_count` | `activity_diversity_entropy` | `audience_response_per_perf_min` | `positive_expression_rate` | `original_work_minutes` | `instruction_participation_ratio` | `coverage_faces` | `coverage_reviewed` | `expression_index` (optional, with `tag` = `model estimate (unvalidated)` and `status` = `example`).
+- `indicator`: `performance_share` | `active_participation_share` | `solo_moments_count` | `solo_moments_minutes` | `youth_voice_minutes` | `activity_share:<label>` | `activity_diversity_count` | `activity_diversity_entropy` | `audience_response_per_perf_min` | `positive_expression_rate` | `original_work_minutes` | `solo_moments_minutes_per_hour` | `youth_voice_minutes_per_hour` | `original_work_minutes_per_hour` | `instruction_participation_ratio` | `coverage_faces` | `coverage_reviewed` | `expression_index` (optional, with `tag` = `model estimate (unvalidated)` and `status` = `example`).
 - `scope_type`: `video` | `phase` | `all`. `scope` is a video ID, a phase name (`early`, `mid`, `showcase`) or `all`.
-- `unit`: `share` (0–1) | `minutes` | `count` | `ratio` | `per_minute` | `index_0_100`.
+- `unit`: `share` (0–1) | `minutes` | `per_hour` (minutes per hour of youth non-idle time in the scope; the headline uses these instead of minute totals) | `count` | `ratio` | `per_minute` | `index_0_100`.
 - `base`: a short text naming the denominator, for example `youth non-idle time` or `segments with faces`.
 - `status`: `ok` | `signal not available` | `not tagged yet` | `no videos in this phase`. When the status isn't `ok`, `value` is empty.
 

@@ -164,3 +164,32 @@ def test_bad_phase_in_local_config_stops(world, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "LOCAL_VIDEOS", local)
     with pytest.raises(ConfigError, match="phase"):
         run_insights(world["pipeline"], world["labels"])
+
+
+def test_per_hour_values_do_not_depend_on_video_length(tmp_path, monkeypatch):
+    """Doubling a video's length (the same content repeated) doubles its minute totals but leaves the per-hour
+    values unchanged. x01 is never labeled and zero-shot is used, so both worlds are scored the same way."""
+    def per_video(n_segments, sub):
+        root = tmp_path / sub
+        (root / "out").mkdir(parents=True)
+        monkeypatch.setenv("OUTPUT_DIR", str(root / "out"))
+        w = build_world(root, monkeypatch, n_segments=n_segments)
+        out = run_insights(_zero_shot(w), w["labels"])
+        return {r["indicator"]: r["value"] for r in out["indicators"] if r["scope"] == "x01"}
+
+    short, long = per_video(20, "short"), per_video(40, "long")
+    for name in ("solo_moments_minutes", "youth_voice_minutes"):
+        assert long[name] == pytest.approx(2 * short[name]) and short[name] > 0
+        assert long[f"{name}_per_hour"] == pytest.approx(short[f"{name}_per_hour"])
+    assert short["original_work_minutes_per_hour"] is None  # not tagged yet, like its total
+
+
+def test_headline_uses_per_hour(world):
+    out = run_insights(world["pipeline"], world["labels"])
+    assert {r["indicator"] for r in out["headline"]} == {
+        "performance_share", "solo_moments_minutes_per_hour", "youth_voice_minutes_per_hour",
+        "positive_expression_rate"}
+    rows = {(r["indicator"], r["scope"]): r for r in out["indicators"]}
+    total, rate = rows[("youth_voice_minutes", "e01")], rows[("youth_voice_minutes_per_hour", "e01")]
+    assert rate["tag"] == total["tag"] and rate["unit"] == "per_hour"
+    assert rate["value"] == pytest.approx(total["value"] / (rate["denominator"] / 3600))

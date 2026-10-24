@@ -32,7 +32,8 @@ COLUMNS = {
 }
 INSIGHT_TABLES = {"indicators.csv": "indicators", "headline.csv": "headline", "time_breakdown.csv": "time_breakdown"}
 UNITS = {"share": lambda v: f"{100 * v:.0f}%", "minutes": lambda v: f"{v:.1f} min", "count": lambda v: f"{v:.0f}",
-         "ratio": lambda v: f"{v:.2f}", "per_minute": lambda v: f"{v:.2f} per min", "index_0_100": lambda v: f"{v:.0f}"}
+         "ratio": lambda v: f"{v:.2f}", "per_minute": lambda v: f"{v:.2f} per min",
+         "per_hour": lambda v: f"{v:.1f} min/h", "index_0_100": lambda v: f"{v:.0f}"}
 
 
 def show(value, unit) -> str:

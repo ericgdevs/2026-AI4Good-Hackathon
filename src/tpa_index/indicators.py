@@ -12,7 +12,9 @@ from tpa_index.view import UNCERTAIN
 STAFF_VERIFIED = "staff-verified"
 UNVALIDATED = "model estimate (unvalidated)"
 LEARNED = "model estimate (learned)"
-HEADLINE = ("performance_share", "solo_moments_minutes", "youth_voice_minutes", "positive_expression_rate")
+# minute totals depend on how long each phase's videos are, so the headline compares rates per hour of youth footage
+HEADLINE = ("performance_share", "solo_moments_minutes_per_hour", "youth_voice_minutes_per_hour",
+            "positive_expression_rate")
 PHASES = ("early", "mid", "showcase")
 LIMITATIONS = [
     "single labeler: verified labels come from one staff member",
@@ -221,6 +223,13 @@ def _rows_for_scope(seg: pd.DataFrame, scope_type: str, scope: str, pipeline: di
     add("coverage_reviewed", float(seg["verified_any"].mean()) if len(seg) else None, "share",
         float(seg["verified_any"].sum()), float(len(seg)), "segments with a staff-verified label", 1.0,
         tag_value=STAFF_VERIFIED)
+    # per-hour twin of every minute total: minutes per hour of active (non-idle) youth footage, same tag and status
+    for r in [r for r in out if r["unit"] == "minutes"]:
+        per_hour = r["value"] / (t_youth / 3600) if r["value"] is not None and t_youth else None
+        out.append({**r, "indicator": f"{r['indicator']}_per_hour", "value": per_hour, "unit": "per_hour",
+                    "numerator": None if r["value"] is None else r["value"] * 60, "denominator": t_youth,
+                    "base": "minutes per hour of youth non-idle time",
+                    "status": r["status"] if r["status"] != "ok" or per_hour is not None else "undefined"})
     return out
 
 

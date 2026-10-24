@@ -104,6 +104,7 @@ def test_no_label_or_group_names_hardcoded():
 
     shipped = load_labels()
     names = {lab["name"] for lab in shipped["labels"]} | {lab["group"] for lab in shipped["labels"]}
+    names -= set(schema.SCHEMAS["moments"].names)  # fixed table columns (e.g. moments.needs_review), not vocabulary
     for module in ("review.py", "clips.py", "app.py"):
         path = repo_root() / "src/tpa_index" / module
         if not path.exists():
@@ -278,3 +279,133 @@ def test_topup_cap_exclusions_shuffle_and_tags(mock_official, pipeline, labels):
     preds = {(p["segment_id"], p["label"]): p["score"] for p in schema.read_official("predictions").to_pylist()}
     scores = [preds[(q["segment_id"], q["target_label"])] for q in topup]
     assert scores != sorted(scores, reverse=True) or len(scores) < 3
+
+
+# ---- review mode: status, filters, unlock (T023) -------------------------------------------------------------------
+from tpa_index.review import (UNVALIDATED, ai_labels, eval_unlocked, filter_moments, label_panel,  # noqa: E402
+                              moment_status, observation_row, review_row, review_videos)
+
+
+def _moment(labels, pipeline, mid="m1", start=0.0, needs=False, secondary=None):
+    cl = checklist(labels, pipeline)
+    sec = cl["groups"][0][1][:2] if secondary is None else secondary
+    return {"moment_id": mid, "video_id": "v1", "start_s": start, "end_s": start + 8, "primary_label": cl["primary"][0],
+            "secondary_labels": sec, "indicators": [], "confidence": 0.7, "needs_review": needs, "run_id": "r"}
+
+
+def _state(moment, actions, labels):
+    """actions: {label: action}; review rows in insertion order, via review_row."""
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rows = []
+    role = dict(ai_labels(moment))
+    for i, (label, action) in enumerate(actions):
+        r = review_row(moment, label, role.get(label, "secondary"), action, "staff-a", labels,
+                       new_label=label if action == "edit" else None)
+        rows.append({**r, "created_at": t0 + timedelta(minutes=i), "review_id": f"{i:04d}"})
+    return latest_state(rows, "review")
+
+
+def test_moment_status_cases(labels, pipeline):
+    m = _moment(labels, pipeline)
+    names = [lab for lab, _ in ai_labels(m)]
+    assert len(names) == 3
+    assert moment_status(m, {}) == "unreviewed"
+    assert moment_status(m, _state(m, [(names[0], "accept")], labels)) == "partly"
+    assert moment_status(m, _state(m, [(names[0], "accept"), (names[1], "defer")], labels)) == "deferred"
+    done = [(names[0], "accept"), (names[1], "reject"), (names[2], "edit")]
+    assert moment_status(m, _state(m, done, labels)) == "done"
+    assert moment_status(m, _state(m, done + [(names[2], "defer")], labels)) == "deferred"  # latest row counts
+    # a staff add on another label does not review the AI labels
+    other = next(n for n in checklist(labels, pipeline)["primary"] if n not in names)
+    assert moment_status(m, _state(m, [(other, "add")], labels)) == "unreviewed"
+
+
+def test_combined_filters_sorted_by_time(labels, pipeline):
+    cl = checklist(labels, pipeline)
+    a = _moment(labels, pipeline, "a", start=16, needs=True)
+    b = _moment(labels, pipeline, "b", start=0, needs=True)
+    c = _moment(labels, pipeline, "c", start=8, needs=False, secondary=[])
+    state = _state(a, [(a["primary_label"], "accept")], labels)
+    assert [m["moment_id"] for m in filter_moments([a, b, c], state)] == ["b", "c", "a"]
+    assert [m["moment_id"] for m in filter_moments([a, b, c], state, needs_review=True)] == ["b", "a"]
+    assert [m["moment_id"] for m in filter_moments([a, b, c], state, needs_review=True, status="partly")] == ["a"]
+    sec = cl["groups"][0][1][0]
+    assert [m["moment_id"] for m in filter_moments([a, b, c], state, label=sec, status="unreviewed")] == ["b"]
+    obs = labels["observation_types"][0]["name"]
+    state = {**state, **latest_state([{**observation_row(c, obs, "staff-a", labels), "review_id": "z",
+                                       "created_at": datetime(2026, 1, 2, tzinfo=timezone.utc)}], "review")}
+    assert [m["moment_id"] for m in filter_moments([a, b, c], state, label=obs)] == ["c"]  # staff-added match
+
+
+def test_retired_labels_show_and_panel_orders_by_strength(labels, pipeline):
+    m = _moment(labels, pipeline, secondary=[])
+    s1, s2 = checklist(labels, pipeline)["groups"][0][1][:2]
+    m["secondary_labels"] = [s1, s2, "gone_label"]
+    conf = {s1: 0.02, s2: 0.3, "gone_label": 0.5}
+    thr = {m["primary_label"]: 0.5, s1: 0.001, s2: 0.25}  # s1: 20x its threshold; s2: 1.2x
+    rows = label_panel(m, {}, labels, conf, thr)
+    assert [r["label"] for r in rows] == [m["primary_label"], s1, s2, "gone_label"]
+    assert rows[0]["confidence"] == m["confidence"]  # primary shows the moment's own confidence
+    assert [r["retired"] for r in rows] == [False, False, False, True]
+    assert all(r["badge"] == UNVALIDATED for r in rows)
+    st = _state(m, [(s1, "reject")], labels)
+    assert label_panel(m, st, labels, conf, thr)[1]["badge"].startswith("reject by staff-a")
+
+
+def _blind(segment_ids, reviewer, labels, pipeline):
+    primary = checklist(labels, pipeline)["primary"][0]
+    for sid in segment_ids:
+        append_reviews(blind_rows({"segment_id": sid}, primary, [], False, reviewer, labels, pipeline))
+
+
+def test_eval_unlock_needs_main_and_two_overlap_reviewers(mock_official, pipeline, labels):
+    eval_ids = {v["video_id"] for v in schema.read_official("videos").to_pylist() if v["split"] == "eval"}
+    assert eval_ids
+    assert not eval_unlocked()[0]  # no queue yet
+    assert not {v["video_id"] for v in review_videos()} & eval_ids
+    build_main_queues(_app(pipeline, sample_size=10, overlap_size=3))
+    main = [q["segment_id"] for q in load_queue("main")]
+    overlap = [q["segment_id"] for q in load_queue("overlap")]
+    _blind(main, "staff-a", labels, pipeline)
+    ok, reason = eval_unlocked()
+    assert not ok and "3 overlap" in reason  # main done, overlap has one reviewer
+    _blind(overlap, "staff-a", labels, pipeline)  # same reviewer again: still one distinct reviewer
+    assert not eval_unlocked()[0]
+    assert not {v["video_id"] for v in review_videos()} & eval_ids
+    _blind(overlap, "staff-b", labels, pipeline)
+    assert eval_unlocked() == (True, "")
+    assert eval_ids <= {v["video_id"] for v in review_videos()}
+
+
+def test_overlap_alone_does_not_unlock(mock_official, pipeline, labels):
+    build_main_queues(_app(pipeline, sample_size=10, overlap_size=3))
+    overlap = [q["segment_id"] for q in load_queue("overlap")]
+    _blind(overlap, "staff-a", labels, pipeline)
+    _blind(overlap, "staff-b", labels, pipeline)
+    ok, reason = eval_unlocked()
+    assert not ok and "7 main-sample" in reason
+
+
+# ---- review rows (T026) --------------------------------------------------------------------------------------------
+def test_review_rows_validate_and_latest_state(labels, pipeline):
+    m = _moment(labels, pipeline)
+    lab, role = ai_labels(m)[1]
+    other = checklist(labels, pipeline)["groups"][0][1][-1]
+    obs = labels["observation_types"][0]["name"]
+    rows = [review_row(m, lab, role, a, "staff-a", labels) for a in ("accept", "reject", "defer")]
+    rows += [review_row(m, lab, role, "edit", "staff-a", labels, new_label=other, note="n"),
+             review_row(m, other, role_of(other, labels, pipeline), "add", "staff-a", labels),
+             observation_row(m, obs, "staff-a", labels, note="lights")]
+    tbl = validate("reviews", [{**r, "review_id": f"{i}", "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc)}
+                               for i, r in enumerate(rows)])
+    assert set(tbl["mode"].to_pylist()) == {"review"} and set(tbl["target_type"].to_pylist()) == {"moment"}
+    assert rows[4]["source"] == "staff" and rows[4]["new_label"] == other
+    assert rows[5]["label_role"] == "observation" and rows[5]["new_label"] == obs
+    with pytest.raises(ValueError, match="edit needs"):
+        review_row(m, lab, role, "edit", "staff-a", labels)
+    with pytest.raises(ValueError, match="no new label"):
+        review_row(m, lab, role, "accept", "staff-a", labels, new_label=other)
+    with pytest.raises(ValueError, match="unknown observation"):
+        observation_row(m, "not_an_observation", "staff-a", labels)
+    st = _state(m, [(lab, "accept"), (lab, "defer"), (lab, "edit")], labels)
+    assert st[(m["moment_id"], lab)]["action"] == "edit"

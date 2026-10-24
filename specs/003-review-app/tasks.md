@@ -245,7 +245,7 @@ There is one developer and no `[P]` markers. Each task takes 15–30 minutes.
 
 **Independent test**: On mock data, filter to needs-review, play a moment with its padding, and see the unvalidated markers. Eval videos are hidden until unlock.
 
-- [ ] T023 [US3] In `src/tpa_index/review.py`:
+- [X] T023 [US3] In `src/tpa_index/review.py`:
   - `ai_labels(moment) -> list[(label, role)]`: `primary_label`→primary, each `secondary_labels`→secondary, each `indicators`→indicator.
   - `moment_status(moment, state)`, following research §9.
   - `filter_moments(moments, state, label=None, needs_review=None, status=None)`.
@@ -258,7 +258,7 @@ There is one developer and no `[P]` markers. Each task takes 15–30 minutes.
   - unlock is false until both conditions hold, including the case where the overlap is labeled by the same reviewer twice, which must still be locked;
   - eval videos are excluded while locked;
   - labels in a moment that are absent from `labels.yaml` still show and are flagged as retired.
-- [ ] T024 [US3] Build the Review tab in `src/tpa_index/app.py`:
+- [X] T024 [US3] Build the Review tab in `src/tpa_index/app.py`:
   - a video picker from `review_videos` (with the lock reason shown when eval videos are hidden);
   - filters:
     - the label dropdown, with choices from `labels.yaml` (every model label and observation type, whatever the groups);
@@ -267,7 +267,7 @@ There is one developer and no `[P]` markers. Each task takes 15–30 minutes.
     - a show-idle toggle, off by default (when on, idle segments are listed as rows of type "idle");
   - a moments `gr.Dataframe` with columns time, primary, status, needs_review and confidence, sorted by time;
   - on selection, `cutter.cut(video, start - padding_s, end + padding_s)`, plus a per-label panel showing label, role, confidence and the badge "AI suggestion, unvalidated" (or the latest state with reviewer and time).
-- [ ] T025 [US3] Add tests to `tests/test_app.py`:
+- [X] T025 [US3] Add tests to `tests/test_app.py`:
   - review handlers on mock data return moments sorted by time;
   - a filter change narrows the list;
   - the clip request covers start − 3 to end + 3, clipped to the video bounds;
@@ -282,12 +282,12 @@ There is one developer and no `[P]` markers. Each task takes 15–30 minutes.
 
 **Independent test**: Perform all five actions and an observation on one moment, and get one row each, with the moment state following the latest action.
 
-- [ ] T026 [US4] In `src/tpa_index/review.py`, add:
+- [X] T026 [US4] In `src/tpa_index/review.py`, add:
   - `review_row(moment, label, role, action, reviewer, labels, new_label=None, note=None, source="ai")`: the target is the moment and `mode="review"`. `edit` requires `new_label`; accept, reject and defer forbid it. `source="staff"` and `action="add"` are used for staff-added labels.
   - `observation_row(moment, obs_type, reviewer, labels, note=None)`: raises if `obs_type` is not in `observation_types(labels)`.
 
   Add tests: every action validates against the reviews schema, edit without `new_label` raises, an unknown observation type raises, and a sequence of accept → defer → edit leaves the latest state as edit.
-- [ ] T027 [US4] Wire the review actions in `src/tpa_index/app.py`:
+- [X] T027 [US4] Wire the review actions in `src/tpa_index/app.py`:
   - per AI label: Accept / Reject / Defer buttons and an Edit dropdown (other labels from the same group, read from config);
   - add-label: a dropdown of every model label, with its role from `role_of`;
   - add-observation: a dropdown from `observation_types`;
@@ -304,8 +304,8 @@ There is one developer and no `[P]` markers. Each task takes 15–30 minutes.
 
 ## Phase 9: Polish and Final Checkpoint
 
-- [ ] T028 Update `README.md` with a "Review app" section, from `quickstart.md`: launching, blind labeling keys, the overlap set and top-up, review actions, the local-only guarantee and clip cleanup. Cross-check `src/` against `contracts/interfaces.md`, `contracts/config.md` and `data-model.md` (signatures, config keys, the `blind_queue` columns and the review-row table), fixing drift on whichever side is wrong. Rerun the hardcode guard from T008 over all three modules, which must now exist.
-- [ ] T029 **Final checkpoint (Mac, mock data only)**:
+- [X] T028 Update `README.md` with a "Review app" section, from `quickstart.md`: launching, blind labeling keys, the overlap set and top-up, review actions, the local-only guarantee and clip cleanup. Cross-check `src/` against `contracts/interfaces.md`, `contracts/config.md` and `data-model.md` (signatures, config keys, the `blind_queue` columns and the review-row table), fixing drift on whichever side is wrong. Rerun the hardcode guard from T008 over all three modules, which must now exist.
+- [X] T029 **Final checkpoint (Mac, mock data only)**:
   1. Run `uv run pytest`, then `uv run pytest -m slow`, and record the counts.
   2. Repeat T022 steps 1–3.
   3. With the Playwright tool:

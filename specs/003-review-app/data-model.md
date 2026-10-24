@@ -35,7 +35,7 @@ Primary key: (`queue`, `position`), and (`queue`, `segment_id`) is unique too. R
 | blind: clip unavailable | segment | observation | add | `clip_unavailable` | staff | blind |
 | review: accept / reject / defer an AI label | moment | role of that AI label | accept / reject / defer | null | ai | review |
 | review: edit an AI label | moment | role of that AI label | edit | the new label | ai | review |
-| review: add a vocabulary label | moment | primary / secondary / indicator (by group) | add | = label | staff | review |
+| review: add a vocabulary label | moment | secondary / indicator (`role_of`, by group) | add | = label | staff | review |
 | review: add an observation | moment | observation | add | = observation type | staff | review |
 
 Every row also has `reviewer`, `guideline_version` (from `labels.yaml` at save time), an optional `note`, and `created_at`.

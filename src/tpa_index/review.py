@@ -222,3 +222,122 @@ def build_topup_queue(app_cfg: dict, labels: dict, pipeline: dict, root=None) ->
     if rows:
         append_blind_queue(rows, root)
     return len(rows)
+
+
+# ---- review mode: moments, state, filters (research §9) -----------------------------------------------------------
+UNVALIDATED = "AI suggestion, unvalidated"
+STATUSES = ("unreviewed", "partly", "done", "deferred")
+DONE_ACTIONS = {"accept", "edit", "reject"}
+
+
+def ai_labels(moment: dict) -> list[tuple[str, str]]:
+    """(label, role) for every AI label on a moment: primary, then secondaries, then indicators."""
+    return ([(moment["primary_label"], PRIMARY)] + [(lab, SECONDARY) for lab in moment["secondary_labels"] or []]
+            + [(lab, INDICATOR) for lab in moment["indicators"] or []])
+
+
+def moment_status(moment: dict, state: dict) -> str:
+    """unreviewed | deferred | done | partly, from the latest review row per AI label."""
+    actions = [state[(moment["moment_id"], lab)]["action"] for lab, _ in ai_labels(moment)
+               if (moment["moment_id"], lab) in state]
+    if not actions:
+        return "unreviewed"
+    if "defer" in actions:
+        return "deferred"
+    if len(actions) == len(ai_labels(moment)) and set(actions) <= DONE_ACTIONS:
+        return "done"
+    return "partly"
+
+
+def filter_moments(moments, state: dict, label=None, needs_review=None, status=None) -> list[dict]:
+    """Moments sorted by time. label matches an AI label or a label/observation staff added or edited to."""
+    staff = {t for (t, _), r in state.items() if r["new_label"] == label}
+
+    def has(m):
+        return m["moment_id"] in staff or label in {lab for lab, _ in ai_labels(m)}
+
+    return sorted((m for m in moments
+                   if (label is None or has(m)) and (needs_review is None or m["needs_review"] == needs_review)
+                   and (status is None or moment_status(m, state) == status)),
+                  key=lambda m: (m["video_id"], m["start_s"]))
+
+
+def eval_unlocked(root=None) -> tuple[bool, str]:
+    """Eval videos open for review only after the main sample has a blind save per segment and the overlap set
+    has blind saves from at least two different reviewers per segment (FR-014a)."""
+    from tpa_index.schema import read_reviews
+
+    main, overlap = load_queue("main", root), load_queue("overlap", root)
+    if not main:
+        return False, "Eval videos are hidden until blind labeling of the main sample has started and finished."
+    reviewers: dict[str, set[str]] = {}
+    for r in read_reviews(root).to_pylist():
+        if r["mode"] == "blind":
+            reviewers.setdefault(r["target_id"], set()).add(r["reviewer"])
+    main_left = sum(not reviewers.get(q["segment_id"]) for q in main)
+    overlap_left = sum(len(reviewers.get(q["segment_id"], ())) < 2 for q in overlap)
+    if main_left or overlap_left:
+        return False, (f"Eval videos are hidden until blind labeling is done: {main_left} main-sample segment(s) "
+                       f"unlabeled, {overlap_left} overlap segment(s) without a second reviewer.")
+    return True, ""
+
+
+def review_videos(root=None) -> list[dict]:
+    """Official videos, sorted by id, without eval-split videos while blind labeling is unfinished."""
+    from tpa_index.schema import read_official
+
+    unlocked, _ = eval_unlocked(root)
+    videos = read_official("videos", root=root).to_pylist()
+    return sorted((v for v in videos if unlocked or v["split"] != "eval"), key=lambda v: v["video_id"])
+
+
+def badge(row: dict | None) -> str:
+    """The unvalidated marker, or the latest review state with reviewer and time."""
+    if row is None:
+        return UNVALIDATED
+    what = f"edit → {row['new_label']}" if row["action"] == "edit" else row["action"]
+    return f"{what} by {row['reviewer']}, {row['created_at']:%Y-%m-%d %H:%M}"
+
+
+def label_panel(moment: dict, state: dict, labels: dict, confidences: dict[str, float],
+                thresholds: dict[str, float]) -> list[dict]:
+    """One row per AI label: primary first, then each role by strength (score / threshold), strongest first.
+    The primary's confidence is the moment's own; labels missing from labels.yaml are flagged retired."""
+    from tpa_index.score import strengths
+
+    known = {lab["name"] for lab in labels["labels"]}
+    conf = {**confidences, moment["primary_label"]: moment["confidence"]}
+    st = strengths({k: v for k, v in conf.items() if k in thresholds}, thresholds)
+    order = {PRIMARY: 0, SECONDARY: 1, INDICATOR: 2}
+    pairs = sorted(ai_labels(moment), key=lambda p: (order[p[1]], -st.get(p[0], 0.0)))
+    return [{"label": lab, "role": role, "confidence": conf.get(lab), "retired": lab not in known,
+             "badge": badge(state.get((moment["moment_id"], lab)))} for lab, role in pairs]
+
+
+# ---- review rows -------------------------------------------------------------------------------------------------
+REVIEW_ACTIONS = ("accept", "edit", "reject", "defer", "add")
+
+
+def review_row(moment: dict, label: str, role: str, action: str, reviewer: str, labels: dict, new_label=None,
+               note=None, source="ai") -> dict:
+    """One mode=review row on a moment. edit needs new_label; accept, reject and defer forbid it; add (staff)
+    records the label itself as new_label."""
+    if action not in REVIEW_ACTIONS:
+        raise ValueError(f"unknown review action {action!r}")
+    if action == "edit" and not new_label:
+        raise ValueError("edit needs the new label")
+    if action in ("accept", "reject", "defer") and new_label:
+        raise ValueError(f"{action} takes no new label")
+    if action == "add":
+        new_label, source = label, "staff"
+    return _row("moment", moment["moment_id"], label, role, action, new_label, source, "review", reviewer, labels,
+                note or None)
+
+
+def observation_row(moment: dict, obs_type: str, reviewer: str, labels: dict, note=None) -> dict:
+    from tpa_index.config import observation_types
+
+    if obs_type not in observation_types(labels):
+        raise ValueError(f"unknown observation type {obs_type!r}")
+    return _row("moment", moment["moment_id"], obs_type, OBSERVATION, "add", obs_type, "staff", "review", reviewer,
+                labels, note or None)

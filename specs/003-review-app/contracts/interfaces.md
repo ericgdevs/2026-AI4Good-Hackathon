@@ -6,7 +6,6 @@ This extends the 001 and 002 contracts, which still hold.
 
 ```python
 # review.py: pure logic, no UI, no ffmpeg (fully unit-tested)
-QUEUES = ("main", "overlap", "topup")
 load_queue(queue, root=None) -> list[dict]                        # [] if not built yet
 build_main_queues(app_cfg, root=None) -> int                      # main + overlap; no-op if they exist; returns size
 topup_available(root=None) -> tuple[bool, str]                    # (ok, reason shown when hidden)
@@ -19,8 +18,14 @@ role_of(label, labels, pipeline, chosen_primary=None) -> str
 blind_rows(segment, primary, chosen, uncertain, reviewer, labels, pipeline, previous=None) -> list[dict]
 #   chosen: label -> role; adds reject rows for labels in `previous` that are no longer chosen
 latest_state(rows, mode) -> dict[tuple[str, str], dict]          # (target_id, label) -> latest row
+ai_labels(moment) -> list[tuple[str, str]]                       # (label, role): primary, secondaries, indicators
 moment_status(moment, state) -> str                               # unreviewed | partly | done | deferred
 eval_unlocked(root=None) -> tuple[bool, str]
+review_videos(root=None) -> list[dict]                            # official videos; eval hidden while locked
+badge(row) -> str                                                 # "AI suggestion, unvalidated" or the latest state
+label_panel(moment, state, labels, confidences, thresholds) -> list[dict]
+#   primary first, then each role by strength (score / threshold); primary confidence = moment confidence;
+#   other labels: mean raw score over the moment's segments; labels missing from labels.yaml flagged retired
 review_row(moment, label, role, action, reviewer, labels, new_label=None, note=None, source="ai") -> dict
 observation_row(moment, obs_type, reviewer, labels, note=None) -> dict
 filter_moments(moments, state, label=None, needs_review=None, status=None) -> list[dict]
@@ -33,7 +38,8 @@ session_dir() -> Path                           # mkdtemp('tpa-clips-'), asserte
 make_clip(path, w, h, seconds=20, fps=10, audio=True, rate=16000, static=False) -> Path
 
 # app.py: Gradio UI
-build_app(root=None, cutter=None) -> gr.Blocks  # no launch; testable
+build_app(root=None, cutter=None, labels=None, pipeline=None) -> gr.Blocks  # no launch; testable
+#   demo.blind / demo.review: BlindController / ReviewController, plain-method handlers for tests
 launch(port=None) -> None                       # 127.0.0.1, share=False, analytics and monitoring off, light theme forced
 ```
 
@@ -67,7 +73,7 @@ Nothing derived from predictions appears on this screen.
 - filters: label, needs-review, status (unreviewed, partly, done, deferred), and a show-idle toggle;
 - a moment timeline table: time, primary label, status, needs-review and confidence;
 - a player for the moment with padding;
-- for each AI label: name, role, confidence, the badge "AI suggestion, unvalidated" (or the latest review state), and Accept / Edit (dropdown) / Reject / Defer;
+- for each AI label: name, role, confidence and the badge "AI suggestion, unvalidated" (or the latest review state), in a label table; pick one label, then Accept / Edit (dropdown of the same group) / Reject / Defer;
 - add-label (vocabulary dropdown) and add-observation (observation-type dropdown);
 - a note box with the visible reminder "No names. No judgments about a person.";
 - the moment's review history, read-only.

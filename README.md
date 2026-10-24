@@ -72,6 +72,24 @@ scripts/sync_outputs_from_hpc.sh --dry-run && scripts/sync_outputs_from_hpc.sh  
 
 The sync scripts read `HPC_USER`, `HPC_HOST` and `HPC_OUTPUT_DIR` from `.env` (see `.env.example`). Code sync never sends `.env`, `config/*.local.yaml`, data, weights or outputs (`scripts/sync.exclude`). Output sync copies only run-folder Parquet files, never overwrites a local run, never copies `reviews.duckdb`, and merges HPC's calibrated thresholds per model. HPC keeps its own `.env` and `config/videos.local.yaml`; they are never synced.
 
+## Review app (003)
+
+```bash
+uv run tpa-index mock --seed 0 --clips    # mock tables plus synthetic videos (no footage)
+# config/official_runs.yaml lists the official runs, e.g. predict: [mock-seed0]
+uv run tpa-index app                      # http://127.0.0.1:7860 (port: pipeline.yaml app.port)
+```
+
+Enter a reviewer (first name or role, never a participant's name), then pick a tab.
+
+- **Blind labeling** shows no model output. `1`–`9`/`0` pick the primary activity, letter keys toggle the other labels (shown next to each), `U` marks uncertain/mixed, `Enter` saves and moves on, `Backspace` goes back, `Space` replays. Every save is stored, so closing and reopening resumes where you stopped.
+  - **Main sample**: a seeded random sample of eval segments (`app.sample_size`), saved once and never reshuffled.
+  - **Overlap set**: the first `app.overlap_size` main segments, for a second labeler (agreement).
+  - **Top-up**: for labels still rare after the main sample, the eval segments with the highest official model score, shuffled and still shown blind. It appears once official predict runs cover the eval videos.
+- **Review** shows moments per video, filterable by label, needs-review, status and a show-idle toggle. Eval videos stay hidden until every main segment has a blind save and every overlap segment has saves from two reviewers. Selecting a moment plays it with `app.padding_s` seconds of context. Every AI label is marked "AI suggestion, unvalidated" until reviewed. Labels are listed primary first, then by strength (score / threshold). Accept, edit, reject, defer, add a label or add an observation; each action is one append-only row in `reviews.duckdb`, shown in the moment's history. Notes: no names, no judgments about a person.
+
+The app listens on 127.0.0.1 only, never creates a share link and sends no telemetry. Clips are cut on demand into a temporary folder outside the repo and deleted when the next clip is shown and when the app exits.
+
 ## Data rules
 
 See `.specify/memory/constitution.md`. In short: no footage, filenames, or metadata in git or in AI assistant context; no identity (faces, tracks, embeddings); no judgments about people; every AI label is a suggestion that staff review. Assistant read-deny rules are in `.claude/settings.json`.

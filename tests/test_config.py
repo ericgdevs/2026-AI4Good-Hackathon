@@ -424,3 +424,46 @@ def test_stage_config_hash_ignores_the_other_hardware(pipeline, labels):
         stage_config_hash("people", labels, pipeline, video, "hpc")
     with pytest.raises(ConfigError, match="hardware must be hpc or mac"):
         stage_config_hash("audio", labels, pipeline, video, "gpu")
+
+
+# ---- 005 insights ------------------------------------------------------------------------------------------------
+def test_shipped_insights_block_loads(pipeline):
+    ins = pipeline["insights"]
+    assert ins["audio_threshold"] == 0.5 and ins["min_support"] == 5
+    assert list(ins["indicator_rules"]) == ["solo_on_stage", "group_performance", "voice_projection"]
+
+
+@pytest.mark.parametrize("change,match", [
+    (lambda i: i["indicator_rules"].update(solo_on_stage={"volume": 3}), "unknown condition 'volume'"),
+    (lambda i: i["fusion"].append({"label": "singing", "require_any": [{"audio": "dance"}]}),
+     "audio: 'dance' is not an audio label"),
+    (lambda i: i["indicator_rules"].update(solo_on_stage={"clears": "music"}), "clears: 'music' is not a model-scored"),
+    (lambda i: i["indicator_rules"].update(nope={"has_speech": True}), "indicator_rules.nope: not an indicator"),
+    (lambda i: i["indicator_rules"].update(
+        solo_on_stage={"indicator": "voice_projection"}), "'voice_projection' is not an earlier indicator rule"),
+    (lambda i: i.update(audio_threshold=1.5), "audio_threshold must be within"),
+    (lambda i: i.update(min_support=0), "min_support must be an integer >= 1"),
+    (lambda i: i["indicator_rules"].update(solo_on_stage={"person_count": {"gt": 1}}), "person_count: must be"),
+    (lambda i: i["fusion"].append({"label": "music", "require_any": [{"has_speech": True}]}),
+     "'music' is not a model-scored activity label"),
+])
+def test_bad_insights_settings(pipeline, labels, change, match):
+    from tpa_index.config import _check_pipeline_labels
+
+    bad = copy.deepcopy(pipeline)
+    change(bad["insights"])
+    with pytest.raises(ConfigError, match=match):
+        _check_pipeline_labels(_check_pipeline(bad), labels)
+
+
+def test_required_threshold_no_fallback(pipeline):
+    from tpa_index.config import required_threshold
+
+    p = copy.deepcopy(pipeline)
+    p["label_threshold"] = 0.5
+    p["label_thresholds"] = {"m1": {"singing": 0.12}}
+    assert required_threshold(p, "m1", "singing") == 0.12
+    with pytest.raises(ConfigError, match=r"no calibrated threshold for dance \(model m1\).*calibrate --stage predict"):
+        required_threshold(p, "m1", "dance")
+    with pytest.raises(ConfigError, match="calibrate --stage audio"):
+        required_threshold(p, "m2", "music", stage_hint="audio")

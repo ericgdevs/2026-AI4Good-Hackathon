@@ -134,6 +134,8 @@ def test_alternate_vocabulary_shows_in_the_app(mock_env, labels, tmp_path):
             lab["name"] = "alt_" + lab["name"]
     alt_pipe = copy.deepcopy(mock_env["pipeline"])
     alt_pipe["models"]["motion"]["labels"] = []
+    alt_pipe["insights"].update(primary_like=[next(lab["name"] for lab in alt["labels"] if lab["group"] == primary_group)],
+                                fusion=[], indicator_rules={})  # 005 rules follow the vocabulary
     alt_pipe["models"]["motion"]["enabled"] = False
     alt_pipe["label_thresholds"] = {}
     (tmp_path / "labels.yaml").write_text(yaml.safe_dump(alt, sort_keys=False))
@@ -224,6 +226,8 @@ def test_review_label_filter_follows_alternate_vocabulary(mock_env, labels, tmp_
             lab["name"] = "alt_" + lab["name"]
     alt_pipe = copy.deepcopy(mock_env["pipeline"])
     alt_pipe["models"]["motion"].update(labels=[], enabled=False)
+    alt_pipe["insights"].update(primary_like=[next(lab["name"] for lab in alt["labels"] if lab["group"] == primary_group)],
+                                fusion=[], indicator_rules={})  # 005 rules follow the vocabulary
     alt_pipe["label_thresholds"] = {}
     (tmp_path / "labels.yaml").write_text(yaml.safe_dump(alt, sort_keys=False))
     (tmp_path / "pipeline.yaml").write_text(yaml.safe_dump(alt_pipe, sort_keys=False))

@@ -478,3 +478,45 @@ def test_signals_done_skipped_and_failed_lines(monkeypatch, clip_videos, pipelin
     assert cli.main(["signals", "--stages", "transcript,audio", *sel]) == 0
     out = capsys.readouterr().out
     assert "transcript t03: done" in out and "audio t01: skipped (done: audio-" in out
+
+
+# ---- evaluate (005): mock world only ---------------------------------------------------------------------------
+EVALUATE_FILES = {"metrics.csv", "metrics.json", "confusion.csv", "signal_indicators.csv", "ablation.csv",
+                  "topup.csv", "failure_gallery.csv", "summary.md", "manifest.json"}
+
+
+def _evaluate_cli(tmp_path, monkeypatch, **kw):
+    from tests.insights_fixtures import build_world
+    from tpa_index import cli
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+    build_world(tmp_path, monkeypatch, **kw)
+    return cli
+
+
+def test_evaluate_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):
+    cli = _evaluate_cli(tmp_path, monkeypatch)
+    assert cli.main(["evaluate", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "primary accuracy" in out and "95% CI" in out and "kappa" in out and "dry run: nothing written" in out
+    assert not (tmp_path / "out/results").exists()
+
+
+def test_evaluate_writes_one_complete_folder(tmp_path, monkeypatch, capsys):
+    import json
+
+    cli = _evaluate_cli(tmp_path, monkeypatch)
+    assert cli.main(["evaluate"]) == 0
+    (folder,) = list((tmp_path / "out/results").iterdir())
+    assert folder.name.startswith("evaluate-")
+    assert {p.name for p in folder.iterdir()} == EVALUATE_FILES
+    manifest = json.loads((folder / "manifest.json").read_text())
+    assert manifest["schema_version"] == 1 and set(manifest["files"]) == EVALUATE_FILES - {"manifest.json"}
+    assert f"written: <OUTPUT_DIR>/results/{folder.name}" in capsys.readouterr().out
+
+
+def test_evaluate_missing_audio_exits_3(tmp_path, monkeypatch, capsys):
+    cli = _evaluate_cli(tmp_path, monkeypatch, overrides={"skip_stages": [("audio", "e02")]})
+    assert cli.main(["evaluate"]) == 3
+    assert "official audio runs missing for: e02" in capsys.readouterr().err
+    assert not (tmp_path / "out/results").exists()

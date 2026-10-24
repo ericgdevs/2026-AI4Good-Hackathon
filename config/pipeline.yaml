@@ -66,6 +66,24 @@ signals:                         # 004: per-segment signals (observable cues onl
       speech: [Speech, "Male speech, man speaking", "Female speech, woman speaking", "Child speech, kid speaking", Conversation, "Narration, monologue"]
       applause: [Applause, Clapping, Cheering]
       silence: [Silence]
+insights:                        # 005 evaluate / insights (read-only; aggregates and IDs only)
+  min_support: 5                 # labels with fewer eval positives: "too few to score"
+  bootstrap: {resamples: 1000, block: 10, seed: 2026}   # block bootstrap over consecutive labeled segments per video
+  failure_gallery: 20
+  applause_after_s: 10           # applause within this many seconds after a performance counts as response
+  audio_threshold: 0.5           # fixed AST probability for audio conditions (not the calibrated top-10% value)
+  primary_like: [singing, lyricism_spoken_word, acting_theater, dance]   # "performing" primaries used by rules
+  fusion:                        # "zero-shot + signal rules": drop a visual activity unless a condition holds
+    - {label: singing, require_any: [{audio: singing_voice}, {audio: music}]}
+    - {label: lyricism_spoken_word, require_any: [{audio: speech}, {has_speech: true}]}
+  indicator_rules:               # signal-based estimates, always "model estimate (unvalidated)"; file order matters
+    solo_on_stage:
+      all: [{person_count: {eq: 1}}, {any: [{clears: performance}, {primary_in: primary_like}]}]
+    group_performance:
+      all: [{person_count: {gte: 2}}, {any: [{clears: performance}, {primary_in: primary_like}]}]
+    voice_projection:
+      all: [{any: [{indicator: solo_on_stage}, {indicator: group_performance}]},
+            {any: [{audio: singing_voice}, {audio: speech}]}]
 idle:
   prompts:
     - "an empty room"

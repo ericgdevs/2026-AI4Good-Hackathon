@@ -201,6 +201,32 @@ def _signals(args) -> int:
     return 0
 
 
+def _evaluate(args) -> int:
+    from tpa_index.evaluate import run_evaluate
+    from tpa_index.report import _ci, write_result
+
+    payload = run_evaluate(load_pipeline(), load_labels())  # missing stage/threshold/labels -> ConfigError (exit 3)
+    es = payload["eval_set"]
+    print("eval segments: " + ", ".join(f"{v} {n}" for v, n in sorted(es["per_video"].items()))
+          + f" (skipped {es['skipped']}, not scored {es['not_scored']}, dev labels ignored {es['dev_labels_ignored']})")
+    for h in payload["headline"]:
+        print(f"{h['system']}: primary accuracy {_ci(h['primary_accuracy'], h['primary_accuracy_ci'])}), "
+              + ", ".join(f"macro-F1 {g} {_ci(h[f'macro_f1_{g}'], h[f'macro_f1_{g}_ci'])})"
+                          for g in ("activity", "category", "actor")))
+        print(f"  {h['kappa_primary_sentence']}")
+        print(f"  category {h['kappa_category_sentence']} ({h['category_kappa_excluded']} segments with 2+ "
+              "categories excluded)")
+    for r in payload["signal_indicators"]:
+        shown = "too few to score" if r["status"] != "ok" else f"F1 {_ci(r['f1'], (r['ci_low'], r['ci_high']))})"
+        print(f"signal-based {r['indicator']}: support {r['support']}, {shown}, not available {r['not_available']}")
+    if args.dry_run:
+        print("dry run: nothing written")
+        return 0
+    out = write_result("evaluate", payload)
+    print(f"written: <OUTPUT_DIR>/results/{out.name}")
+    return 0
+
+
 def _main_model(predictions) -> str | None:
     """Most common non-rules model in a predictions table."""
     from collections import Counter
@@ -396,6 +422,9 @@ def main(argv=None) -> int:
     sig.add_argument("--kind", action="append", help="only videos of this kind (repeatable)")
     sig.add_argument("--force", action="store_true", help="rerun pairs that already have a finished run")
     sig.set_defaults(func=_signals)
+    ev = sub.add_parser("evaluate", help="005: model vs blind labels on eval videos (metrics, ablation, CIs)")
+    ev.add_argument("--dry-run", action="store_true", help="print the numbers, write nothing")
+    ev.set_defaults(func=_evaluate)
     pred = sub.choices["predict"]
     pred.add_argument("--kind", action="append", help="only videos of this kind (repeatable), e.g. promo")
     pred.add_argument("--model", help="model id (default: models.main.hpc on cuda, models.main.mac otherwise)")

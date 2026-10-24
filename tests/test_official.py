@@ -193,6 +193,6 @@ def test_repo_official_runs_has_signal_sections():
     from tpa_index.schema import load_official
 
     data = load_official(repo_root() / "config/official_runs.yaml")
-    assert all(data[s] == [] for s in ("transcript", "audio", "people", "expression"))
+    assert all(len(data[s]) == 12 and all(r.startswith(f"{s}-") for r in data[s]) for s in ("transcript", "audio", "people", "expression"))
     assert len(data["segment"]) == len(data["predict"]) == len(data["moments"]) == 12
     assert all(r.startswith(f"{s}-") for s in ("segment", "predict", "moments") for r in data[s])

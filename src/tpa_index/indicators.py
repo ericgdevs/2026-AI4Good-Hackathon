@@ -280,6 +280,8 @@ def run_insights(pipeline: dict, labels: dict, root=None) -> dict:
     verified = verified_labels(model_view, labels, pipeline, root)
     estimates = indicator_estimates(model_view, ins["indicator_rules"], context(pipeline))
     seg = segment_table(model_view, verified, estimates, labels)
+    sources = set(model_view["phase_source"])
+    phase_source = sources.pop() if len(sources) == 1 else "local config (stored runs for unlisted videos)"
     phases_present = sorted(set(seg["phase"]))
     scopes = [("all", "all", pd.Series(True, index=seg.index))]
     scopes += [("phase", ph, seg["phase"] == ph) for ph in PHASES if ph in phases_present]
@@ -293,6 +295,6 @@ def run_insights(pipeline: dict, labels: dict, root=None) -> dict:
     model_staff = sum(b["staff_led_model_s"] for b in breakdown if b["scope_type"] == "all")
     return {"kind": "insights", "indicators": rows, "headline": headline(rows, phases_present),
             "time_breakdown": breakdown, "excluded_videos": excluded, "labels_source": source,
-            "model_tag": model_tag, "model_staff_share": model_staff / total if total else 0.0,
+            "model_tag": model_tag, "phase_source": phase_source, "model_staff_share": model_staff / total if total else 0.0,
             "limitations": LIMITATIONS, "official_runs": {k: v for k, v in load_official().items() if v},
             "config_hash": config_hash(labels, pipeline)}

@@ -119,3 +119,48 @@ def test_headline_phases_and_change(world):
     early, show = (next(r for r in perf if r["phase"] == p) for p in ("early", "showcase"))
     assert early["change_vs_early"] is None
     assert show["change_vs_early"] == pytest.approx(show["value"] - early["value"])
+
+
+def test_phase_from_local_config_with_stored_fallback(world, tmp_path, monkeypatch):
+    """A phase edited in the local videos config after segmenting is used; unlisted videos keep the stored phase;
+    split always comes from the stored runs."""
+    import json
+
+    from tpa_index import config
+    from tpa_index.report import write_result
+
+    base = run_insights(world["pipeline"], world["labels"])
+    assert base["phase_source"] == "stored runs"
+    local = tmp_path / "videos.local.yaml"
+    local.write_text("videos:\n"
+                     "  - {video_id: e01, filename: mock/e01.mp4, orientation: landscape, kind: live, phase: early,"
+                     " split: eval}\n"
+                     "  - {video_id: e02, filename: mock/e02.mp4, orientation: landscape, kind: live, phase: mid,"
+                     " split: dev}\n")  # e02: phase changed to mid; its split here must NOT be used
+    monkeypatch.setattr(config, "LOCAL_VIDEOS", local)
+    out = run_insights(world["pipeline"], world["labels"])
+    assert out["phase_source"] == "local config (stored runs for unlisted videos)"
+    assert {r["phase"] for r in out["headline"]} == {"early", "mid", "showcase"}
+    assert next(r for r in out["headline"] if r["indicator"] == "performance_share" and r["phase"] == "showcase")[
+        "status"] == "no videos in this phase"  # e02 was the only showcase video
+    assert next(b for b in out["time_breakdown"] if b["scope"] == "mid")["total_s"] == 120.0
+    assert out["excluded_videos"] == ["x01"]  # unlisted: stored phase (unknown) still applies
+    from tpa_index.view import segment_view
+    view = segment_view(world["pipeline"], world["labels"]).set_index("segment_id")
+    assert view.loc["e02_0", "split"] == "eval" and view.loc["e02_0", "phase"] == "mid"
+    folder = write_result("insights", out)
+    assert json.loads((folder / "manifest.json").read_text())["phase_source"] == out["phase_source"]
+    assert json.loads((folder / "indicators.json").read_text())["phase_source"] == out["phase_source"]
+    assert "mock/e02.mp4" not in "".join(p.read_text(errors="ignore") for p in folder.iterdir())
+
+
+def test_bad_phase_in_local_config_stops(world, tmp_path, monkeypatch):
+    from tpa_index import config
+    from tpa_index.config import ConfigError
+
+    local = tmp_path / "videos.local.yaml"
+    local.write_text("videos:\n  - {video_id: e01, filename: mock/e01.mp4, orientation: landscape, kind: live,"
+                     " phase: finale, split: eval}\n")
+    monkeypatch.setattr(config, "LOCAL_VIDEOS", local)
+    with pytest.raises(ConfigError, match="phase"):
+        run_insights(world["pipeline"], world["labels"])

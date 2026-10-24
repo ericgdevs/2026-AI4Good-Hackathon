@@ -334,7 +334,7 @@ def write_result(kind: str, payload: dict, root=None) -> Path:
             files.append(name)
         (out / "indicators.json").write_text(_json({k: payload[k] for k in (
             "indicators", "headline", "time_breakdown", "excluded_videos", "labels_source", "model_tag",
-            "model_staff_share", "limitations")}))
+            "phase_source", "model_staff_share", "limitations")}))
         (out / "summary.md").write_text(insights_summary(payload))
         files += ["indicators.json", "summary.md"]
     else:
@@ -344,6 +344,7 @@ def write_result(kind: str, payload: dict, root=None) -> Path:
                 "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "git_commit": git_commit(),
                 "config_hash": payload["config_hash"], "guideline_versions": payload.get("guideline_versions", []),
                 "official_runs": payload["official_runs"],
+                **({"phase_source": payload["phase_source"]} if "phase_source" in payload else {}),
                 "files": {f: hashlib.sha256((out / f).read_bytes()).hexdigest() for f in files},
                 "limitations": payload["limitations"]}
     tmp = out / "manifest.json.tmp"

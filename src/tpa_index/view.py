@@ -16,6 +16,17 @@ def main_model(predictions) -> str | None:
     return counts.most_common(1)[0][0] if counts else None
 
 
+def current_phases() -> dict[str, str]:
+    """video_id -> phase from the local videos config when it exists (validated against video_phases), so a phase
+    edited after segmenting is used; {} otherwise, and the phase stored in the official runs applies. Only the phase
+    is kept: filenames never leave this function. Never falls back to the example config."""
+    from tpa_index import config
+
+    if not config.LOCAL_VIDEOS.exists():
+        return {}
+    return {v["video_id"]: v["phase"] for v in config.load_videos(config.LOCAL_VIDEOS)}
+
+
 def _labels_by_group(labels) -> dict[str, list[str]]:
     return {g: [lab["name"] for lab in model_labels(labels, {g})] for g in GROUPS}
 
@@ -91,6 +102,7 @@ def segment_view(pipeline: dict, labels: dict, root=None) -> pd.DataFrame:
     from tpa_index.score import strengths
 
     videos = {v["video_id"]: v for v in read_official("videos", root=root).to_pylist()}
+    current = current_phases()
     segs = sorted(read_signals(root).to_pylist(), key=lambda s: (s["video_id"], s["start_s"]))
     preds = read_official("predictions", root=root)
     model = main_model(preds)
@@ -122,7 +134,9 @@ def segment_view(pipeline: dict, labels: dict, root=None) -> pd.DataFrame:
         faces = s["faces_detected"]
         rows.append({
             "segment_id": s["segment_id"], "video_id": vid, "split": videos[vid]["split"],
-            "phase": videos[vid]["phase"], "start_s": s["start_s"], "end_s": s["end_s"],
+            "phase": current.get(vid, videos[vid]["phase"]),
+            "phase_source": "local config" if vid in current else "stored runs",
+            "start_s": s["start_s"], "end_s": s["end_s"],
             "slice_s": (min(s["end_s"], nxt["start_s"]) if nxt else s["end_s"]) - s["start_s"],
             "is_idle": bool(s["is_idle"]), "person_count": s["person_count"], "has_speech": s["has_speech"],
             "faces_detected": faces,

@@ -9,7 +9,8 @@
 | field | from | notes |
 |---|---|---|
 | segment_id, video_id, start_s, end_s, is_idle | official segments | |
-| split, phase | official videos | `filename` is dropped on read |
+| split | official videos | `filename` is dropped on read |
+| phase, phase_source | local videos config if present, else official videos | `local config` / `stored runs` |
 | slice_s | computed | `min(end_s, next.start_s) - start_s`; the last segment uses its own `end_s`. Sums to the video's duration |
 | person_count, faces_detected, has_speech | `read_signals()` | null when the stage has no official run for the video |
 | model_cleared | main-model predictions + `required_threshold` | sets per group: activity, category, actor |

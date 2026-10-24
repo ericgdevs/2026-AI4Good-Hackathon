@@ -269,8 +269,8 @@
 
 ## Phase 7: Polish
 
-- [ ] T049 [P] Update `specs/005-insights-eval/contracts/interfaces.md` and `contracts/results.md` with any signature or column changes made during implementation, and bump `schema_version` if a column was removed or renamed.
-- [ ] T050 Final hygiene:
+- [X] T049 [P] Update `specs/005-insights-eval/contracts/interfaces.md` and `contracts/results.md` with any signature or column changes made during implementation, and bump `schema_version` if a column was removed or renamed.
+- [X] T050 Final hygiene:
   - run `uv run pytest`;
   - `git status --short` shows no data, `*.parquet`, `*.png`, `*.duckdb` or `*.local.yaml` files in the repo (the result folders live under OUTPUT_DIR);
   - grep the new modules for clinical or feelings wording;

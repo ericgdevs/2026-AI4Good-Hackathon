@@ -31,13 +31,15 @@
 }
 ```
 
+Insights manifests also carry `"phase_source"`: `local config` | `stored runs` | `local config (stored runs for unlisted videos)`.
+
 ## Tag values (exact strings)
 
 | `tag` | meaning |
 |---|---|
 | `staff-verified` | every contributing segment's label is verified by staff (blind label or review decision) |
 | `model estimate (unvalidated)` | no contributing segment is verified |
-| `model estimate (learned)` | a per-segment prediction of the final learned model (`learned_predictions.csv`) |
+| `model estimate (learned)` | no contributing segment is verified and the model fallback is the learned final model (`insights.labels_source: learned`, the default); also every row of `learned_predictions.csv` and the learned rows of `signal_indicators.csv` |
 | `mixed (NN% staff-verified)` | NN = round(100 × verified_share); 1 ≤ NN ≤ 99 |
 | `metric` | an evaluation number (model vs blind labels); carries an interval instead of a verified share |
 
@@ -48,10 +50,10 @@ Every indicator row also has `verified_share` (0–1) as a number, so readers ne
 | file | content |
 |---|---|
 | `metrics.csv` | one row per (system, scope, group, label, metric) |
-| `metrics.json` | the same rows plus headline numbers, the eval-set description and limitations |
+| `metrics.json` | keys `metrics` (the same rows), `headline` (one object per system), `eval_set` (counts per video, skipped, not scored, dev labels ignored, category_kappa_excluded), `limitations`, `guideline_versions` |
 | `confusion.csv` | system, human_primary, model_primary, count |
 | `signal_indicators.csv` | per indicator: support, tp, fp, fn, precision, recall, f1, ci_low, ci_high, not_available, status, tag, system (`zero-shot` or the learned system; added at the end) |
-| `ablation.csv` | one row per system: n_segments, primary_accuracy (+ CI), macro_f1_activity/category/actor (+ CI), kappa_primary/category (+ CI), rule fire counts |
+| `ablation.csv` | one row per system; columns in order: system, n_segments, primary_accuracy, primary_accuracy_ci_low, primary_accuracy_ci_high, macro_f1_activity, macro_f1_activity_ci_low, macro_f1_activity_ci_high, macro_f1_category, macro_f1_category_ci_low, macro_f1_category_ci_high, macro_f1_actor, macro_f1_actor_ci_low, macro_f1_actor_ci_high, kappa_primary, kappa_category, rules_fired, rules_not_applicable (`label:count;…`, only on the signal-rules row) |
 | `topup.csv` | label, predicted_positive, tp, precision (top-up labels only; empty with header if none) |
 | `failure_gallery.csv` | rank, segment_id, video_id, model_primary, human_primary, model_strength |
 | `learned_predictions.csv` | final learned model, every official segment: segment_id, video_id, primary, primary_prob, activities, categories, actors, tag (`model estimate (learned)`); label lists are `;`-joined |
@@ -75,9 +77,9 @@ Every indicator row also has `verified_share` (0–1) as a number, so readers ne
 | file | content |
 |---|---|
 | `indicators.csv` | one row per (indicator, scope) |
-| `indicators.json` | the same rows, plus the headline and time breakdown |
-| `headline.csv` | indicator, phase, value, unit, tag, verified_share, change_vs_early |
-| `time_breakdown.csv` | scope, youth_s, staff_led_verified_s, staff_led_model_s, idle_s, total_s |
+| `indicators.json` | keys `indicators` (the same rows), `headline`, `time_breakdown`, `excluded_videos`, `labels_source` (`learned` \| `zero-shot`), `model_tag`, `phase_source`, `model_staff_share` (share of all time excluded by the model staff rule), `limitations` |
+| `headline.csv` | indicator, phase, value, unit, tag, verified_share, change_vs_early, status (added at the end). Indicators: performance_share, solo_moments_minutes_per_hour, youth_voice_minutes_per_hour, positive_expression_rate |
+| `time_breakdown.csv` | scope_type, scope, youth_s, staff_led_verified_s, staff_led_model_s, idle_s, total_s |
 | `headline.png`, `time_breakdown.png` | charts |
 | `summary.md` | slide text; every number carries its tag |
 | `manifest.json` | written last |
@@ -90,10 +92,11 @@ Every indicator row also has `verified_share` (0–1) as a number, so readers ne
 - `scope_type`: `video` | `phase` | `all`. `scope` is a video ID, a phase name (`early`, `mid`, `showcase`) or `all`.
 - `unit`: `share` (0–1) | `minutes` | `per_hour` (minutes per hour of youth non-idle time in the scope; the headline uses these instead of minute totals) | `count` | `ratio` | `per_minute` | `index_0_100`.
 - `base`: a short text naming the denominator, for example `youth non-idle time` or `segments with faces`.
-- `status`: `ok` | `signal not available` | `not tagged yet` | `no videos in this phase`. When the status isn't `ok`, `value` is empty.
+- `status`: `ok` | `undefined` (a zero denominator, e.g. no participation time for the ratio) | `signal not available` | `not tagged yet` | `no videos in this phase` (headline only). When the status isn't `ok`, `value` is empty.
+- Each `*_minutes` total has a `*_minutes_per_hour` twin with the same tag and status: minutes per hour of youth non-idle time in that scope. Totals scale with video length; the per-hour values do not, so the headline uses them.
 
 ## Stability promise
 
 - Columns are only ever added at the end. Readers must select columns by name.
 - Tag strings are exactly as above.
-- Phases come from `videos.phase`. `unknown` never appears as a headline scope; it is listed in `indicators.json` under `excluded_videos`.
+- Phases come from `config/videos.local.yaml` when that file exists (validated), else from the `videos.phase` stored in the official runs; `phase_source` says which. `split` always comes from the stored runs. `unknown` never appears as a headline scope; it is listed in `indicators.json` under `excluded_videos`.

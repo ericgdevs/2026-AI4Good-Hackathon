@@ -47,6 +47,10 @@ A condition whose signal is missing for the segment (no official run, or a null 
 - `{indicator: x}` may only refer to a rule defined earlier in the block.
 - `learned.folds` is an integer ≥ 2; `learned.max_iter` an integer ≥ 1; `learned.C` > 0; `labels_source` ∈ {learned, zero-shot}.
 
+## Phase per video (insights)
+
+The phase comes from `config/videos.local.yaml` when that file exists, so a phase edited after segmenting is used. It is validated against `video_phases`, and an invalid file stops the command (exit 3). Videos the file does not list keep the phase stored in the official runs. Only `video_id` and `phase` are read from the file; `split` always comes from the stored runs, so the eval set cannot change under the labels. The example config is never used.
+
 ## Thresholds
 
 - **Visual labels** (activity, category, actor, under the main model): calibrated per-model thresholds from the merged config (`thresholds.local.yaml`, dev videos only). A missing one stops the command (exit 3) and names the label, the model and the calibrate command. There is no fallback to `label_threshold`.

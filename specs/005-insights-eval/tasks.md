@@ -201,8 +201,8 @@
 **Goal**: youth-only indicators per video and phase, every number tagged, plus the early-vs-showcase headline.
 **Independent test**: T030–T038 pass.
 
-- [ ] T030 [US3] Create `src/tpa_index/indicators.py` with `time_classes(view, verified, pipeline)`, which gives each segment one class: `idle` (`is_idle`), `staff_verified`, `staff_model` or `youth`. The rules are in `data-model.md`; idle wins. It returns the class plus a `verified` flag per segment, True when the label groups the indicator uses are verified.
-- [ ] T031 [US3] (Model fallback per `insights.labels_source`: `learned` by default, which refits `learned.fit_final` and uses `learned_view`; or `zero-shot`.) In `src/tpa_index/indicators.py`, add `tag(verified_share)`, returning the exact strings from `contracts/results.md`, and `youth_indicators(view, verified, estimates, pipeline, scope_rows)`. It computes every FR-022 indicator per video, per phase (`early`, `mid` if present, `showcase`) and for `all`, using `slice_s` time over youth segments only. Each row has the `indicators.csv` columns, `verified_share` (verified youth time / contributing time) and its tag.
+- [X] T030 [US3] Create `src/tpa_index/indicators.py` with `time_classes(view, verified, pipeline)`, which gives each segment one class: `idle` (`is_idle`), `staff_verified`, `staff_model` or `youth`. The rules are in `data-model.md`; idle wins. It returns the class plus a `verified` flag per segment, True when the label groups the indicator uses are verified.
+- [X] T031 [US3] (Model fallback per `insights.labels_source`: `learned` by default, which refits `learned.fit_final` and uses `learned_view`; or `zero-shot`.) In `src/tpa_index/indicators.py`, add `tag(verified_share)`, returning the exact strings from `contracts/results.md`, and `youth_indicators(view, verified, estimates, pipeline, scope_rows)`. It computes every FR-022 indicator per video, per phase (`early`, `mid` if present, `showcase`) and for `all`, using `slice_s` time over youth segments only. Each row has the `indicators.csv` columns, `verified_share` (verified youth time / contributing time) and its tag.
   - **verified first**: a segment's verified labels replace the model's for the groups that are verified;
   - **solo moments**: contiguous runs of `solo_on_stage` segments (staff tag, else the rule estimate);
   - **audience response**: the union of performance intervals each extended by `applause_after_s`, intersected with applause slices, each second once;
@@ -210,30 +210,30 @@
   - **original work**: staff only, with status "not tagged yet" if none;
   - **missing signal**: status "signal not available";
   - **diversity**: activities with ≥ 60 s and normalized entropy.
-- [ ] T032 [US3] In `src/tpa_index/indicators.py`, add:
+- [X] T032 [US3] In `src/tpa_index/indicators.py`, add:
   - `time_breakdown(view, classes)`: per scope, `youth_s`, `staff_led_verified_s`, `staff_led_model_s`, `idle_s` and `total_s`;
   - `headline(rows, videos)`: early vs showcase, plus `mid` if present, for the four headline indicators, with `change_vs_early`. `unknown` videos are listed under `excluded_videos`, and a missing phase gives status "no videos in this phase";
   - `run_insights(pipeline, labels, root=None)`: calls `check_inputs("insights", …)` and builds the payload with the limitations list.
-- [ ] T033 [US3] In `src/tpa_index/report.py`, extend `write_result` for kind `insights`: `indicators.csv`, `indicators.json`, `headline.csv`, `time_breakdown.csv`, a plain `summary.md` and `manifest.json` last. In `src/tpa_index/cli.py`, add an `insights` subcommand with `--dry-run`, printing the headline with tags and the time breakdown for `all`.
-- [ ] T034 [P] [US3] **SC-002 test**: in `tests/test_indicators.py`, add `test_staff_led_stretch_not_in_youth_numbers`, in two variants:
+- [X] T033 [US3] In `src/tpa_index/report.py`, extend `write_result` for kind `insights`: `indicators.csv`, `indicators.json`, `headline.csv`, `time_breakdown.csv`, a plain `summary.md` and `manifest.json` last. In `src/tpa_index/cli.py`, add an `insights` subcommand with `--dry-run`, printing the headline with tags and the time breakdown for `all`.
+- [X] T034 [P] [US3] **SC-002 test**: in `tests/test_indicators.py`, add `test_staff_led_stretch_not_in_youth_numbers`, in two variants:
   - the planted model staff stretch in `e02` (no verified label);
   - a verified blind label marking an `e01` segment staff-led.
 
   Each adds 0 s to every youth numerator and denominator and appears in `staff_led_model_s` / `staff_led_verified_s`.
-- [ ] T035 [P] [US3] **SC-003 test (part 2)**: in `tests/test_indicators.py`, add `test_time_totals_match_duration`. Per video, `youth_s + staff_led_verified_s + staff_led_model_s + idle_s == total_s == duration` (within 1e-6), and no share exceeds 1.
-- [ ] T036 [P] [US3] **SC-004 test**: in `tests/test_indicators.py`, add `test_every_indicator_row_has_tag`. Every row of `indicators.csv` and `headline.csv` has a non-empty tag from the allowed set, and `verified_share` is in [0, 1]. Mixed tags match `mixed \(\d{1,2}% staff-verified\)`.
-- [ ] T037 [P] [US3] In `tests/test_indicators.py`, add rule tests:
+- [X] T035 [P] [US3] **SC-003 test (part 2)**: in `tests/test_indicators.py`, add `test_time_totals_match_duration`. Per video, `youth_s + staff_led_verified_s + staff_led_model_s + idle_s == total_s == duration` (within 1e-6), and no share exceeds 1.
+- [X] T036 [P] [US3] **SC-004 test**: in `tests/test_indicators.py`, add `test_every_indicator_row_has_tag`. Every row of `indicators.csv` and `headline.csv` has a non-empty tag from the allowed set, and `verified_share` is in [0, 1]. Mixed tags match `mixed \(\d{1,2}% staff-verified\)`.
+- [X] T037 [P] [US3] In `tests/test_indicators.py`, add rule tests:
   - applause counts each second once when the 10 s window overlaps the next performance segment;
   - positive expression uses only face segments and the argmax, and is always tagged model estimate;
   - original work reads "not tagged yet" without staff tags;
   - `unknown` video `x01` is excluded from the headline and listed;
   - youth voice time includes `has_speech` and excludes staff-led time;
   - solo moments counts contiguous runs.
-- [ ] T038 [P] [US3] In `tests/test_cli.py`, add:
+- [X] T038 [P] [US3] In `tests/test_cli.py`, add:
   - `insights --dry-run` writes nothing;
   - `insights` writes a complete `insights-*` folder;
   - a missing expression run exits 3.
-- [ ] T039 **Checkpoint 2**: run `uv run pytest`, which must pass. Then, in the T029 scratch setup, run `uv run tpa-index insights` and check the folder against `contracts/results.md`.
+- [X] T039 **Checkpoint 2**: run `uv run pytest`, which must pass. Then, in the T029 scratch setup, run `uv run tpa-index insights` and check the folder against `contracts/results.md`.
 
 ---
 
@@ -241,22 +241,22 @@
 
 **Goal**: slide-ready charts and summary, and a proven-clean output.
 
-- [ ] T040 [US4] In `src/tpa_index/report.py`, add charts with matplotlib (`matplotlib.use("Agg")`): white background, text color `#201C25`, series colors in order `#7851B9`, `#0099B3`, `#FF4255`, legends on, 150 dpi PNG.
+- [X] T040 [US4] In `src/tpa_index/report.py`, add charts with matplotlib (`matplotlib.use("Agg")`): white background, text color `#201C25`, series colors in order `#7851B9`, `#0099B3`, `#FF4255`, legends on, 150 dpi PNG.
   - **evaluate**: `ablation.png` (primary accuracy and macro-F1 per system, with CI error bars), `per_label_f1.png` (scorable activity labels), `confusion.png` (white → `#7851B9` single hue, counts annotated) and `coverage.png` (accuracy on confident vs flagged, with coverage).
   - **insights**: `headline.png` (grouped bars by phase) and `time_breakdown.png` (stacked youth, staff-led and idle per phase).
 
   Every chart's title or footnote carries its tag: `metric · 95% CI · n=…` for evaluate, and the indicator's tag for insights. Add the chart files to the manifest.
-- [ ] T041 [US4] In `src/tpa_index/report.py`, make `summary.md` slide-ready:
+- [X] T041 [US4] In `src/tpa_index/report.py`, make `summary.md` slide-ready:
   - **evaluate**: eval-set size per video, the headline metrics, each as `value (95% CI low–high, n=…)`, the kappa sentence, the ablation table, the signal-based indicators table, and a "Limitations" section listing single labeler, the eval size and v04 share, weak staff exclusion, the fixed 0.5 audio probability, per-moment review decisions and wide intervals;
   - **insights**: the headline table with tags, the time breakdown, "observable, unvalidated" on expression, and the same limitations.
-- [ ] T042 [P] [US4] **SC-005 test**: in `tests/test_report.py`, add `test_no_filename_or_transcript_sentinel_in_any_output`. Run both commands on `build_world`, then read every file in both result folders as bytes. `secret_name` and `ZQXJ-005-SENTINEL` appear 0 times. No CSV or JSON column or key matches `(?i)(filename|path|person_id|face_id|track|embedding|transcript_text)`.
-- [ ] T043 [P] [US4] **SC-008 test**: in `tests/test_report.py`, add `test_summary_metric_lines_have_intervals`. Every line in the evaluate `summary.md` that reports an accuracy, F1 or kappa value contains `95% CI` and `n=`, and every number line in the insights `summary.md` contains a tag string.
-- [ ] T044 [P] [US4] In `tests/test_report.py`, add:
+- [X] T042 [P] [US4] **SC-005 test**: in `tests/test_report.py`, add `test_no_filename_or_transcript_sentinel_in_any_output`. Run both commands on `build_world`, then read every file in both result folders as bytes. `secret_name` and `ZQXJ-005-SENTINEL` appear 0 times. No CSV or JSON column or key matches `(?i)(filename|path|person_id|face_id|track|embedding|transcript_text)`.
+- [X] T043 [P] [US4] **SC-008 test**: in `tests/test_report.py`, add `test_summary_metric_lines_have_intervals`. Every line in the evaluate `summary.md` that reports an accuracy, F1 or kappa value contains `95% CI` and `n=`, and every number line in the insights `summary.md` contains a tag string.
+- [X] T044 [P] [US4] In `tests/test_report.py`, add:
   - `manifest.json` is the newest file in the folder, and its sha256 values match the files;
   - a folder without `manifest.json` is ignored by `latest_result`;
   - chart PNGs exist and are non-empty.
-- [ ] T045 [P] [US4] **SC-007 test**: in `tests/test_cli.py`, add `test_evaluate_and_insights_fast_on_mock_scale`. Use `build_world` scaled to 12 videos of 300 segments with 205 eval labels (an `overrides` option); `evaluate` and `insights` each finish in under 30 s.
-- [ ] T046 **Checkpoint 3**: run `uv run pytest`, which must pass. In the scratch setup, open the generated PNGs and `summary.md` and check the palette, the tags and the CIs by eye.
+- [X] T045 [P] [US4] **SC-007 test**: in `tests/test_cli.py`, add `test_evaluate_and_insights_fast_on_mock_scale`. Use `build_world` scaled to 12 videos of 300 segments with 205 eval labels (an `overrides` option); `evaluate` and `insights` each finish in under 30 s.
+- [X] T046 **Checkpoint 3**: run `uv run pytest`, which must pass. In the scratch setup, open the generated PNGs and `summary.md` and check the palette, the tags and the CIs by eye.
 
 ---
 

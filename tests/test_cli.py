@@ -482,7 +482,8 @@ def test_signals_done_skipped_and_failed_lines(monkeypatch, clip_videos, pipelin
 
 # ---- evaluate (005): mock world only ---------------------------------------------------------------------------
 EVALUATE_FILES = {"metrics.csv", "metrics.json", "confusion.csv", "signal_indicators.csv", "ablation.csv",
-                  "topup.csv", "failure_gallery.csv", "learned_predictions.csv", "summary.md", "manifest.json"}
+                  "topup.csv", "failure_gallery.csv", "learned_predictions.csv", "summary.md", "manifest.json",
+                  "ablation.png", "per_label_f1.png", "confusion.png", "coverage.png"}
 
 
 def _evaluate_cli(tmp_path, monkeypatch, **kw):
@@ -520,3 +521,41 @@ def test_evaluate_missing_audio_exits_3(tmp_path, monkeypatch, capsys):
     assert cli.main(["evaluate"]) == 3
     assert "official audio runs missing for: e02" in capsys.readouterr().err
     assert not (tmp_path / "out/results").exists()
+
+
+# ---- insights (005): mock world only ---------------------------------------------------------------------------
+INSIGHTS_FILES = {"indicators.csv", "indicators.json", "headline.csv", "time_breakdown.csv", "summary.md",
+                  "manifest.json", "headline.png", "time_breakdown.png"}
+
+
+def test_insights_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):
+    cli = _evaluate_cli(tmp_path, monkeypatch)
+    assert cli.main(["insights", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "performance_share [early]" in out and ("model estimate (learned)" in out or "staff-verified" in out)
+    assert "dry run: nothing written" in out and not (tmp_path / "out/results").exists()
+
+
+def test_insights_writes_one_complete_folder(tmp_path, monkeypatch):
+    cli = _evaluate_cli(tmp_path, monkeypatch)
+    assert cli.main(["insights"]) == 0
+    (folder,) = list((tmp_path / "out/results").iterdir())
+    assert folder.name.startswith("insights-")
+    assert INSIGHTS_FILES == {p.name for p in folder.iterdir()}
+
+
+def test_insights_missing_expression_exits_3(tmp_path, monkeypatch, capsys):
+    cli = _evaluate_cli(tmp_path, monkeypatch, overrides={"skip_stages": [("expression", "e01")]})
+    assert cli.main(["insights"]) == 3
+    assert "official expression runs missing for: e01" in capsys.readouterr().err
+
+
+def test_evaluate_and_insights_fast_on_mock_scale(tmp_path, monkeypatch):
+    """SC-007: 12 videos x 300 segments with 205 eval labels; each command finishes in under 30 s."""
+    import time
+
+    cli = _evaluate_cli(tmp_path, monkeypatch, n_extra_eval=8, n_segments=300, n_labels=205)
+    for command in ("evaluate", "insights"):
+        t0 = time.perf_counter()
+        assert cli.main([command]) == 0
+        assert time.perf_counter() - t0 < 30, command

@@ -227,6 +227,29 @@ def _evaluate(args) -> int:
     return 0
 
 
+def _insights(args) -> int:
+    from tpa_index.indicators import run_insights
+    from tpa_index.report import show, show_change, write_result
+
+    payload = run_insights(load_pipeline(), load_labels())  # missing stage/threshold/labels -> ConfigError (exit 3)
+    print(f"model fallback: {payload['labels_source']} ({payload['model_tag']}); staff-verified labels first")
+    for r in payload["headline"]:
+        value = show(r["value"], r["unit"]) if r["status"] == "ok" else r["status"]
+        change = "" if r["change_vs_early"] is None else f" (change vs early {show_change(r['change_vs_early'], r['unit'])})"
+        print(f"{r['indicator']} [{r['phase']}]: {value}{change}  [{r['tag'] or '-'}]")
+    tb = next(b for b in payload["time_breakdown"] if b["scope_type"] == "all")
+    print(f"time (all videos): youth {tb['youth_s'] / 60:.1f} min, staff-led {tb['staff_led_verified_s'] / 60:.1f} "
+          f"min verified + {tb['staff_led_model_s'] / 60:.1f} min model rule, idle {tb['idle_s'] / 60:.1f} min")
+    if payload["excluded_videos"]:
+        print(f"left out of the headline (phase unknown): {', '.join(payload['excluded_videos'])}")
+    if args.dry_run:
+        print("dry run: nothing written")
+        return 0
+    out = write_result("insights", payload)
+    print(f"written: <OUTPUT_DIR>/results/{out.name}")
+    return 0
+
+
 def _main_model(predictions) -> str | None:
     """Most common non-rules model in a predictions table."""
     from collections import Counter
@@ -425,6 +448,9 @@ def main(argv=None) -> int:
     ev = sub.add_parser("evaluate", help="005: model vs blind labels on eval videos (metrics, ablation, CIs)")
     ev.add_argument("--dry-run", action="store_true", help="print the numbers, write nothing")
     ev.set_defaults(func=_evaluate)
+    ins = sub.add_parser("insights", help="005: youth-only program indicators per video and phase, tagged")
+    ins.add_argument("--dry-run", action="store_true", help="print the headline, write nothing")
+    ins.set_defaults(func=_insights)
     pred = sub.choices["predict"]
     pred.add_argument("--kind", action="append", help="only videos of this kind (repeatable), e.g. promo")
     pred.add_argument("--model", help="model id (default: models.main.hpc on cuda, models.main.mac otherwise)")

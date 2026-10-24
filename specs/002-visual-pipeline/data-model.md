@@ -28,9 +28,9 @@
 
 | field | rule |
 |---|---|
-| primary activity | highest activity score among labels ≥ their own threshold `threshold(model, label)` |
+| primary activity | highest strength = score / `threshold(model, label)` among activity labels with strength ≥ 1 |
 | secondary labels | other visual labels ≥ their own threshold |
-| `uncertain_mixed` | stored as a rules row: 1 if no activity clears its threshold, or top1 − top2 < `uncertain_margin` |
+| `uncertain_mixed` | stored as a rules row: 1 if no activity clears its threshold, or the second-highest cleared strength ≥ `moments.close_ratio` × the top strength |
 | moment `needs_review` | `confidence < threshold(model, primary_label) × (1 + moments.needs_review_margin)` or any segment `uncertain_mixed = 1` |
 | `is_idle` | stored on the segment: `idle_score` ≥ `idle_threshold(model)` (calibrated per model, falling back to `idle.score_threshold`) AND `visual_change` < `idle.change_threshold` (hand-set; null when there are fewer than 2 frames, and then never idle) |
 

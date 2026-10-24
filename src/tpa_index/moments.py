@@ -3,6 +3,7 @@ from collections import defaultdict
 from statistics import mean
 
 from tpa_index.config import threshold
+from tpa_index.score import primary_label
 
 
 def merge_moments(segments, predictions, pipeline: dict, run_id: str, window_s=None, model=None) -> list[dict]:
@@ -67,8 +68,7 @@ def merge_moments(segments, predictions, pipeline: dict, run_id: str, window_s=N
                 current_label, current = None, []
                 continue
             seg_scores = scores.get(seg["segment_id"], {})
-            cleared = [lab for lab in primary_labels if seg_scores.get(lab, 0.0) >= thr[lab]]
-            top = max(cleared, key=lambda lab: seg_scores[lab], default=None)
+            top = primary_label({lab: seg_scores.get(lab, 0.0) for lab in primary_labels}, thr)
             if top is None:
                 continue
             gap = seg["start_s"] - max(s["end_s"] for s in current) if current else None

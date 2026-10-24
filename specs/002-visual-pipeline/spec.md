@@ -34,7 +34,7 @@ A team member runs the predict command on a video. For each segment, the system 
 After scoring, each segment gets the following labels:
 - a **primary activity**: the top activity label above the threshold;
 - **secondary labels**: the other labels above the threshold;
-- an **uncertain/mixed** flag when no activity clears the threshold or the top two activities are too close to call.
+- an **uncertain/mixed** flag when no activity clears the threshold or the top two activities are too close to call (compared relative to each label's own threshold).
 
 Consecutive segments are then merged into moments using the existing merge rules and the video's own window settings. Moments are written for review.
 
@@ -46,7 +46,7 @@ Consecutive segments are then merged into moments using the existing merge rules
 
 1. **Given** a segment whose top activity scores above the threshold and clearly ahead of the runner-up, **When** labeled, **Then** that activity is primary and the segment is not flagged uncertain/mixed.
 2. **Given** a segment where no activity clears the threshold, **When** labeled, **Then** it has no primary activity and is flagged uncertain/mixed.
-3. **Given** a segment where the top two activities are within the configured margin, **When** labeled, **Then** it is flagged uncertain/mixed.
+3. **Given** a segment where the two strongest activities that clear their thresholds are within the configured ratio of each other, **When** labeled, **Then** it is flagged uncertain/mixed.
 4. **Given** a video whose kind uses shorter windows (for example clips), **When** moments are merged, **Then** the gap and minimum-length rules use that video's window length, not the default.
 5. **Given** segments flagged idle, **When** moments are built, **Then** idle segments never start or extend a moment.
 6. **Given** any segment, **When** labeled, **Then** an `uncertain_mixed` status row is stored for it: score 1 when flagged and 0 otherwise, under the model name `rules`. The model-scored `uncertain` and `mixed` status labels are removed from the label file, and the guideline version moves to 0.2.0.
@@ -147,9 +147,9 @@ A team member syncs the repo to their HPC work folder and pulls HPC outputs back
 **Labels per segment and moments**
 
 - **FR-007**: For each segment, the system MUST derive:
-  - a primary activity: the highest-scoring activity among those at or above their own label threshold (a per-label threshold if set, else the global one);
+  - a primary activity: among activities at or above their own label threshold (a per-label threshold if set, else the global one), the one with the highest **strength** = score / threshold. Raw scores are not compared across labels, because real thresholds differ by orders of magnitude (0.001–0.31 on a real run);
   - secondary labels: the other labels at or above their own threshold;
-  - an uncertain/mixed result, when no activity clears the threshold or the top two activities are within the configured margin. It is stored as an `uncertain_mixed` status prediction row (score 1 when flagged, 0 otherwise) under the model name `rules`, alongside the model rows.
+  - an uncertain/mixed result, when no activity clears the threshold, or the second-highest strength among cleared activities is ≥ `moments.close_ratio` (0–1, default 0.8) × the top strength. It is stored as an `uncertain_mixed` status prediction row (score 1 when flagged, 0 otherwise) under the model name `rules`, alongside the model rows.
 - **FR-008**: Moments MUST be built with the existing merge rules, using each video's effective window settings, including per-kind and per-video overrides. The current shortcut that always uses the default window MUST be removed.
 - **FR-009**: Idle segments MUST NOT start or extend moments.
 - **FR-009a**: A moment MUST be marked `needs_review` when its confidence is below its primary label's threshold × (1 + `needs_review_margin`), with the margin configurable from 0 to 1 and defaulting to 0.2, or when any of its segments is flagged `uncertain_mixed`. `needs_review` is a rule-derived status label with no prompts.

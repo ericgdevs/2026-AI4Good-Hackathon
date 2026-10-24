@@ -49,11 +49,12 @@ Checked on 2026-10-23 against the locked environment (transformers 5.20.2, torch
 ## 7. `uncertain_mixed` (spec Q1 = A)
 
 - **Decision**: After model scoring, for each segment take the activity labels' scores:
-  - `flag = top1 < label_threshold or (top1 - top2) < uncertain_margin`. `uncertain_margin` defaults to 0.1 in `pipeline.yaml`.
+  - strength = score / threshold(model, label). `flag = no activity has strength ≥ 1 or strength2 ≥ close_ratio × strength1`, over the activities with strength ≥ 1. `moments.close_ratio` defaults to 0.8 in `pipeline.yaml`.
   - Write one row: label `uncertain_mixed`, group `status`, score `1.0` or `0.0`, model `"rules"`, same `run_id`.
   - In `labels.yaml`, add `source: rules` to `uncertain_mixed`; a rules label needs no prompts. Remove `uncertain` and `mixed`, and move `guideline_version` to `0.2.0`.
   - `needs_review` is also `source: rules`, with its prompts removed (§17). After this, the status group has no model-scored labels, so `visual_groups` is `[category, actor, activity]`.
-  - "Clears the threshold" means a score ≥ that label's own threshold (§15). top1 is the best activity that clears it; top2 is the next-highest activity score overall.
+  - "Clears the threshold" means a score ≥ that label's own threshold (§15). strength1 is the strongest cleared activity (also the segment's primary); strength2 the next cleared one. An activity below its threshold never counts as close.
+  - Revised after the first real run: an absolute gap (`top1 - top2 < uncertain_margin`, 0.1) flagged 381 of 403 moments, because real SigLIP scores and thresholds are tiny (0.001–0.31), so every pair looked close. Comparing raw scores also picked the wrong primary when thresholds differ by orders of magnitude. Moment confidence stays the primary's raw score, so the `needs_review` margin rule (§17) is unchanged.
 
 ## 8. X-CLIP (optional, off by default)
 
@@ -133,7 +134,7 @@ Checked on 2026-10-23 against the locked environment (transformers 5.20.2, torch
 ## 17. `needs_review` (rules) and `tpa-index moments`
 
 - **Rule**: a moment's `needs_review` is `confidence < threshold(model, primary_label) × (1 + moments.needs_review_margin)` **or** any segment in the moment has `uncertain_mixed = 1`. The margin (default 0.2) exists because segments only join a moment when they clear the threshold, so a plain `confidence < threshold` could never fire.
-  - The old moment-level keys `moments.needs_review_below` and `moments.conflict_margin` are removed, replaced by per-label thresholds and `uncertain_margin`.
+  - The old moment-level keys `moments.needs_review_below` and `moments.conflict_margin` are removed, replaced by per-label thresholds and the uncertain_mixed rule (now `moments.close_ratio`, §7).
   - 001's `test_moments.py` and the mock generator are updated to match.
 - **`tpa-index moments [--video-id …]`**: for each official predict run, read its `segments` and `predictions` (main model and rules rows) and rebuild moments with the current thresholds.
   - The `uncertain_mixed` rows are recomputed too, because they depend on thresholds.

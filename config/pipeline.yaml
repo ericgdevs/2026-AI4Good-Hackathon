@@ -4,7 +4,6 @@ frames_per_window: 4           # >= 1
 min_face_px: 48
 label_threshold: 0.5            # global fallback; per-label values in label_thresholds
 label_thresholds: {}            # {model name as in predictions.model: {label: t}}; config/thresholds.local.yaml wins
-uncertain_margin: 0.1           # top1 - top2 activity gap below this => uncertain_mixed
 visual_groups: [category, actor, activity]
 video_phases: [early, mid, showcase, unknown]
 audio_sample_rate: 16000
@@ -13,6 +12,7 @@ moments:
   secondary_groups: [category, actor, audio, expression]
   max_gap_windows: 1           # merge across gaps up to this many windows
   min_windows: 1               # drop moments shorter than this many windows
+  close_ratio: 0.8             # uncertain_mixed if 2nd activity strength (score/threshold) >= this x top
   needs_review_margin: 0.2     # needs_review if confidence < threshold * (1 + margin), or any uncertain_mixed segment
 overrides:                     # only window_s, overlap_s, frames_per_window allowed
   by_kind:

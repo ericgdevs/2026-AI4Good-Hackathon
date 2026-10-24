@@ -24,7 +24,6 @@
 
 ```yaml
 visual_groups: [category, actor, activity]
-uncertain_margin: 0.1            # top1 - top2 activity gap below this => uncertain_mixed
 label_thresholds: {}             # optional {model name as in predictions.model: {label: t}}; fallback label_threshold
 models:
   main:
@@ -53,19 +52,20 @@ calibrate:
   min_segments: 20               # fewer dev segments than this: keep the fallback
 ```
 
-Removed keys: `moments.needs_review_below` and `moments.conflict_margin`, replaced by per-label thresholds, `uncertain_margin` and `moments.needs_review_margin`.
+Removed keys: `moments.needs_review_below` and `moments.conflict_margin`, replaced by per-label thresholds, `moments.close_ratio` and `moments.needs_review_margin`. (`uncertain_margin`, an absolute top1 − top2 gap, was removed after the first real run in favour of `moments.close_ratio`.)
 
 New moments key:
 
 ```yaml
 moments:
+  close_ratio: 0.8           # uncertain_mixed if 2nd activity strength (score/threshold) >= this x top
   needs_review_margin: 0.2   # needs_review if confidence < threshold * (1 + margin)
 ```
 
 Validation:
 - `visual_groups` ⊆ the label groups, and each group has at least one model-scored label;
 - `label_thresholds` values are in [0, 1], and each label exists and is model-scored;
-- `0 ≤ uncertain_margin < 1`;
+- `0 ≤ moments.close_ratio ≤ 1`;
 - `0 ≤ moments.needs_review_margin ≤ 1`;
 - `batch_windows` values ≥ 1;
 - every `motion.labels` entry is an activity label;

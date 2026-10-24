@@ -2,14 +2,24 @@
 import numpy as np
 
 
-def uncertain_mixed(activity_scores: dict[str, float], thresholds: dict[str, float], margin: float) -> bool:
-    """No activity clears its threshold, or the best one is within `margin` of the next-highest activity."""
-    cleared = [lab for lab, s in activity_scores.items() if s >= thresholds[lab]]
-    if not cleared:
+def strengths(scores: dict[str, float], thresholds: dict[str, float]) -> dict[str, float]:
+    """score / threshold for the labels that clear their threshold (strength >= 1): comparable across labels."""
+    # floor: a 0 threshold (allowed by config) would divide by zero
+    return {lab: s / max(thresholds[lab], 1e-9) for lab, s in scores.items() if s >= thresholds[lab]}
+
+
+def primary_label(scores: dict[str, float], thresholds: dict[str, float]) -> str | None:
+    """The cleared label with the highest strength, or None if nothing clears."""
+    st = strengths(scores, thresholds)
+    return max(st, key=st.get, default=None)
+
+
+def uncertain_mixed(activity_scores: dict[str, float], thresholds: dict[str, float], close_ratio: float) -> bool:
+    """No activity clears its threshold, or the second-strongest cleared one is within close_ratio of the top."""
+    ranked = sorted(strengths(activity_scores, thresholds).values(), reverse=True)
+    if not ranked:
         return True
-    top = max(cleared, key=lambda lab: activity_scores[lab])
-    runner_up = max((s for lab, s in activity_scores.items() if lab != top), default=0.0)
-    return activity_scores[top] - runner_up < margin
+    return len(ranked) > 1 and ranked[1] >= close_ratio * ranked[0]
 
 
 def visual_change(frames: np.ndarray) -> float | None:
@@ -42,7 +52,7 @@ def rules_rows(segments: list[dict], predictions: list[dict], pipeline: dict, la
     for seg in segments:
         act = scores.get(seg["segment_id"], {})
         thresholds = {lab: threshold(pipeline, model, lab) for lab in act}
-        flag = uncertain_mixed(act, thresholds, pipeline["uncertain_margin"])
+        flag = uncertain_mixed(act, thresholds, pipeline["moments"]["close_ratio"])
         out.append({"segment_id": seg["segment_id"], "label": "uncertain_mixed", "label_group": "status",
                     "score": 1.0 if flag else 0.0, "model": "rules", "run_id": run_id})
     return out

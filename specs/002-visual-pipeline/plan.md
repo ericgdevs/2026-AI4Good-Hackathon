@@ -97,7 +97,7 @@ specs/002-visual-pipeline/
 ```text
 config/
 ├── labels.yaml            # status group -> uncertain_mixed + needs_review, both rules; guideline 0.2.0
-├── pipeline.yaml          # + visual_groups, uncertain_margin, label_thresholds, models, idle; - needs_review_below, conflict_margin
+├── pipeline.yaml          # + visual_groups, moments.close_ratio, label_thresholds, models, idle; - needs_review_below, conflict_margin
 ├── official_runs.yaml     # new, committed, run IDs only (predict, moments, segment)
 └── thresholds.local.yaml  # gitignored, written by calibrate
 .env.example               # new: DATA_DIR, OUTPUT_DIR, HPC_USER, HPC_HOST, HPC_OUTPUT_DIR

@@ -86,6 +86,13 @@ def test_per_label_threshold_and_model_filter():
     assert merge_moments(segs, preds + other, p, "r1", model="m1") == []  # m2 rows ignored for m1
 
 
+def test_primary_is_highest_strength_not_raw_score():
+    p = {**PIPE, "label_thresholds": {"m1": {"singing": 0.001, "dance": 0.3}}}
+    m = merge_moments(*make([(0, {"singing": 0.005, "dance": 0.33})]), p, "r1", model="m1")
+    assert m[0]["primary_label"] == "singing"  # 5x its threshold beats dance's 1.1x
+    assert m[0]["confidence"] == 0.005  # confidence stays the raw score
+
+
 def test_secondary_and_indicators_listed_and_valid():
     m = merge_moments(*make([(0, {"singing": 0.9, "music": 0.8, "solo_on_stage": 0.7})]), PIPE, "r1")
     assert m[0]["secondary_labels"] == ["music"] and m[0]["indicators"] == ["solo_on_stage"]

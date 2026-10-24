@@ -6,28 +6,43 @@ T = {"singing": 0.5, "dance": 0.5, "acting_theater": 0.5, "music": 0.5, "actor_p
 
 def test_clear_winner():
     scores = {"singing": 0.9, "dance": 0.2, "acting_theater": 0.1, "music": 0.7, "actor_participant": 0.6}
-    assert not uncertain_mixed({k: scores[k] for k in ACT}, T, 0.1)
+    assert not uncertain_mixed({k: scores[k] for k in ACT}, T, 0.8)
 
 
 def test_nothing_clears():
     scores = {"singing": 0.3, "dance": 0.2, "acting_theater": 0.1, "music": 0.7, "actor_participant": 0.1}
-    assert uncertain_mixed({k: scores[k] for k in ACT}, T, 0.1)
+    assert uncertain_mixed({k: scores[k] for k in ACT}, T, 0.8)
 
 
 def test_close_top_two_is_uncertain():
-    assert uncertain_mixed({"singing": 0.80, "dance": 0.75, "acting_theater": 0.1}, T, 0.1)
-    assert not uncertain_mixed({"singing": 0.80, "dance": 0.65, "acting_theater": 0.1}, T, 0.1)
+    assert uncertain_mixed({"singing": 0.80, "dance": 0.70, "acting_theater": 0.1}, T, 0.8)  # 1.4 >= 0.8 * 1.6
+    assert not uncertain_mixed({"singing": 0.80, "dance": 0.55, "acting_theater": 0.1}, T, 0.8)  # 1.1 < 1.28
 
 
-def test_runner_up_below_threshold_still_counts_for_closeness():
-    assert uncertain_mixed({"singing": 0.55, "dance": 0.49, "acting_theater": 0.1}, T, 0.1)
+def test_runner_up_below_threshold_does_not_count():
+    assert not uncertain_mixed({"singing": 0.55, "dance": 0.49, "acting_theater": 0.1}, T, 0.8)
 
 
-def test_per_label_threshold_is_used():
-    scores = {"singing": 0.40, "dance": 0.20, "acting_theater": 0.05}
-    low = {**T, "dance": 0.15}  # singing below its 0.5; dance clears its 0.15
-    # dance wins on its own threshold, but uncleared singing scores higher: too close to call
-    assert uncertain_mixed(scores, low, 0.1)
+# real SigLIP scale: raw scores and thresholds are tiny and differ by orders of magnitude across labels
+TINY = {"singing": 0.001, "dance": 0.3, "acting_theater": 0.01}
+
+
+def test_tiny_scores_clear_dominant_label_is_not_uncertain():
+    # raw gaps are all < 0.1, but singing is 5x its threshold vs dance 1.1x
+    assert not uncertain_mixed({"singing": 0.005, "dance": 0.33, "acting_theater": 0.002}, TINY, 0.8)
+
+
+def test_tiny_scores_within_ratio_are_uncertain():
+    # strengths 5.0 and 4.5: within 0.8 of each other
+    assert uncertain_mixed({"singing": 0.005, "dance": 0.002, "acting_theater": 0.045}, TINY, 0.8)
+
+
+def test_primary_is_highest_strength_not_raw_score():
+    from tpa_index.score import primary_label
+
+    scores = {"singing": 0.005, "dance": 0.33, "acting_theater": 0.002}  # dance has the higher raw score
+    assert primary_label(scores, TINY) == "singing"
+    assert primary_label({"singing": 0.0005, "dance": 0.1}, TINY) is None
 
 
 def test_ensembling_and_window_embeddings_are_unit_length():

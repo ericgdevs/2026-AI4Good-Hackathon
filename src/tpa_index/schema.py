@@ -226,6 +226,33 @@ def _reviews_db(root) -> Path:
     return Path(root or output_dir()) / "reviews.duckdb"
 
 
+def _open_reviews(root) -> duckdb.DuckDBPyConnection:
+    """Read-write connection with both tables created if missing (idempotent), so a fresh database is complete."""
+    path = _reviews_db(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(str(path))
+    for name in ("reviews", "blind_queue"):
+        con.register("empty", SCHEMAS[name].empty_table())
+        con.execute(f"CREATE TABLE IF NOT EXISTS {name} AS SELECT * FROM empty")
+        con.unregister("empty")
+    return con
+
+
+def _read_reviews_table(root, name: str, order: str) -> pa.Table:
+    """A table from reviews.duckdb, or an empty one with its schema if the file or table is missing."""
+    path = _reviews_db(root)
+    if not path.exists():
+        return SCHEMAS[name].empty_table()
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        # databases written before _open_reviews may lack a table
+        if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = ?", [name]).fetchall()[0][0]:
+            return SCHEMAS[name].empty_table()
+        return con.sql(f"SELECT * FROM {name} ORDER BY {order}").to_arrow_table().cast(SCHEMAS[name])
+    finally:
+        con.close()
+
+
 def append_reviews(rows, root=None) -> int:
     """Append review entries. The log is append-only: there is no update or delete."""
     rows = rows.to_pylist() if isinstance(rows, pa.Table) else [dict(r) for r in rows]
@@ -233,13 +260,10 @@ def append_reviews(rows, root=None) -> int:
         r.setdefault("review_id", uuid.uuid4().hex)
         r.setdefault("created_at", datetime.now(timezone.utc))
     tbl = validate("reviews", rows)
-    path = _reviews_db(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
     with _reviews_lock:
-        con = duckdb.connect(str(path))
+        con = _open_reviews(root)
         try:
             con.register("incoming", tbl)
-            con.execute("CREATE TABLE IF NOT EXISTS reviews AS SELECT * FROM incoming LIMIT 0")
             con.execute("INSERT INTO reviews SELECT * FROM incoming")
         finally:
             con.close()
@@ -256,13 +280,10 @@ def append_blind_queue(rows, root=None) -> int:
     if len(set(ids)) != len(ids):
         raise SchemaError("blind_queue", "segment_id", "duplicate segment in queue")
     (queue,) = queues
-    path = _reviews_db(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
     with _reviews_lock:
-        con = duckdb.connect(str(path))
+        con = _open_reviews(root)
         try:
             con.register("incoming", tbl)
-            con.execute("CREATE TABLE IF NOT EXISTS blind_queue AS SELECT * FROM incoming LIMIT 0")
             if con.execute("SELECT count(*) FROM blind_queue WHERE queue = ?", [queue]).fetchall()[0][0]:
                 raise SchemaError("blind_queue", "queue", f"queue {queue} already exists (queues are written once)")
             con.execute("INSERT INTO blind_queue SELECT * FROM incoming")
@@ -272,16 +293,7 @@ def append_blind_queue(rows, root=None) -> int:
 
 
 def read_blind_queue(queue=None, root=None) -> pa.Table:
-    path = _reviews_db(root)
-    if not path.exists():
-        return SCHEMAS["blind_queue"].empty_table()
-    con = duckdb.connect(str(path), read_only=True)
-    try:
-        if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'blind_queue'").fetchall()[0][0]:
-            return SCHEMAS["blind_queue"].empty_table()
-        tbl = con.sql("SELECT * FROM blind_queue ORDER BY queue, position").to_arrow_table().cast(SCHEMAS["blind_queue"])
-    finally:
-        con.close()
+    tbl = _read_reviews_table(root, "blind_queue", "queue, position")
     if queue:
         import pyarrow.compute as pc
 
@@ -290,14 +302,7 @@ def read_blind_queue(queue=None, root=None) -> pa.Table:
 
 
 def read_reviews(root=None) -> pa.Table:
-    path = _reviews_db(root)
-    if not path.exists():
-        return SCHEMAS["reviews"].empty_table()
-    con = duckdb.connect(str(path), read_only=True)
-    try:
-        return con.sql("SELECT * FROM reviews ORDER BY created_at, review_id").to_arrow_table().cast(SCHEMAS["reviews"])
-    finally:
-        con.close()
+    return _read_reviews_table(root, "reviews", "created_at, review_id")
 
 
 def validate_dataset(root=None) -> None:

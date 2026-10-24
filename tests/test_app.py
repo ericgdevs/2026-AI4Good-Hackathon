@@ -89,6 +89,37 @@ def test_blind_flow_never_reads_model_output(mock_env, labels, monkeypatch):
     assert resumed[0]["position"] == 4  # restart resumes at the first unsaved segment
 
 
+def test_blind_flow_on_fresh_install_without_reviews_db(mock_env, labels):
+    """Real installs have run data but no reviews.duckdb (mock data always created one)."""
+    from tpa_index.app import build_app
+    from tpa_index.paths import output_dir
+    from tpa_index.review import checklist
+
+    db = output_dir() / "reviews.duckdb"
+    db.unlink()
+    assert schema.read_reviews().num_rows == 0 and schema.read_blind_queue().num_rows == 0  # no file: empty
+    cl = checklist(labels, mock_env["pipeline"])
+    b = build_app(cutter=mock_env["cutter"], pipeline=mock_env["pipeline"], labels=labels).blind
+    out = b.start("tester-a", "Main sample")  # writes the queue to a brand-new database
+    assert out[0]["position"] == 0 and out[2] == "**0 / 12** done"
+    assert schema.read_reviews().num_rows == 0  # created empty with the reviews schema
+    b.save(out[0], cl["primary"][0], *[[] for _ in cl["groups"]], False)
+    resumed = build_app(cutter=mock_env["cutter"], pipeline=mock_env["pipeline"], labels=labels).blind.start(
+        "tester-a", "Main sample")
+    assert resumed[0]["position"] == 1
+
+
+def test_reviews_db_missing_a_table_reads_empty(tmp_path):
+    import duckdb
+
+    con = duckdb.connect(str(tmp_path / "reviews.duckdb"))  # as written before the fix: blind_queue only
+    con.register("e", schema.SCHEMAS["blind_queue"].empty_table())
+    con.execute("CREATE TABLE blind_queue AS SELECT * FROM e")
+    con.close()
+    assert schema.read_reviews(tmp_path).num_rows == 0
+    assert schema.read_reviews(tmp_path).schema == schema.SCHEMAS["reviews"]
+
+
 def test_alternate_vocabulary_shows_in_the_app(mock_env, labels, tmp_path):
     import yaml
 

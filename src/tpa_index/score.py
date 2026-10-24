@@ -37,6 +37,26 @@ def is_idle(idle_score: float, change: float | None, idle_cfg: dict) -> bool:
     return change is not None and idle_score >= idle_cfg["score_threshold"] and change < idle_cfg["change_threshold"]
 
 
+def rules_rows(segments: list[dict], predictions: list[dict], pipeline: dict, labels: dict, model: str,
+               run_id: str) -> list[dict]:
+    """One uncertain_mixed row (model "rules") per segment, from `model`'s activity scores."""
+    from tpa_index.config import model_labels, threshold
+
+    activity = {lab["name"] for lab in model_labels(labels, {"activity"})}
+    scores: dict[str, dict[str, float]] = {}
+    for p in predictions:
+        if p["model"] == model and p["label"] in activity:
+            scores.setdefault(p["segment_id"], {})[p["label"]] = p["score"]
+    out = []
+    for seg in segments:
+        act = scores.get(seg["segment_id"], {})
+        thresholds = {lab: threshold(pipeline, model, lab) for lab in act}
+        flag = uncertain_mixed(act, thresholds, pipeline["uncertain_margin"])
+        out.append({"segment_id": seg["segment_id"], "label": "uncertain_mixed", "label_group": "status",
+                    "score": 1.0 if flag else 0.0, "model": "rules", "run_id": run_id})
+    return out
+
+
 def _unit(v: np.ndarray) -> np.ndarray:
     return (v / np.linalg.norm(v, axis=-1, keepdims=True)).astype(np.float32)
 
@@ -72,7 +92,7 @@ def sigmoid_scores(window_embeds: np.ndarray, label_matrix: np.ndarray, scale: f
 def predict_video(video: dict, pipeline: dict, labels: dict, embedder, run_id: str, device: str = "cpu",
                   motion=None) -> dict[str, list[dict]]:
     """Score one video. Returns {"videos", "segments", "predictions", "moments"} rows; writes nothing."""
-    from tpa_index.config import effective_settings, model_labels, threshold
+    from tpa_index.config import effective_settings, idle_threshold, model_labels
     from tpa_index.moments import merge_moments
     from tpa_index.paths import data_dir
     from tpa_index.segment import probe, segment_video
@@ -87,11 +107,9 @@ def predict_video(video: dict, pipeline: dict, labels: dict, embedder, run_id: s
     group_of = {lab["name"]: lab["group"] for lab in scored}
     emb = label_embeddings(embedder, scored)
     label_matrix = np.stack([emb[n] for n in names])
-    idle_cfg = pipeline["idle"]
+    idle_cfg = {**pipeline["idle"], "score_threshold": idle_threshold(pipeline, embedder.name)}
     idle_vec = prompt_embedding(embedder, idle_cfg["prompts"])[None, :]  # scored for is_idle only; no rows
     batch = pipeline["models"]["batch_windows"][device]
-    activity = [n for n in names if group_of[n] == "activity"]
-    thresholds = {n: threshold(pipeline, embedder.name, n) for n in activity}
 
     segments, predictions, buffer = [], [], []
 
@@ -104,15 +122,13 @@ def predict_video(video: dict, pipeline: dict, labels: dict, embedder, run_id: s
         idle_scores = sigmoid_scores(windows, idle_vec, embedder.logit_scale, embedder.logit_bias)[:, 0]
         for w, row_scores, idle_score in zip(buffer, scores, idle_scores):
             seg = dict(w.row)
-            seg["is_idle"] = is_idle(float(idle_score), visual_change(w.frames), idle_cfg)
+            change = visual_change(w.frames)
+            seg["idle_score"], seg["visual_change"] = float(idle_score), change
+            seg["is_idle"] = is_idle(float(idle_score), change, idle_cfg)
             segments.append(seg)
             predictions.extend({"segment_id": seg["segment_id"], "label": n, "label_group": group_of[n],
                                 "score": float(s), "model": embedder.name, "run_id": run_id}
                                for n, s in zip(names, row_scores))
-            act = {n: float(s) for n, s in zip(names, row_scores) if n in thresholds}
-            flag = uncertain_mixed(act, thresholds, pipeline["uncertain_margin"])
-            predictions.append({"segment_id": seg["segment_id"], "label": "uncertain_mixed", "label_group": "status",
-                                "score": 1.0 if flag else 0.0, "model": "rules", "run_id": run_id})
         buffer.clear()
 
     for window in segment_video(video, settings, with_audio=False):
@@ -121,6 +137,7 @@ def predict_video(video: dict, pipeline: dict, labels: dict, embedder, run_id: s
             flush()
     if buffer:
         flush()
+    predictions += rules_rows(segments, predictions, pipeline, labels, embedder.name, run_id)
     if motion is not None:  # second pass: the motion model needs its own frame count
         predictions += _motion_rows(video, settings, motion, batch, run_id)
     moments = merge_moments(segments, predictions, pipeline, run_id, window_s=settings["window_s"],

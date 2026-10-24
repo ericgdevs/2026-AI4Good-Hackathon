@@ -239,21 +239,21 @@
 
 **Independent test**: With three runs and one official, the default read returns one run's rows. A bad or duplicate ID fails, naming the ID.
 
-- [ ] T027 [US5] In `src/tpa_index/schema.py`, add:
+- [X] T027 [US5] In `src/tpa_index/schema.py`, add:
   - `OFFICIAL_RUNS = repo_root()/"config/official_runs.yaml"` (patched in `tests/conftest.py`).
   - `load_official(path=None)`: returns `{stage: [ids]}` and ignores missing stages.
   - `read_official(table, stage=None, root=None)`, following `contracts/interfaces.md`:
     - With `stage` None, `moments` uses `"moments"` if listed, otherwise `"predict"`. Every other table uses `"predict"`.
     - Validate that each listed ID is a complete run folder (else `SchemaError("official_runs", stage, f"run {id} not found or incomplete")`). Validate that no two runs in a stage share a `video_id` from their `videos.parquet` (else an error naming both IDs).
     - For `predictions` with official `moments` runs, replace the predict runs' `rules` rows for those videos with the moments runs' rules rows.
-- [ ] T028 [US5] Write `tests/test_official.py`, writing 3 mock-style runs with `write_table`. Check that:
+- [X] T028 [US5] Write `tests/test_official.py`, writing 3 mock-style runs with `write_table`. Check that:
   - the default read returns only the official run's rows;
   - an unknown ID raises, naming it;
   - an incomplete folder raises;
   - two official runs for one video raise, naming both;
   - an empty list returns an empty table;
   - moments precedence works, and so does rules-row replacement.
-- [ ] T029 [US5] In `src/tpa_index/schema.py`, add `list_runs(root=None)`, following research §11:
+- [X] T029 [US5] In `src/tpa_index/schema.py`, add `list_runs(root=None)`, following research §11:
   - The prediction count comes from `pq.ParquetFile(path).metadata.num_rows`.
   - `video_ids` come from that folder's `videos.parquet`, comma-joined.
 
@@ -267,7 +267,7 @@
 
 **Independent test**: Eval rows never influence a threshold, `--split eval` is rejected, labels absent from the dev videos stop at the floor, the idle threshold comes from its own percentile, and a rebuild with new thresholds changes idle flags and moments while leaving predict runs untouched.
 
-- [ ] T030 [US2] Store the idle inputs, so idle can be calibrated and rebuilt without the model. Add two nullable `float32` columns to `segments` in `src/tpa_index/schema.py`, after `is_idle`: `idle_score` (the ensembled idle-prompt sigmoid score) and `visual_change` (the `visual_change(frames)` value, null when there are fewer than 2 frames).
+- [X] T030 [US2] Store the idle inputs, so idle can be calibrated and rebuilt without the model. Add two nullable `float32` columns to `segments` in `src/tpa_index/schema.py`, after `is_idle`: `idle_score` (the ensembled idle-prompt sigmoid score) and `visual_change` (the `visual_change(frames)` value, null when there are fewer than 2 frames).
   - In `predict_video` (`src/tpa_index/score.py`), fill both on every segment row next to `is_idle`.
   - The 001 segmenter and the mock generator write them as `None`. Older run folders read back as null through `_conform`.
   - Update `specs/001-foundation/contracts/tables.md` (segments table) and `specs/001-foundation/data-model.md`.
@@ -275,7 +275,7 @@
   Add tests:
   - `tests/test_predict.py`: `idle_score` is in [0, 1] and `visual_change` ≥ 0 on every segment. `t04` (static) has `visual_change == 0`. With `frames_per_window: 1`, `visual_change` is null.
   - `tests/test_schema.py`: an older segments file without the two columns reads back with nulls.
-- [ ] T031 [US2] Create `src/tpa_index/calibrate.py` with:
+- [X] T031 [US2] Create `src/tpa_index/calibrate.py` with:
   - Config first: add `calibrate: {top_pct: 10, min_threshold: 0.05, min_segments: 20}` and `idle.calibrate_top_pct: 20` to `config/pipeline.yaml`, following `contracts/config.md`. Validate them in `_check_pipeline`: both percentiles in (0, 100), `min_threshold` in [0, 1], `min_segments` ≥ 1. Add one failing case each to `tests/test_config.py`.
   - `propose_thresholds(predictions, videos, model, top_pct, min_segments, min_threshold)`:
     - keep only rows whose segment belongs to a video with `split == "dev"` (join via `segment_id` prefix → `video_id`) and `model == model`;
@@ -303,7 +303,7 @@
   - the idle proposal ignores high-change segments and eval segments;
   - writing keeps another model's label and idle blocks;
   - `idle_threshold()` falls back and overrides correctly.
-- [ ] T032 [US2] In `cli.py`, add `tpa-index calibrate --stage predict --split dev [--top-pct N] [--idle-top-pct N] [--dry-run]`:
+- [X] T032 [US2] In `cli.py`, add `tpa-index calibrate --stage predict --split dev [--top-pct N] [--idle-top-pct N] [--dry-run]`:
   - The defaults come from `pipeline.yaml`: `calibrate.top_pct` for labels and `idle.calibrate_top_pct` for idle. They are separate settings, because the share of idle footage differs from any label's share.
   - `--split` other than `dev` raises `ConfigError("calibration uses the dev split only")`, exiting 3.
   - Read `read_official("predictions", stage)`, `read_official("segments", stage)` and `read_official("videos", stage)`. If any is empty, raise `ConfigError("no official dev runs for stage …")`.
@@ -317,7 +317,7 @@
   - a real run writes the patched `THRESHOLDS_LOCAL`, with both `label_thresholds` and `idle_thresholds`;
   - a label that never scores above 0.01 on mock dev data appears in the "labels at the floor" line;
   - `--idle-top-pct` changes only the idle value.
-- [ ] T033 [US2] In `cli.py`, add `tpa-index moments [--video-id ID …]`. For each official predict run (filtered by video), inside `track_run("moments", model=<main model of that run>)`:
+- [X] T033 [US2] In `cli.py`, add `tpa-index moments [--video-id ID …]`. For each official predict run (filtered by video), inside `track_run("moments", model=<main model of that run>)`:
   - read that run's `videos`, `segments` and `predictions` via `read_table(..., run_ids=[id])`;
   - recompute `is_idle` from the stored `idle_score` and `visual_change`, using `idle_threshold(pipeline, model)` and the hand-set `idle.change_threshold`. Segments whose `visual_change` is null are never idle;
   - recompute the `uncertain_mixed` rows with the current `load_pipeline()` thresholds;
@@ -338,7 +338,7 @@
 
 **Independent test**: With a fake `rsync` on `PATH`, the scripts pass the right excludes, stop when keys are missing, and merge thresholds without losing the Mac's models.
 
-- [ ] T034 [US6] Create `scripts/sync.exclude` (one pattern per line):
+- [X] T034 [US6] Create `scripts/sync.exclude` (one pattern per line):
   - `.venv/`, `.env`, `.env.*`, `!.env.example`, `models/`, `__pycache__/`, `outputs/`;
   - `*.mp4`, `*.mov`, `*.m4v`, `*.mkv`, `*.avi`, `*.wav`, `*.mp3`, `*.m4a`, `*.parquet`, `*.duckdb`;
   - `config/*.local.yaml` (covers `videos.local.yaml` and `thresholds.local.yaml`) and `slurm-*.out`.
@@ -349,13 +349,13 @@
   - `--dry-run` adds `-n -v`;
   - `rsync -az --exclude-from=scripts/sync.exclude "$REPO/" "$HPC_USER@$HPC_HOST:~/tpa-work/repo/"`, with no `--delete`;
   - run from any directory (`REPO=$(cd "$(dirname "$0")/.." && pwd)`).
-- [ ] T035 [US6] Create `scripts/sync_outputs_from_hpc.sh`:
+- [X] T035 [US6] Create `scripts/sync_outputs_from_hpc.sh`:
   1. Parse `HPC_USER`, `HPC_HOST`, and `HPC_OUTPUT_DIR` the same way.
   2. Resolve `LOCAL=$(uv run --project "$REPO" python -c "from tpa_index.paths import output_dir; print(output_dir())")`. Guard failure exits 2.
   3. Run `rsync -az --ignore-existing --exclude-from="$REPO/scripts/sync.exclude" --include='*.parquet' --exclude='reviews.duckdb' "$HPC_USER@$HPC_HOST:$HPC_OUTPUT_DIR/runs/" "$LOCAL/runs/"`. Parquet must be included here, because these are output folders.
   4. Fetch `~/tpa-work/repo/config/thresholds.local.yaml` with rsync into a `mktemp` file. If it exists, merge it per model into `$REPO/config/thresholds.local.yaml` through `uv run python -c`. This covers both `label_thresholds` and `idle_thresholds`: HPC models replace their own blocks, and other models are kept.
   5. `--dry-run` passes `-n -v` to the runs rsync and prints the models that would be merged, without writing.
-- [ ] T036 [US6] Add to `tests/test_scripts.py`, putting a fake `rsync` (a bash script in `tmp_path` that appends its args to a log and, for the thresholds fetch, copies a fixture YAML to its last argument) first on `PATH` and setting `TPA_ENV_FILE` to a tmp env file. Check that:
+- [X] T036 [US6] Add to `tests/test_scripts.py`, putting a fake `rsync` (a bash script in `tmp_path` that appends its args to a log and, for the thresholds fetch, copies a fixture YAML to its last argument) first on `PATH` and setting `TPA_ENV_FILE` to a tmp env file. Check that:
   - the code sync passes `--exclude-from`, there is no `--delete`, and `sync.exclude` lists `.env`, `*.mp4`, `config/*.local.yaml`, and `models/` but not `official_runs.yaml`;
   - a missing `HPC_HOST` exits 2 and the log is empty;
   - the output sync passes `--ignore-existing` and `--exclude=reviews.duckdb`, and a guard failure (`OUTPUT_DIR` inside the repo) exits 2 before any rsync call;
@@ -368,13 +368,13 @@
 
 ## Phase 10: Polish & Final Checkpoint
 
-- [ ] T037 Update `README.md` with `predict`, `runs`, `calibrate`, `moments`, the sync scripts, and `predict.sbatch`. Note that HPC keeps its own `.env` and `config/videos.local.yaml`, which are never synced. Cross-check against the contracts:
+- [X] T037 Update `README.md` with `predict`, `runs`, `calibrate`, `moments`, the sync scripts, and `predict.sbatch`. Note that HPC keeps its own `.env` and `config/videos.local.yaml`, which are never synced. Cross-check against the contracts:
   - the signatures in `contracts/interfaces.md`;
   - the config keys in `contracts/config.md`;
   - the run-folder contents in `data-model.md`.
 
   Fix any drift. Grep `src/` for leftover `shortcut:` comments about windows (there should be none) and for `needs_review_below` or `conflict_margin` (there should be none).
-- [ ] T038 **Final checkpoint (Mac)**:
+- [X] T038 **Final checkpoint (Mac)**:
   1. Run `uv run pytest`, then `uv run pytest -m slow`. Record the counts.
   2. Quickstart in scratch, with `DATA_DIR` and `OUTPUT_DIR` exported to scratch paths and `.env` untouched:
      - `tpa-index check`;

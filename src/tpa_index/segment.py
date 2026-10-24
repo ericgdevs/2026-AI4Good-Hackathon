@@ -121,5 +121,6 @@ def segment_video(video: dict, settings: dict, sample_rate: int = 16000, with_au
                 clip[:len(part)] = part
             row = {"segment_id": f"{video['video_id']}_{round(start * 1000)}", "video_id": video["video_id"],
                    "start_s": float(start), "end_s": float(end), "person_count": None, "faces_detected": None,
-                   "has_speech": None, "transcript_chars": None, "is_idle": None}
+                   "has_speech": None, "transcript_chars": None, "is_idle": None,
+                   "idle_score": None, "visual_change": None}
             yield Window(row, _sample_frames(c, stream, start, end, settings["frames_per_window"]), clip)

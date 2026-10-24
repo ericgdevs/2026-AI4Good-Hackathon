@@ -1,6 +1,6 @@
 import pytest
 
-from tpa_index import config, paths
+from tpa_index import config, paths, schema
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +17,9 @@ def _isolated_env(tmp_path, monkeypatch):
     no_thresholds = tmp_path / "no-thresholds.local.yaml"
     monkeypatch.setenv("TPA_THRESHOLDS_FILE", str(no_thresholds))
     monkeypatch.setattr(config, "THRESHOLDS_LOCAL", no_thresholds)
+    no_official = tmp_path / "no-official-runs.yaml"
+    monkeypatch.setenv("TPA_OFFICIAL_RUNS", str(no_official))
+    monkeypatch.setattr(schema, "OFFICIAL_RUNS", no_official)
     paths._reset_redaction_cache()
     yield
     paths._reset_redaction_cache()

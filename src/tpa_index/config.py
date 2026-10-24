@@ -143,6 +143,22 @@ def _check_pipeline(d: dict) -> dict:
         _number(idle, key, "pipeline.idle")
         if not 0 <= idle[key] <= 1:
             raise ConfigError(f"pipeline.idle: {key} must be within 0-1")
+    cal = d.get("calibrate")
+    if not isinstance(cal, dict):
+        raise ConfigError("pipeline: calibrate section missing")
+    for where, block, key in (("pipeline.idle", idle, "calibrate_top_pct"), ("pipeline.calibrate", cal, "top_pct")):
+        _number(block, key, where)
+        if not 0 < block[key] < 100:
+            raise ConfigError(f"{where}: {key} must be within (0, 100)")
+    _number(cal, "min_threshold", "pipeline.calibrate")
+    if not 0 <= cal["min_threshold"] <= 1:
+        raise ConfigError("pipeline.calibrate: min_threshold must be within 0-1")
+    if not isinstance(cal.get("min_segments"), int) or cal["min_segments"] < 1:
+        raise ConfigError("pipeline.calibrate: min_segments must be an integer >= 1")
+    it = d.setdefault("idle_thresholds", {}) or {}
+    d["idle_thresholds"] = it
+    if not isinstance(it, dict) or not all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in it.values()):
+        raise ConfigError("pipeline: idle_thresholds must map model -> threshold within 0-1")
     for group in [m.get("primary_group"), *(m.get("secondary_groups") or [])]:
         if group not in LABEL_GROUPS:
             raise ConfigError(f"pipeline.moments: unknown group {group!r}")
@@ -209,13 +225,19 @@ def load_pipeline(path=None, labels=None) -> dict:
     d = _load(path or CONFIG_DIR / "pipeline.yaml")
     local = THRESHOLDS_LOCAL
     if local.exists():  # gitignored, data-derived (tpa-index calibrate); wins per model and label
-        extra = (_load(local).get("label_thresholds") or {})
+        extra = _load(local)
         merged = {m: dict(v) for m, v in (d.get("label_thresholds") or {}).items()}
-        for model, per_label in extra.items():
+        for model, per_label in (extra.get("label_thresholds") or {}).items():
             merged.setdefault(model, {}).update(per_label or {})
         d["label_thresholds"] = merged
+        d["idle_thresholds"] = {**(d.get("idle_thresholds") or {}), **(extra.get("idle_thresholds") or {})}
     _check_pipeline(d)
     return _check_pipeline_labels(d, labels or load_labels())
+
+
+def idle_threshold(pipeline: dict, model: str | None) -> float:
+    """Calibrated idle-score threshold for this model, else idle.score_threshold."""
+    return (pipeline.get("idle_thresholds") or {}).get(model, pipeline["idle"]["score_threshold"])
 
 
 def threshold(pipeline: dict, model: str | None, label: str) -> float:

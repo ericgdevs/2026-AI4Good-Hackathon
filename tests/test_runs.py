@@ -34,7 +34,8 @@ def test_failed_run_reraises_and_is_ignored():
         with track_run("dummy") as ctx:
             write_table("segments", [{"segment_id": "t01_0", "video_id": "t01", "start_s": 0.0, "end_s": 8.0,
                                       "person_count": None, "faces_detected": None, "has_speech": None,
-                                      "transcript_chars": None, "is_idle": None}], ctx.run_id)
+                                      "transcript_chars": None, "is_idle": None, "idle_score": None,
+                                      "visual_change": None}], ctx.run_id)
             raise ValueError("boom")
     assert read_table("runs").num_rows == 0
     assert read_table("segments").num_rows == 0  # written but not complete: skipped by readers

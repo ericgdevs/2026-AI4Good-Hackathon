@@ -11,7 +11,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from tpa_index.config import LABEL_GROUPS
-from tpa_index.paths import output_dir
+from tpa_index.paths import output_dir, repo_root
 
 _s, _f64, _f32, _i32, _b = pa.string(), pa.float64(), pa.float32(), pa.int32(), pa.bool_()
 _ts = pa.timestamp("us", tz="UTC")
@@ -31,7 +31,8 @@ SCHEMAS: dict[str, pa.Schema] = {
     "segments": _schema(
         ("segment_id", _s, False), ("video_id", _s, False), ("start_s", _f64, False), ("end_s", _f64, False),
         ("person_count", _i32, True), ("faces_detected", _i32, True), ("has_speech", _b, True),
-        ("transcript_chars", _i32, True), ("is_idle", _b, True),
+        ("transcript_chars", _i32, True), ("is_idle", _b, True), ("idle_score", _f32, True),
+        ("visual_change", _f32, True),
     ),
     "predictions": _schema(
         ("segment_id", _s, False), ("label", _s, False), ("label_group", _s, False), ("score", _f32, False),
@@ -65,6 +66,7 @@ RULES: dict[str, dict] = {
     "segments": {
         "pk": ("segment_id",),
         "nonneg": ("start_s", "person_count", "faces_detected", "transcript_chars"),
+        "unit": ("idle_score", "visual_change"),
         "times": True,
     },
     "predictions": {
@@ -258,3 +260,82 @@ def validate_dataset(root=None) -> None:
         missing = set(t[table][col].to_pylist()) - ids[col]
         if missing:
             raise SchemaError(table, col, f"{len(missing)} value(s) not found in the referenced table")
+
+
+# ---- official runs (002) ----------------------------------------------------------------------------------------
+OFFICIAL_RUNS = Path(os.environ.get("TPA_OFFICIAL_RUNS", repo_root() / "config/official_runs.yaml"))
+
+
+def load_official(path=None) -> dict[str, list[str]]:
+    """{stage: [run_id, ...]} from config/official_runs.yaml (run IDs only)."""
+    import yaml
+
+    path = Path(path or OFFICIAL_RUNS)
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text()) or {}
+    return {stage: list(ids or []) for stage, ids in data.items()}
+
+
+def _run_videos(run_id: str, root) -> list[str]:
+    path = _runs_root(root) / run_id / "videos.parquet"
+    return pq.read_table(path, columns=["video_id"])["video_id"].to_pylist() if path.exists() else []
+
+
+def _official_by_video(official: dict, stage: str, root) -> dict[str, str]:
+    """video_id -> run_id for one stage; every listed run must be complete and videos must not repeat."""
+    by_video: dict[str, str] = {}
+    for run_id in official.get(stage, []):
+        if not (_runs_root(root) / run_id / "runs.parquet").exists():
+            raise SchemaError("official_runs", stage, f"run {run_id} not found or incomplete")
+        for vid in _run_videos(run_id, root):
+            if vid in by_video:
+                raise SchemaError("official_runs", stage,
+                                  f"runs {by_video[vid]} and {run_id} both cover video {vid}")
+            by_video[vid] = run_id
+    return by_video
+
+
+def _video_of(segment_id: str) -> str:
+    return segment_id.rsplit("_", 1)[0]
+
+
+def read_official(table: str, stage: str | None = None, root=None) -> pa.Table:
+    """Rows from the official runs only. Result-facing code must use this, not read_table.
+    Default: moments and segments come from an official moments run for a video when listed, else predict;
+    predictions take the moments run's rules rows in place of predict's."""
+    official = load_official()
+    if stage is not None:
+        return read_table(table, root, run_ids=sorted(set(_official_by_video(official, stage, root).values())))
+    predict = _official_by_video(official, "predict", root)
+    rebuilt = _official_by_video(official, "moments", root)
+    if table in ("moments", "segments"):
+        chosen = {**predict, **rebuilt}
+        return read_table(table, root, run_ids=sorted(set(chosen.values())))
+    base = read_table(table, root, run_ids=sorted(set(predict.values())))
+    if table != "predictions" or not rebuilt:
+        return base
+    import pyarrow.compute as pc
+
+    replaced = set(rebuilt)
+    keep = [not (m == "rules" and _video_of(s) in replaced)
+            for m, s in zip(base["model"].to_pylist(), base["segment_id"].to_pylist())]
+    rules = read_table("predictions", root, run_ids=sorted(set(rebuilt.values())))
+    rules = rules.filter(pc.equal(rules["model"], "rules"))
+    return pa.concat_tables([base.filter(pa.array(keep, pa.bool_())), rules])
+
+
+def list_runs(root=None) -> list[dict]:
+    """One dict per complete run: ids, stage, video_ids, hardware, counts, runtime, peak memory (no paths)."""
+    runs = _runs_root(root)
+    out = []
+    for d in sorted(runs.glob("*")) if runs.exists() else []:
+        if not (d / "runs.parquet").exists():
+            continue
+        preds = d / "predictions.parquet"
+        for r in _conform(pq.read_table(d / "runs.parquet"), SCHEMAS["runs"]).to_pylist():
+            out.append({"run_id": r["run_id"], "stage": r["stage"], "video_ids": ",".join(_run_videos(d.name, root)),
+                        "hardware": r["hardware"], "n_segments": r["n_segments"],
+                        "n_predictions": pq.ParquetFile(preds).metadata.num_rows if preds.exists() else 0,
+                        "runtime_s": r["runtime_s"], "peak_mem_gb": r["peak_mem_gb"]})
+    return out

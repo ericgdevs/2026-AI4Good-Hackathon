@@ -22,7 +22,8 @@ sigmoid_scores(window_embeds, label_embeds, scale, bias) -> np.ndarray     # (wi
 visual_change(frames: np.ndarray) -> float | None                          # None if < 2 frames
 is_idle(idle_score, change, idle_cfg) -> bool
 uncertain_mixed(activity_scores: dict[str, float], thresholds: dict[str, float], margin) -> bool
-predict_video(video, pipeline, labels, embedder, run_id, motion=None) -> dict[str, list[dict]]
+predict_video(video, pipeline, labels, embedder, run_id, device="cpu", motion=None) -> dict[str, list[dict]]
+rules_rows(segments, predictions, pipeline, labels, model, run_id) -> list[dict]   # uncertain_mixed rows; shared by predict, mock, moments
 #   returns {"videos": [...], "segments": [...], "predictions": [...], "moments": [...]}; writes nothing
 
 # xclip.py  (only imported when models.motion.enabled)
@@ -44,6 +45,8 @@ threshold(pipeline, model, label) -> float     # per-label (per model) with glob
 propose_thresholds(predictions, videos, model, top_pct, min_segments, min_threshold) -> dict[str, tuple[float | None, bool]]
 #   dev only; value = max(percentile, min_threshold); bool = floor used
 propose_idle_threshold(segments, videos, top_pct, change_threshold, min_segments) -> float | None   # dev, low-change only
+dev_scores(predictions, videos, model) -> dict[str, np.ndarray]      # dev-split scores per label (used by the CLI table)
+idle_candidates(segments, videos, change_threshold) -> np.ndarray    # dev low-change idle scores
 write_local_thresholds(model, thresholds, idle_score_threshold=None, path=None) -> None
 
 # config.py (new, with T031)
@@ -55,6 +58,7 @@ read_official(table, stage=None, root=None) -> pa.Table   # result-facing code M
 #   stage None: moments and segments -> the official "moments" run for a video if listed, else "predict"; others -> "predict"
 #   (rules rows from official moments runs replace predict's)
 list_runs(root=None) -> list[dict]   # run_id, stage, video_ids, hardware, n_segments, n_predictions, runtime_s, peak_mem_gb
+# OFFICIAL_RUNS path: TPA_OFFICIAL_RUNS overrides it (tests and checkpoints only)
 ```
 
 ## CLI
@@ -77,5 +81,9 @@ list_runs(root=None) -> list[dict]   # run_id, stage, video_ids, hardware, n_seg
 | `scripts/sync_outputs_from_hpc.sh [--dry-run]` | rsyncs `$HPC_OUTPUT_DIR/runs/` to the local `OUTPUT_DIR/runs/` (guarded) with `--ignore-existing`; never copies `reviews.duckdb` or media. Then fetches HPC `~/tpa-work/repo/config/thresholds.local.yaml` and **merges it per model** into the local file (HPC entries win for their models; the Mac's other models are kept) |
 
 Both sync scripts read `HPC_USER`, `HPC_HOST` (and `HPC_OUTPUT_DIR`) from `.env` by parsing it, never by `source`-ing it. A missing key exits 2 and transfers nothing. `TPA_ENV_FILE` overrides the env-file path (for tests, so the real `.env` is never read).
+
+Test-only overrides (never set in normal use): `TPA_SYNC_DEST` (code sync to a local folder), `TPA_SYNC_REMOTE=""` (output sync from a local folder), `TPA_THRESHOLDS_FILE` (merge target). Optional `.env` key `HPC_REPO_DIR` (default `~/tpa-work/repo`, expanded on HPC).
+
+Output sync uses an allowlist (`--include='*/' --include='*.parquet' --exclude='*'`) instead of `sync.exclude`: only run-folder Parquet files can travel down.
 
 `--kind` selects mapped videos by `kind` (for example `--kind promo` for a test run) without naming video IDs. A test run is simply not listed in `official_runs.yaml`.

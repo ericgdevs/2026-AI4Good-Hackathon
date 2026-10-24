@@ -149,3 +149,16 @@ def test_motion_model_adds_rows_under_its_own_name(clip_videos, pipeline, labels
     assert model_rows(out) == model_rows(base)  # main-model rows unchanged
     assert out["moments"] == base["moments"]  # moments use the main model only
     assert validate("predictions", out["predictions"]).num_rows == len(out["predictions"])
+
+
+def test_idle_inputs_are_stored(clip_videos, pipeline, labels):
+    out = run(clip_videos["t04"], pipeline, labels)
+    assert all(0 <= s["idle_score"] <= 1 for s in out["segments"])
+    low = pipeline["idle"]["change_threshold"]
+    assert all(s["visual_change"] < low for s in out["segments"])  # static clip (only codec noise)
+    moving = run(clip_videos["t01"], pipeline, labels)
+    assert all(s["visual_change"] >= low for s in moving["segments"])
+    p = copy.deepcopy(pipeline)
+    p["overrides"]["by_video"] = {"t04": {"frames_per_window": 1}}
+    single = run(clip_videos["t04"], p, labels)
+    assert all(s["visual_change"] is None and s["idle_score"] is not None for s in single["segments"])

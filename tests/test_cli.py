@@ -185,3 +185,124 @@ def test_predict_missing_model_exits_3_before_any_video(tmp_path, clip_videos, m
     assert cli.main(["predict", "--videos", str(_predict_yaml(tmp_path)), "--model", "google/nope"]) == 3
     assert "model not found locally: google/nope" in capsys.readouterr().err
     assert read_table("runs").num_rows == 0
+
+
+def test_runs_command_lists_runs_without_paths():
+    mock = run_cli("mock", "--n-videos", "1")
+    assert mock.returncode == 0, mock.stderr
+    result = run_cli("runs")
+    assert result.returncode == 0, result.stderr
+    assert "mock-seed0" in result.stdout and "mock01" in result.stdout
+    assert os.environ["OUTPUT_DIR"] not in result.stdout + result.stderr
+
+
+# ---- calibrate and moments rebuild (mock data only) ----------------------------------------------------------
+
+def _official_mock(tmp_path, monkeypatch, extra=""):
+    """Mock dataset listed as the official predict run; returns the in-process cli."""
+    from tpa_index import cli, schema
+    from tpa_index.mock import generate
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+    generate(seed=0)
+    path = tmp_path / "official.yaml"
+    path.write_text("predict: [mock-seed0]\n" + extra)
+    monkeypatch.setattr(schema, "OFFICIAL_RUNS", path)
+    return cli
+
+
+def _crafted_run(label="acting", score=0.001):
+    """Copy of the mock run in which one label never scores above `score`."""
+    from tpa_index.schema import read_table, write_table
+
+    for table in ("videos", "segments", "predictions", "moments", "runs"):
+        rows = read_table(table, run_ids=["mock-seed0"]).to_pylist()
+        for r in rows:
+            if "run_id" in r:
+                r["run_id"] = "crafted"
+            if table == "predictions" and r["label"] == label:
+                r["score"] = score
+        write_table(table, rows if table != "runs" else rows[:1], "crafted")
+
+
+def test_calibrate_rejects_eval(tmp_path, monkeypatch, capsys):
+    cli = _official_mock(tmp_path, monkeypatch)
+    assert cli.main(["calibrate", "--split", "eval"]) == 3
+    assert "dev split only" in capsys.readouterr().err
+
+
+def test_calibrate_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):
+    from tpa_index import config
+
+    cli = _official_mock(tmp_path, monkeypatch)
+    assert cli.main(["calibrate", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "labels at the floor (min_threshold): none" in out and "idle score_threshold:" in out
+    assert not config.THRESHOLDS_LOCAL.exists()
+
+
+def test_calibrate_writes_labels_idle_and_reports_floor(tmp_path, monkeypatch, capsys):
+    import yaml
+
+    from tpa_index import config
+
+    cli = _official_mock(tmp_path, monkeypatch)
+    _crafted_run("acting")
+    (tmp_path / "official.yaml").write_text("predict: [crafted]\n")
+    assert cli.main(["calibrate"]) == 0
+    out = capsys.readouterr().out
+    assert "labels at the floor (min_threshold): acting" in out
+    data = yaml.safe_load(config.THRESHOLDS_LOCAL.read_text())
+    assert data["label_thresholds"]["mock-model"]["acting"] == 0.05
+    assert set(data["idle_thresholds"]) == {"mock-model"}
+    before = data["idle_thresholds"]["mock-model"]
+    assert cli.main(["calibrate", "--idle-top-pct", "60"]) == 0
+    after = yaml.safe_load(config.THRESHOLDS_LOCAL.read_text())
+    assert after["idle_thresholds"]["mock-model"] < before  # wider idle share -> lower threshold
+    assert after["label_thresholds"] == data["label_thresholds"]  # labels unchanged
+
+
+def _hashes(run_id):
+    import hashlib
+
+    from tpa_index.paths import output_dir
+
+    return {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in (output_dir() / "runs" / run_id).iterdir()}
+
+
+def test_moments_rebuild_follows_thresholds_and_keeps_predict_run(tmp_path, monkeypatch):
+    from collections import Counter
+
+    from tpa_index import config
+    from tpa_index.schema import read_official, read_table
+
+    cli = _official_mock(tmp_path, monkeypatch)
+    before_files = _hashes("mock-seed0")
+    before = read_official("moments").to_pylist()
+    top = Counter(m["primary_label"] for m in before).most_common(1)[0][0]
+    config.THRESHOLDS_LOCAL.write_text(f"label_thresholds:\n  mock-model: {{{top}: 0.99}}\n")
+    assert cli.main(["moments"]) == 0
+    (rebuilt,) = [r["run_id"] for r in read_table("runs").to_pylist() if r["stage"] == "moments"]
+    after = read_table("moments", run_ids=[rebuilt]).to_pylist()
+    assert after != before and top not in {m["primary_label"] for m in after}
+    assert _hashes("mock-seed0") == before_files  # predict run untouched
+    (tmp_path / "official.yaml").write_text(f"predict: [mock-seed0]\nmoments: [{rebuilt}]\n")
+    assert read_official("moments").to_pylist() == after
+    assert read_official("segments").num_rows == read_table("segments", run_ids=[rebuilt]).num_rows
+
+
+def test_moments_rebuild_recomputes_idle(tmp_path, monkeypatch):
+    from tpa_index import config
+    from tpa_index.schema import read_table
+
+    cli = _official_mock(tmp_path, monkeypatch)
+    idle_before = sum(bool(s["is_idle"]) for s in read_table("segments", run_ids=["mock-seed0"]).to_pylist())
+    config.THRESHOLDS_LOCAL.write_text("idle_thresholds: {mock-model: 0.0}\n")  # every low-change segment is idle
+    assert cli.main(["moments"]) == 0
+    (rebuilt,) = [r["run_id"] for r in read_table("runs").to_pylist() if r["stage"] == "moments"]
+    segs = read_table("segments", run_ids=[rebuilt]).to_pylist()
+    low = [s for s in segs if s["visual_change"] < config.load_pipeline()["idle"]["change_threshold"]]
+    assert all(s["is_idle"] for s in low) and sum(s["is_idle"] for s in segs) > idle_before
+    idle_spans = [(s["video_id"], s["start_s"], s["end_s"]) for s in segs if s["is_idle"]]
+    for m in read_table("moments", run_ids=[rebuilt]).to_pylist():  # no moment contains an idle segment
+        assert not any(v == m["video_id"] and m["start_s"] <= a and b <= m["end_s"] for v, a, b in idle_spans)

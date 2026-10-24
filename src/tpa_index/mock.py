@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 
 from tpa_index.config import (EXAMPLE_VIDEOS, config_hash, effective_settings, load_labels, load_pipeline,
-                              load_videos, model_labels, threshold)
+                              load_videos, model_labels)
 from tpa_index.moments import merge_moments
 from tpa_index.schema import append_reviews, write_table
-from tpa_index.score import uncertain_mixed
+from tpa_index.score import rules_rows
 from tpa_index.segment import windows
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -16,6 +16,13 @@ ACTIONS = ["accept", "edit", "reject", "defer", "add"]
 
 def _maybe_null(rng, value, p=0.05):
     return None if rng.random() < p else value
+
+
+def _idle_signals(rng, idle: bool) -> dict:
+    """Idle segments: high idle-prompt score, almost no visual change; others the opposite (with overlap)."""
+    score = float(np.float32(rng.beta(6, 3) if idle else rng.beta(1.2, 12)))
+    change = float(np.float32(rng.uniform(0.0, 0.015) if idle else rng.uniform(0.005, 0.2)))
+    return {"is_idle": idle, "idle_score": score, "visual_change": change}
 
 
 def _videos_and_segments(rng, videos_cfg, pipeline):
@@ -35,7 +42,7 @@ def _videos_and_segments(rng, videos_cfg, pipeline):
                 "faces_detected": _maybe_null(rng, int(rng.integers(0, people + 1))),
                 "has_speech": _maybe_null(rng, speech),
                 "transcript_chars": _maybe_null(rng, int(rng.integers(20, 400)) if speech else 0),
-                "is_idle": _maybe_null(rng, people == 0 or bool(rng.random() < 0.05)),
+                **_idle_signals(rng, people == 0 or bool(rng.random() < 0.05)),
             })
     return videos, segments
 
@@ -61,19 +68,6 @@ def _predictions(rng, segments, labels, run_id):
                 rows.append({"segment_id": seg["segment_id"], "label": name, "label_group": group,
                              "score": float(np.float32(score)), "model": "mock-model", "run_id": run_id})
     return rows
-
-
-def _rules_rows(segments, predictions, labels, pipeline, model, run_id):
-    """One uncertain_mixed row per segment, as predict writes them."""
-    activity = [lab["name"] for lab in model_labels(labels, {"activity"})]
-    thresholds = {lab: threshold(pipeline, model, lab) for lab in activity}
-    scores: dict[str, dict[str, float]] = {}
-    for p in predictions:
-        if p["label"] in thresholds:
-            scores.setdefault(p["segment_id"], {})[p["label"]] = p["score"]
-    return [{"segment_id": s["segment_id"], "label": "uncertain_mixed", "label_group": "status",
-             "score": 1.0 if uncertain_mixed(scores[s["segment_id"]], thresholds, pipeline["uncertain_margin"]) else 0.0,
-             "model": "rules", "run_id": run_id} for s in segments]
 
 
 def _reviews(rng, moments, segments, labels):
@@ -115,7 +109,7 @@ def generate(out_root=None, seed: int = 0, n_videos: int = 4) -> str:
     predict_run = f"{run_id}-predict"
     videos, segments = _videos_and_segments(rng, load_videos(EXAMPLE_VIDEOS)[:n_videos], pipeline)
     predictions = _predictions(rng, segments, labels, predict_run)
-    predictions += _rules_rows(segments, predictions, labels, pipeline, "mock-model", predict_run)
+    predictions += rules_rows(segments, predictions, pipeline, labels, "mock-model", predict_run)
     moments = []
     for v in videos:
         v_segments = [s for s in segments if s["video_id"] == v["video_id"]]

@@ -185,3 +185,18 @@ def test_local_thresholds_win_over_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "THRESHOLDS_LOCAL", local)
     p = load_pipeline(pipe)
     assert (threshold(p, "m1", "singing"), threshold(p, "m1", "dancing")) == (0.12, 0.4)
+
+
+@pytest.mark.parametrize("change,match", [
+    (lambda p: p["calibrate"].update(top_pct=0), "top_pct"),
+    (lambda p: p["calibrate"].update(top_pct=100), "top_pct"),
+    (lambda p: p["idle"].update(calibrate_top_pct=150), "calibrate_top_pct"),
+    (lambda p: p["calibrate"].update(min_threshold=1.2), "min_threshold"),
+    (lambda p: p["calibrate"].update(min_segments=0), "min_segments"),
+    (lambda p: p.pop("calibrate"), "calibrate section"),
+])
+def test_bad_calibrate_settings(pipeline, change, match):
+    bad = copy.deepcopy(pipeline)
+    change(bad)
+    with pytest.raises(ConfigError, match=match):
+        _check_pipeline(bad)

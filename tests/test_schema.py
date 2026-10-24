@@ -12,7 +12,8 @@ VALID = {
     "videos": dict(video_id="mock01", filename="mock/mock_live_01.mp4", duration_s=60.0, fps=30.0,
                    orientation="landscape", kind="live", phase="early", cohort=None, split="dev"),
     "segments": dict(segment_id="mock01_0", video_id="mock01", start_s=0.0, end_s=8.0, person_count=None,
-                     faces_detected=None, has_speech=None, transcript_chars=None, is_idle=None),
+                     faces_detected=None, has_speech=None, transcript_chars=None, is_idle=None,
+                     idle_score=None, visual_change=None),
     "predictions": dict(segment_id="mock01_0", label="singing", label_group="activity", score=0.7,
                         model="mock-model", run_id="r1"),
     "moments": dict(moment_id="mock01_0_singing", video_id="mock01", start_s=0.0, end_s=8.0,
@@ -149,3 +150,21 @@ def test_old_runs_files_without_git_commit_read_as_null():
     pq.write_table(pa.Table.from_pylist([old_row], old_schema), schema.output_dir() / "runs/old1/runs.parquet")
     runs = read_table("runs")
     assert runs.schema == schema.SCHEMAS["runs"] and runs["git_commit"].to_pylist() == [None]
+
+
+def test_old_segments_files_without_idle_columns_read_as_null():
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    old_schema = pa.schema([f for f in schema.SCHEMAS["segments"] if f.name not in ("idle_score", "visual_change")])
+    old_row = {k: v for k, v in row("segments").items() if k not in ("idle_score", "visual_change")}
+    (schema.output_dir() / "runs/old2").mkdir(parents=True)
+    pq.write_table(pa.Table.from_pylist([old_row], old_schema), schema.output_dir() / "runs/old2/segments.parquet")
+    write_table("runs", [row("runs", run_id="old2")], "old2")
+    segs = read_table("segments")
+    assert segs.schema == schema.SCHEMAS["segments"]
+    assert segs["idle_score"].to_pylist() == [None] and segs["visual_change"].to_pylist() == [None]
+
+
+def test_idle_score_out_of_range_rejected():
+    _bad("segments", [row("segments", idle_score=1.5)], "idle_score")

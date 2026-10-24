@@ -1,0 +1,33 @@
+# Never sent to HPC by scripts/sync_code_to_hpc.sh (one rsync pattern per line; first match wins).
++ .env.example
+.env
+.env.*
+.venv/
+models/
+weights/
+__pycache__/
+.pytest_cache/
+.cache/
+outputs/
+data/
+videos/
+frames/
+crops/
+embeddings/
+transcripts/
+config/*.local.yaml
+slurm-*.out
+reply.md
+*.mp4
+*.mov
+*.m4v
+*.mkv
+*.avi
+*.wav
+*.mp3
+*.m4a
+*.npy
+*.pt
+*.onnx
+*.parquet
+*.duckdb

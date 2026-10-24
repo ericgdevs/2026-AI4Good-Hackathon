@@ -13,6 +13,7 @@ moments:
   secondary_groups: [category, actor, audio, expression]
   max_gap_windows: 1           # merge across gaps up to this many windows
   min_windows: 1               # drop moments shorter than this many windows
+  needs_review_margin: 0.2     # needs_review if confidence < threshold * (1 + margin), or any uncertain_mixed segment
 overrides:                     # only window_s, overlap_s, frames_per_window allowed
   by_kind:
     clip: { window_s: 4, overlap_s: 1 }

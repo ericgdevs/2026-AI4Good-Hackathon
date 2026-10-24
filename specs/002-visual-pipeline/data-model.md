@@ -30,7 +30,7 @@
 | primary activity | highest activity score among labels ≥ their own threshold `threshold(model, label)` |
 | secondary labels | other visual labels ≥ their own threshold |
 | `uncertain_mixed` | stored as a rules row: 1 if no activity clears its threshold, or top1 − top2 < `uncertain_margin` |
-| moment `needs_review` | `confidence < threshold(model, primary_label)` or any segment `uncertain_mixed = 1` |
+| moment `needs_review` | `confidence < threshold(model, primary_label) × (1 + moments.needs_review_margin)` or any segment `uncertain_mixed = 1` |
 | `is_idle` | stored on the segment: idle-prompt score ≥ `idle.score_threshold` AND frame change < `idle.change_threshold` (needs ≥ 2 frames) |
 
 ## Official runs

@@ -5,7 +5,7 @@ from tpa_index.schema import validate
 
 PIPE = {"window_s": 8, "label_threshold": 0.5, "label_thresholds": {},
         "moments": {"primary_group": "activity", "secondary_groups": ["audio"], "max_gap_windows": 1,
-                    "min_windows": 1}}
+                    "min_windows": 1, "needs_review_margin": 0.2}}
 GROUPS = {"singing": "activity", "dancing": "activity", "music": "audio", "participation": "indicator"}
 
 
@@ -50,16 +50,28 @@ def test_idle_segment_breaks_moment():
     assert merge_moments(*make(spec, idle={0, 8, 16}), PIPE, "r1") == []
 
 
-def test_confidence_never_below_threshold_by_construction():
-    # segments join a moment only when the primary label clears its threshold, so the mean cannot fall below it;
-    # needs_review therefore comes from uncertain_mixed segments (next test)
+def test_confidence_near_threshold_needs_review():
+    # threshold 0.5, margin 0.2 -> review below 0.6
     p = {**PIPE, "label_thresholds": {"m1": {"singing": 0.5}}}
-    (m,) = merge_moments(*make([(0, {"singing": 0.5}), (8, {"singing": 0.5})]), p, "r1", model="m1")
-    assert m["confidence"] >= 0.5 and not m["needs_review"]
+    (near,) = merge_moments(*make([(0, {"singing": 0.55}), (8, {"singing": 0.58})]), p, "r1", model="m1")
+    (clear,) = merge_moments(*make([(0, {"singing": 0.65}), (8, {"singing": 0.70})]), p, "r1", model="m1")
+    assert near["needs_review"] and not clear["needs_review"]
+    (edge,) = merge_moments(*make([(0, {"singing": 0.6})]), p, "r1", model="m1")
+    assert not edge["needs_review"]  # exactly threshold * 1.2 is not below it
+
+
+def test_review_margin_zero_and_per_label_threshold():
+    p = {**PIPE, "label_thresholds": {"m1": {"singing": 0.3}},
+         "moments": {**PIPE["moments"], "needs_review_margin": 0.0}}
+    (m,) = merge_moments(*make([(0, {"singing": 0.31})]), p, "r1", model="m1")
+    assert not m["needs_review"]  # margin 0: a moment that clears its threshold is not flagged for confidence
+    p["moments"]["needs_review_margin"] = 0.2
+    (m,) = merge_moments(*make([(0, {"singing": 0.31})]), p, "r1", model="m1")
+    assert m["needs_review"]  # 0.31 < 0.3 * 1.2 = 0.36, using the label's own threshold
 
 
 def test_uncertain_mixed_segment_sets_needs_review():
-    spec = [(0, {"singing": 0.9}), (8, {"singing": 0.9})]
+    spec = [(0, {"singing": 0.9}), (8, {"singing": 0.9})]  # confident: only the flagged segment can trigger review
     (clean,) = merge_moments(*make(spec), PIPE, "r1")
     (flag,) = merge_moments(*make(spec, flagged={8}), PIPE, "r1")
     assert not clean["needs_review"] and flag["needs_review"]

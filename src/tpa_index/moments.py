@@ -11,6 +11,7 @@ def merge_moments(segments, predictions, pipeline: dict, run_id: str, window_s=N
     rows = lambda t: t.to_pylist() if hasattr(t, "to_pylist") else list(t)  # noqa: E731
     segments, predictions = rows(segments), rows(predictions)
     cfg = pipeline["moments"]
+    review_factor = 1 + cfg["needs_review_margin"]
     window = window_s or pipeline["window_s"]
     max_gap, min_len = cfg["max_gap_windows"] * window, cfg["min_windows"] * window
 
@@ -48,7 +49,8 @@ def merge_moments(segments, predictions, pipeline: dict, run_id: str, window_s=N
             "video_id": video_id, "start_s": start, "end_s": end, "primary_label": label,
             "secondary_labels": above(secondary), "indicators": above(indicator_labels),
             "confidence": confidence,
-            "needs_review": confidence < thr[label] or any(s["segment_id"] in flagged for s in segs),
+            # close to the bar (within the margin above it), or any segment too close to call
+            "needs_review": confidence < thr[label] * review_factor or any(s["segment_id"] in flagged for s in segs),
             "run_id": run_id,
         }
 

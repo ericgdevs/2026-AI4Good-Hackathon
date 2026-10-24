@@ -46,12 +46,20 @@ idle:
   change_threshold: 0.02         # mean |frame diff| on 64x64 grayscale in 0-1
 ```
 
-Removed keys: `moments.needs_review_below` and `moments.conflict_margin`, replaced by per-label thresholds and `uncertain_margin`.
+Removed keys: `moments.needs_review_below` and `moments.conflict_margin`, replaced by per-label thresholds, `uncertain_margin` and `moments.needs_review_margin`.
+
+New moments key:
+
+```yaml
+moments:
+  needs_review_margin: 0.2   # needs_review if confidence < threshold * (1 + margin)
+```
 
 Validation:
 - `visual_groups` ⊆ the label groups, and each group has at least one model-scored label;
 - `label_thresholds` values are in [0, 1], and each label exists and is model-scored;
 - `0 ≤ uncertain_margin < 1`;
+- `0 ≤ moments.needs_review_margin ≤ 1`;
 - `batch_windows` values ≥ 1;
 - every `motion.labels` entry is an activity label;
 - `idle.prompts` has 1–5 entries;

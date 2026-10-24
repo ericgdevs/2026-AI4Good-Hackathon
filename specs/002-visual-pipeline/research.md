@@ -132,7 +132,7 @@ Checked on 2026-10-23 against the locked environment (transformers 5.20.2, torch
 
 ## 17. `needs_review` (rules) and `tpa-index moments`
 
-- **Rule**: a moment's `needs_review` is `confidence < threshold(model, primary_label)` **or** any segment in the moment has `uncertain_mixed = 1`.
+- **Rule**: a moment's `needs_review` is `confidence < threshold(model, primary_label) × (1 + moments.needs_review_margin)` **or** any segment in the moment has `uncertain_mixed = 1`. The margin (default 0.2) exists because segments only join a moment when they clear the threshold, so a plain `confidence < threshold` could never fire.
   - The old moment-level keys `moments.needs_review_below` and `moments.conflict_margin` are removed, replaced by per-label thresholds and `uncertain_margin`.
   - 001's `test_moments.py` and the mock generator are updated to match.
 - **`tpa-index moments [--video-id …]`**: for each official predict run, read its `segments` and `predictions` (main model and rules rows) and rebuild moments with the current thresholds.

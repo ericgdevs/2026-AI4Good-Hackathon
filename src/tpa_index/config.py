@@ -104,8 +104,10 @@ def _check_pipeline(d: dict) -> dict:
     m = d.get("moments")
     if not isinstance(m, dict):
         raise ConfigError("pipeline: moments section missing")
-    for key in ("max_gap_windows", "min_windows"):
+    for key in ("max_gap_windows", "min_windows", "needs_review_margin"):
         _number(m, key, "pipeline.moments")
+    if not 0 <= m["needs_review_margin"] <= 1:
+        raise ConfigError("pipeline.moments: needs_review_margin must be within 0-1")
     _number(d, "uncertain_margin")
     if not 0 <= d["uncertain_margin"] < 1:
         raise ConfigError("pipeline: uncertain_margin must be within [0, 1)")

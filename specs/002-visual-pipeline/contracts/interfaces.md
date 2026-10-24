@@ -33,7 +33,8 @@ segment_video(video, settings, sample_rate=16000, with_audio=True) -> Iterator[W
 
 # moments.py (changed)
 merge_moments(segments, predictions, pipeline, run_id, window_s=None, model=None) -> list[dict]
-#   window_s defaults to pipeline["window_s"]; needs_review = conf < threshold(model, primary) or any segment uncertain_mixed
+#   window_s defaults to pipeline["window_s"];
+#   needs_review = conf < threshold(model, primary) * (1 + moments.needs_review_margin) or any segment uncertain_mixed
 
 # config.py (new)
 threshold(pipeline, model, label) -> float     # per-label (per model) with global fallback

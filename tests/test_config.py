@@ -131,6 +131,9 @@ def test_unknown_source_fails(labels):
     (lambda p: p.update(label_thresholds={"m": {"singing": 1.5}}), "within 0-1"),
     (lambda p: p.update(uncertain_margin=1.0), "uncertain_margin"),
     (lambda p: p["idle"].update(prompts=[]), "idle"),
+    (lambda p: p["moments"].update(needs_review_margin=1.5), "needs_review_margin"),
+    (lambda p: p["moments"].update(needs_review_margin=-0.1), "needs_review_margin"),
+    (lambda p: p["moments"].pop("needs_review_margin"), "needs_review_margin"),
 ])
 def test_bad_pipeline_keys(pipeline, change, match):
     bad = copy.deepcopy(pipeline)

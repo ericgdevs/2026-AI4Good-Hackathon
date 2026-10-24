@@ -78,11 +78,7 @@ def insights_summary(p: dict) -> str:
     lines += ["", "Positive expression rate: observable, unvalidated; segments with faces only.", ""]
     idx = [r for r in p["expression_index"] if r["scope_type"] == "phase"]
     if idx:
-        lines += ["## TPA Expression Index (optional example)", "",
-                  "Equal-weight mean of the four headline indicators, each scaled to 0-100 (shares x 100; per-hour "
-                  "values against the cap in `insights.expression_index`). Program level only, not a ranking. "
-                  "Caveats: performance share rises partly by design as the program moves toward the showcase, and "
-                  "expressions are unvalidated model estimates.", "",
+        lines += ["## TPA Expression Index (optional example)", "", INDEX_CAVEAT, "",
                   "| phase | index | " + " | ".join(HEADLINE_NAMES) + " | label | weakest component tag |",
                   "|---|---|" + "---|" * len(HEADLINE_NAMES) + "---|---|"]
         for ph in dict.fromkeys(r["scope"] for r in idx):
@@ -99,6 +95,10 @@ def insights_summary(p: dict) -> str:
 
 
 UNVALIDATED_TAG = "model estimate (unvalidated)"
+INDEX_CAVEAT = ("Equal-weight mean of the four headline indicators, each scaled to 0-100 (shares x 100; per-hour "
+                "values against the cap in `insights.expression_index`). Program level only, not a ranking. "
+                "Caveats: performance share rises partly by design as the program moves toward the showcase, and "
+                "expressions are unvalidated model estimates.")
 HEADLINE_NAMES = ["performance share", "solo moments", "youth voice", "positive expression"]
 TABLES = {"metrics.csv": "metrics", "confusion.csv": "confusion", "signal_indicators.csv": "signal_indicators",
           "ablation.csv": "ablation", "topup.csv": "topup", "failure_gallery.csv": "failure_gallery",

@@ -1,5 +1,7 @@
 # Label vocabulary. Observable behaviour only (Constitution V); bump guideline_version on any change.
 # Prompts describe what a camera sees: no feelings, no judgments about people.
+# display: optional readable name for the Timeline and Insights tabs; presentation only, not guideline content
+# (no guideline bump).
 # source: model (default, scored by a model) | rules (computed flags) | staff (set by staff only, no prompts).
 guideline_version: "0.5.0"
 # Adding an observation type (or any label) requires bumping guideline_version.
@@ -31,10 +33,12 @@ labels:
   # actor
   - name: actor_participant
     group: actor
+    display: "Youth-led"
     prompts: ["teens doing the activity themselves", "young people performing the task with their own hands", "teens at the center of the activity"]
     color: "#393b79"
   - name: actor_staff_facilitation
     group: actor
+    display: "Staff-led"
     prompts: ["an adult leading an activity for teens", "an adult demonstrating a move while teens watch", "an adult instructor speaking to a group"]
     color: "#843c39"
   # activity
@@ -48,6 +52,7 @@ labels:
     color: "#aec7e8"
   - name: lyricism_spoken_word
     group: activity
+    display: "Lyricism / spoken word"
     prompts: ["a teen reciting poetry to an audience", "a young person rapping into a microphone on stage", "a performer speaking verses to a crowd"]
     color: "#9467bd"
   - name: dance
@@ -56,6 +61,7 @@ labels:
     color: "#ff7f0e"
   - name: acting_theater
     group: activity
+    display: "Acting / theater"
     prompts: ["teens acting out a scene on stage", "young actors performing a play", "two performers acting a scene facing each other"]
     color: "#2ca02c"
   - name: visual_arts
@@ -76,10 +82,12 @@ labels:
     color: "#8c564b"
   - name: podcast_interview
     group: activity
+    display: "Podcast / interview"
     prompts: ["teens talking into microphones at a table", "two people seated across a table with podcast microphones", "a teen wearing headphones speaking into a microphone"]
     color: "#c49c94"
   - name: modeling_runway
     group: activity
+    display: "Modeling / runway"
     prompts: ["a teen walking a runway", "young models walking in a line down a runway", "a teen posing at the end of a catwalk"]
     color: "#f7b6d2"
   - name: fashion_design
@@ -109,6 +117,7 @@ labels:
     color: "#969696"
   - name: singing_voice          # audio cue; not the activity label "singing"
     group: audio
+    display: "Singing voice"
     prompts: ["a person singing", "people singing together", "a person rapping into a microphone", "a choir singing"]
     color: "#c51b8a"
   # expression (observable, staff-verified proposals only)

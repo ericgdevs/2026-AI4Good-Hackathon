@@ -232,8 +232,8 @@ description: "Task list for 006-export-demo"
 
 **Independent test**: `uv run pytest tests/test_demo.py` passes on mock data with a planted transcript.
 
-- [ ] T038 Rebase `006-export-demo` onto `main` after the 005 merge and resolve the expected small conflict in `cli.main()` (005's `evaluate` / `insights` subparsers next to `export` / `benchmark`). Run `uv run pytest` to green. Read 005's merged staff-led code (expected in `src/tpa_index/indicators.py`) and note whether it exposes a reusable per-segment function and its signature, for T059.
-- [ ] T039 [P] [US2] In `config/labels.yaml`, add optional `display:` keys where the automatic form reads badly:
+- [X] T038 Rebase `006-export-demo` onto `main` after the 005 merge and resolve the expected small conflict in `cli.main()` (005's `evaluate` / `insights` subparsers next to `export` / `benchmark`). Run `uv run pytest` to green. Read 005's merged staff-led code (expected in `src/tpa_index/indicators.py`) and note whether it exposes a reusable per-segment function and its signature, for T059. *(Done: main was already merged (9f1cbcd), so no rebase was needed. 005 has no separate per-segment staff-led function: the rule is inline in `indicators.segment_table` (`cls`).)*
+- [X] T039 [P] [US2] In `config/labels.yaml`, add optional `display:` keys where the automatic form reads badly:
   - `lyricism_spoken_word: "Lyricism / spoken word"`;
   - `acting_theater: "Acting / theater"`;
   - `podcast_interview: "Podcast / interview"`;
@@ -243,17 +243,17 @@ description: "Task list for 006-export-demo"
   - `singing_voice: "Singing voice"`.
 
   Add a comment that `display` is presentation only, not guideline content (no bump). In `src/tpa_index/config.py` `_check_labels`, allow an optional non-empty string `display`. Then confirm that `guideline_fingerprint` still matches `0.5.0`, the blind checklist snapshot test passes, and `tests/test_review.py` / `tests/test_app.py` pass **unchanged**.
-- [ ] T040 [US2] Create `src/tpa_index/demo.py` with:
+- [X] T040 [US2] Create `src/tpa_index/demo.py` with:
   - `display_label(name, labels)`: the `display` key, else `name.replace("_", " ")` with the first letter capitalised;
   - `video_name(video, shown_videos)`: `f"Video {int(trailing digits)} · {phase}"`, with `phase` `unknown` → "phase not set", and ` · {kind}` appended only when two shown videos would get the same name. It never reads `filename`.
-- [ ] T041 [US2] In `src/tpa_index/demo.py`, add the constants `STAFF_ACTOR = "actor_staff_facilitation"`, `INSTRUCTION = "instruction"`, `PARTICIPANT = "actor_participant"`, plus `check_rule_labels(labels)`, which raises `ConfigError` with a plain message if any is missing.
+- [X] T041 [US2] In `src/tpa_index/demo.py`, add the constants `STAFF_ACTOR = "actor_staff_facilitation"`, `INSTRUCTION = "instruction"`, `PARTICIPANT = "actor_participant"`, plus `check_rule_labels(labels)`, which raises `ConfigError` with a plain message if any is missing. *(Adjusted: no restated rule. `DemoController` calls 005's chain `segment_view` → `verified_labels` → `indicator_estimates` → `segment_table` and reads `cls`. Only `RULE_LABELS` and `check_rule_labels` remain, as the startup guard for the names `segment_table` reads.)*
 
   Also add `staff_led(segment_id, verified: set[str] | None, scores: dict[str, float], thresholds: dict[str, float]) -> tuple[bool, str]`, returning (staff_led, tag), with tag "staff-verified" or "model estimate":
   - **verified actor labels**: staff-led = STAFF_ACTOR in the set and PARTICIPANT not in it;
   - **model only**: (STAFF_ACTOR ≥ t or INSTRUCTION ≥ t) and PARTICIPANT < t.
 
   Add a comment: `# shortcut: restates 005's rule (spec FR-018); switch to 005's function after the merge (T059)`.
-- [ ] T042 [US2] In `src/tpa_index/demo.py`, add `DemoController(root=None, labels=None, pipeline=None)`. `reload()` reads:
+- [X] T042 [US2] In `src/tpa_index/demo.py`, add `DemoController(root=None, labels=None, pipeline=None)`. `reload()` reads: *(Adjusted: segment rows come from 005's `segment_view` (allow-listed fields, NaN → None). Without calibrated thresholds the Timeline shows moments only, with a "segment signals not available" note. Methods are named `moments_table` and `segments_table`.)*
   - `read_official("moments")`;
   - `schema.read_signals()` with `transcript_chars` dropped immediately (never stored on the controller);
   - main predictions (the most common non-rules model, as in `ReviewController`);
@@ -271,7 +271,7 @@ description: "Task list for 006-export-demo"
     - audio cues (readable names at or above threshold, or "none" / "not available");
     - expression (`AI suggestion, unvalidated: {readable}`, "none", "no faces" or "not available");
     - led by (`Youth` / `Staff-led (staff-verified)` / `Staff-led (model estimate)`).
-- [ ] T043 [US2] In `src/tpa_index/app.py` `build_app`, append a `Timeline` tab after the Review tab, containing:
+- [X] T043 [US2] In `src/tpa_index/app.py` `build_app`, append a `Timeline` tab after the Review tab, containing:
   - a video dropdown (`elem_id="timeline-video"`) and a lock note;
   - a moments dataframe (`timeline-moments`) and a segments dataframe (`timeline-segments`);
   - a "Show staff-led segments" checkbox, default off (`timeline-show-staff`), plus a hidden-count line;
@@ -279,14 +279,14 @@ description: "Task list for 006-export-demo"
   - the note "Signals are observable cues from AI models, unvalidated. Staff-led time is not counted in youth indicators."
 
   The existing Reload button also calls `demo.reload()`. The Review tab code is unchanged.
-- [ ] T044 [P] [US2] Test the timeline signals in `tests/test_demo.py`: `test_timeline_signals`, on a mock dataset plus official signal runs written for one mock video (people, transcript, audio and expression stages, built like `tests/test_signals.py` fixtures):
+- [X] T044 [P] [US2] Test the timeline signals in `tests/test_demo.py`: `test_timeline_signals`, on a mock dataset plus official signal runs written for one mock video (people, transcript, audio and expression stages, built like `tests/test_signals.py` fixtures): *(Uses 005's `tests/insights_fixtures.build_world`.)*
   - each segment row matches the mock values;
   - a stage with no official run shows "not available";
   - `faces_detected = 0` gives "no faces";
   - the expression text starts with `AI suggestion, unvalidated:`;
   - audio cues use display names (`Singing voice`);
   - moments show readable labels (`Lyricism / spoken word`).
-- [ ] T045 [P] [US2] **SC-005 test** in `tests/test_demo.py`: `test_staff_led_excluded_by_default`.
+- [X] T045 [P] [US2] **SC-005 test** in `tests/test_demo.py`: `test_staff_led_excluded_by_default`. *(Rule-table cases are 005's own tests. Here: hidden by default with the count, exact tags, verified (blind) vs model rows, Timeline classes equal to 005's `segment_table`, and `check_rule_labels`.)*
   - **Rule table** (mirrors 005's cases):
     - verified {staff} → staff-led, staff-verified;
     - verified {staff, participant} → youth;
@@ -297,16 +297,16 @@ description: "Task list for 006-export-demo"
   - **Precedence**: a blind segment label beats a moment review label, which beats model scores.
   - **Default view**: `segments(...)` with defaults returns zero staff-led rows and the right `hidden_count`; `show_staff=True` returns them with their tag.
   - **Startup check**: `check_rule_labels` raises when a rule label is renamed.
-- [ ] T046 [P] [US2] **SC-004 test (Timeline part)** in `tests/test_demo.py`: `test_timeline_never_shows_transcript`:
+- [X] T046 [P] [US2] **SC-004 test (Timeline part)** in `tests/test_demo.py`: `test_timeline_never_shows_transcript`:
   - plant `transcript.json` containing `TRANSCRIPT_SENTINEL_006 hello world` in the mock transcript run folder, and set `transcript_chars = 987654`;
   - the outputs of `video_choices`, `moments` and `segments` (both toggle states), and `json.dumps` of the `build_app(...).config`, contain neither the sentinel nor `987654`;
   - no row key or header mentions `transcript`.
-- [ ] T047 [P] [US2] Test the eval lock and names in `tests/test_demo.py`: `test_names_and_eval_lock`:
+- [X] T047 [P] [US2] Test the eval lock and names in `tests/test_demo.py`: `test_names_and_eval_lock`: *(The eval lock is re-armed with an overlap segment that has one reviewer. Colliding names get the kind, then the opaque ID.)*
   - an eval-split mock video is absent from `video_choices()` while blind labeling is unfinished, and the lock reason matches the Review tab's;
   - names read `Video 1 · early`, with kind appended on a forced name collision;
   - no `filename` value appears in any choice;
   - `tests/test_app.py` and `tests/test_review.py` pass unmodified.
-- [ ] T048 **Checkpoint 4**: `uv run pytest` is green (including `tests/test_demo.py`). The Timeline is demoable on mock data with a dev video.
+- [X] T048 **Checkpoint 4**: `uv run pytest` is green (including `tests/test_demo.py`). The Timeline is demoable on mock data with a dev video.
 
 ---
 
@@ -316,14 +316,14 @@ description: "Task list for 006-export-demo"
 
 **Independent test**: `uv run pytest tests/test_insights.py` passes against fixture folders.
 
-- [ ] T049 [US3] Read the merged `specs/005-insights-eval/contracts/results.md` and 005's headline code and tests (read-only), and write down in a comment at the top of `tests/test_insights.py`:
+- [X] T049 [US3] Read the merged `specs/005-insights-eval/contracts/results.md` and 005's headline code and tests (read-only), and write down in a comment at the top of `tests/test_insights.py`: *(Done in the header of `tests/test_insights.py`.)*
   - the exact indicator IDs 005 writes to `headline.csv` (for example whether solo is `solo_moments_count`, `solo_moments_minutes` or both);
   - the column names;
   - the tag strings;
   - `schema_version`.
 
   Do not hardcode headline IDs in `demo.py`: the page charts every indicator present in `headline.csv`, in file order.
-- [ ] T050 [P] [US3] Create fixtures under `tests/fixtures/results/`:
+- [X] T050 [P] [US3] Create fixtures under `tests/fixtures/results/`: *(Adjusted: fixture folders come from 005's own `tpa-index insights` run on `build_world`, then copied and edited for the incomplete, with-mid, all-four-tags and schema-2 variants. No hand-written `tests/fixtures/results/`.)*
   - **`insights-20261024T213040-3c4d/`** (complete):
     - `manifest.json`: `schema_version` 1, `kind` insights, `created_at`, `limitations`;
     - `headline.csv`: the four headline indicators from T049, with early and showcase, using all three tag forms (`staff-verified`, `model estimate (unvalidated)`, `mixed (40% staff-verified)`), plus one `status` = `no videos in this phase` row;
@@ -334,7 +334,7 @@ description: "Task list for 006-export-demo"
   - **`with_mid/insights-20261024T213041-cccc/`**: a variant with mid rows.
 
   Aggregates only. No filenames.
-- [ ] T051 [US3] In `src/tpa_index/demo.py`, add `InsightsController(root=None)`:
+- [X] T051 [US3] In `src/tpa_index/demo.py`, add `InsightsController(root=None)`: *(Values are formatted with 005's `report.show` / `show_change`. Also adds `index_table()` (Expression Index) and `ablation_table()` (newest complete evaluate folder).)*
   - **`latest_folder()`**: the last by name of the `results/insights-*` folders that contain `manifest.json`.
   - **`load()`** returns a state dict: available / not available / unsupported. It is unsupported when `schema_version != 1` or `headline.csv` lacks `indicator, phase, value, unit, tag, verified_share, change_vs_early` (columns are selected by name with `csv.DictReader`).
   - **`table()`**: rows of indicator (display name via a readable form of the ID), phase, value with unit (share → `%`, minutes → `min`, count, ratio), tag verbatim and change vs early.
@@ -347,7 +347,7 @@ description: "Task list for 006-export-demo"
   - **`source_line()`**: built from `manifest.created_at`, never the folder path.
 
   Empty state: "Insights are not available yet. Run the insights step first." (plus "(unsupported results format)" when unsupported).
-- [ ] T052 [US3] In `src/tpa_index/app.py` `build_app`, append an `Insights` tab after Timeline, containing:
+- [X] T052 [US3] In `src/tpa_index/app.py` `build_app`, append an `Insights` tab after Timeline, containing: *(Also adds `insights-index` with the caveat note, and `insights-ablation`.)*
   - a source line (`insights-source`);
   - one `gr.Plot` per figure (`insights-chart-{i}`);
   - a table (`insights-table`);
@@ -355,7 +355,7 @@ description: "Task list for 006-export-demo"
   - an empty-state Markdown.
 
   The Reload button refreshes it. The rest of the app works when results are missing.
-- [ ] T053 [P] [US3] Test the insights page in `tests/test_insights.py`: `test_insights_reads_newest_complete`, with the fixtures copied into the test `OUTPUT_DIR/results/`:
+- [X] T053 [P] [US3] Test the insights page in `tests/test_insights.py`: `test_insights_reads_newest_complete`, with the fixtures copied into the test `OUTPUT_DIR/results/`: *(Also covers the Expression Index and ablation rows. The empty state is in `test_insights_empty_state`.)*
   - the complete insights folder is chosen (the newer folder without a manifest and the evaluate folder are ignored);
   - every number in `table()` carries exactly the CSV's tag string;
   - mid is absent for the base fixture and present for `with_mid`;
@@ -363,24 +363,24 @@ description: "Task list for 006-export-demo"
   - `schema_version` 2 → the unsupported message;
   - a missing `results/` → the not-available message, and `build_app` still builds;
   - figure backgrounds are white, and bar colours come from `chart_series`.
-- [ ] T054 [P] [US3] **SC-004 test (Insights part)** in `tests/test_insights.py`: `test_insights_never_shows_transcript`. With a planted `TRANSCRIPT_SENTINEL_006` transcript in an OUTPUT_DIR run folder and the fixtures in place, none of `source_line`, `table`, `context`, figure texts or `build_app(...).config` contains the sentinel or a transcript character count.
-- [ ] T055 [P] [US3] **SC-008 test** in `tests/test_insights.py`: `test_judge_flow_is_fast`, on the 4-video mock dataset plus fixtures:
+- [X] T054 [P] [US3] **SC-004 test (Insights part)** in `tests/test_insights.py`: `test_insights_never_shows_transcript`. With a planted `TRANSCRIPT_SENTINEL_006` transcript in an OUTPUT_DIR run folder and the fixtures in place, none of `source_line`, `table`, `context`, figure texts or `build_app(...).config` contains the sentinel or a transcript character count.
+- [X] T055 [P] [US3] **SC-008 test** in `tests/test_insights.py`: `test_judge_flow_is_fast`, on the 4-video mock dataset plus fixtures:
   - `DemoController` construction plus `segments()` for one video takes under 3 s;
   - `InsightsController.load()` plus `figures()` takes under 2 s (`time.perf_counter`);
   - each tab's first screen needs no raw ID: choices use `Video N · phase`, and no `segment_id` appears in any table.
-- [ ] T056 [P] **SC-009 test** in a new `tests/test_no_filenames.py`: `test_no_filenames_anywhere`. Scan all of the following for every `filename` in `config/videos.example.yaml`, `.mp4`, and the absolute DATA_DIR and OUTPUT_DIR paths:
+- [X] T056 [P] **SC-009 test** in a new `tests/test_no_filenames.py`: `test_no_filenames_anywhere`. Scan all of the following for every `filename` in `config/videos.example.yaml`, `.mp4`, and the absolute DATA_DIR and OUTPUT_DIR paths:
   - the export pair and latest (from T013's setup);
   - the benchmark JSON and MD (from T016's fake runner);
   - every `DemoController` and `InsightsController` output;
   - `json.dumps(build_app(...).config)`.
 
   Zero occurrences.
-- [ ] T057 [US3] Manual walkthrough on mock data only (`tpa-index mock --clips` in a temp OUTPUT_DIR, fixtures copied in). Time a fresh open:
+- [ ] T057 [US3] *(Not done: it needs the app running, and the app is never started here. The user does this walkthrough by hand.)* Manual walkthrough on mock data only (`tpa-index mock --clips` in a temp OUTPUT_DIR, fixtures copied in). Time a fresh open:
   - to a dev video's timeline with signals: under 1 min;
   - then to the insights headline: under 30 s more.
 
   Check light mode with the OS in dark mode, the credit in the header and footer, and no logo. Take mock-only screenshots for the deck. This is the manual half of SC-008.
-- [ ] T058 **Checkpoint 5**: `uv run pytest` is green (including `tests/test_insights.py` and `tests/test_no_filenames.py`). All six user stories are demoable on mock data.
+- [X] T058 **Checkpoint 5**: `uv run pytest` is green (including `tests/test_insights.py` and `tests/test_no_filenames.py`). All six user stories are demoable on mock data.
 
 ---
 
@@ -388,11 +388,11 @@ description: "Task list for 006-export-demo"
 
 **Goal**: remove the temporary duplication with 005 and prove the two features fit together on mock data.
 
-- [ ] T059 [US2] If T038 found a reusable per-segment staff-led function in 005 (expected in `src/tpa_index/indicators.py`), replace the body of `demo.staff_led` in `src/tpa_index/demo.py` with a call to it (adapting arguments), and delete the `shortcut:` comment. `tests/test_demo.py::test_staff_led_excluded_by_default` must pass unchanged. If no such function exists, leave the copy and update the comment to name the 005 function or file it mirrors.
-- [ ] T060 [US2] If merged `config/pipeline.yaml` has an `insights:` block naming the staff-led rule's labels, read them from there in `src/tpa_index/demo.py` (in place of the three constants), and keep `check_rule_labels` as the validation. If not, leave the constants as they are.
-- [ ] T061 [US3] Re-check the merged `results.md` against `tests/fixtures/results/` (headline IDs, columns, tag strings, `schema_version`), and update the fixtures and the T049 comment if 005 changed anything. If `schema_version` moved past 1, make `InsightsController` accept the new version only after confirming the columns it reads are unchanged.
-- [ ] T062 [US3] Add an integration test in `tests/test_insights.py`: `test_reads_real_005_output_on_mock`. Generate a mock dataset with official runs in the test OUTPUT_DIR, run 005's `cli.main(["insights"])` on it, and assert `InsightsController().load()` is available, that every `headline.csv` row appears in `table()` with its tag verbatim, and that the staff-led context matches `time_breakdown.csv`. Mock data only.
-- [ ] T063 **Checkpoint 6**:
+- [X] T059 [US2] If T038 found a reusable per-segment staff-led function in 005 (expected in `src/tpa_index/indicators.py`), replace the body of `demo.staff_led` in `src/tpa_index/demo.py` with a call to it (adapting arguments), and delete the `shortcut:` comment. `tests/test_demo.py::test_staff_led_excluded_by_default` must pass unchanged. If no such function exists, leave the copy and update the comment to name the 005 function or file it mirrors. *(Done by construction: `demo.py` never had a copy of the rule. It calls 005's `segment_table` chain, and the stale tests from the task text were never written.)*
+- [X] T060 [US2] If merged `config/pipeline.yaml` has an `insights:` block naming the staff-led rule's labels, read them from there in `src/tpa_index/demo.py` (in place of the three constants), and keep `check_rule_labels` as the validation. If not, leave the constants as they are. *(Checked: `pipeline.yaml` `insights:` doesn't name the rule labels, because `segment_table` hardcodes them. `demo.RULE_LABELS` plus `check_rule_labels` stays as the guard.)*
+- [X] T061 [US3] Re-check the merged `results.md` against `tests/fixtures/results/` (headline IDs, columns, tag strings, `schema_version`), and update the fixtures and the T049 comment if 005 changed anything. If `schema_version` moved past 1, make `InsightsController` accept the new version only after confirming the columns it reads are unchanged. *(Fixtures are generated by 005's writer, so they can't drift. `schema_version` is 1, and the columns and tags were re-checked against the merged `results.md`.)*
+- [X] T062 [US3] Add an integration test in `tests/test_insights.py`: `test_reads_real_005_output_on_mock`. Generate a mock dataset with official runs in the test OUTPUT_DIR, run 005's `cli.main(["insights"])` on it, and assert `InsightsController().load()` is available, that every `headline.csv` row appears in `table()` with its tag verbatim, and that the staff-led context matches `time_breakdown.csv`. Mock data only. *(`tests/test_insights.py::test_reads_real_005_output_on_mock`.)*
+- [X] T063 **Checkpoint 6**:
   - `README.md` gains a short "Demo" section (Timeline and Insights tabs, the eval lock, mock-only screenshots);
   - `CLAUDE.md` is still correct;
   - `uv run pytest` is fully green;

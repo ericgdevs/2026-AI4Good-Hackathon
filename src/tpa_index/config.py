@@ -61,6 +61,8 @@ def _check_labels(d: dict) -> dict:
             raise ConfigError(f"label {name}: needs 3-5 prompt phrasings")
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(lab.get("color", ""))):
             raise ConfigError(f"label {name}: color must be #RRGGBB")
+        if "display" in lab and not (isinstance(lab["display"], str) and lab["display"].strip()):
+            raise ConfigError(f"label {name}: display must be a non-empty string")
     groups = {lab["group"] for lab in labels}
     for group in LABEL_GROUPS:
         if group not in groups:

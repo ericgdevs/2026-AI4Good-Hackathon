@@ -1,4 +1,4 @@
-"""Local review app (Gradio): blind labeling and review. Binds 127.0.0.1 only; no sharing, analytics or monitoring.
+"""Local review app (Gradio): blind labeling, review, and the Timeline / Insights demo tabs. Binds 127.0.0.1 only; no sharing, analytics or monitoring.
 Every label and group shown comes from labels.yaml / pipeline.yaml at runtime."""
 import os
 
@@ -345,12 +345,16 @@ class ReviewController:
 def build_app(root=None, cutter=None, labels=None, pipeline=None):
     import gradio as gr
 
+    from tpa_index import demo as tabs
+
     blind = BlindController(cutter, root, labels, pipeline)
     rv = ReviewController(cutter, root, blind.labels, blind.pipeline)
+    tl = tabs.DemoController(cutter, root, blind.labels, blind.pipeline)
+    ins = tabs.InsightsController(root)
     cl = blind.checklist
     palette = load_theme()
     with gr.Blocks(analytics_enabled=False, title="TPA video index") as demo:
-        demo.blind, demo.review = blind, rv
+        demo.blind, demo.review, demo.timeline, demo.insights = blind, rv, tl, ins
         gr.Markdown("## TPA video index (local only)")
         gr.Markdown(palette["credit"], elem_id="app-credit-header")
         with gr.Row():
@@ -412,6 +416,41 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
             note_box = gr.Textbox(label="Note (optional)", max_lines=2, elem_id="review-note")
             history = gr.Dataframe(headers=HISTORY_HEADERS, interactive=False, label="Review history",
                                    elem_id="review-history")
+        with gr.Tab("Timeline"):
+            t_choices, t_reason = tl.video_choices()
+            t_video = gr.Dropdown(t_choices, value=None, label="Video", elem_id="timeline-video")
+            t_lock = gr.Markdown(t_reason, elem_id="timeline-lock")
+            t_signals = gr.Markdown(tl.note, elem_id="timeline-signals-note")
+            t_moments = gr.Dataframe(headers=tabs.MOMENT_HEADERS, interactive=False,
+                                     label="Moments (select one to see its segments)", elem_id="timeline-moments")
+            t_ids, t_moment = gr.State([]), gr.State(None)
+            t_show = gr.Checkbox(False, label="Show staff-led segments", elem_id="timeline-show-staff")
+            t_hidden = gr.Markdown(elem_id="timeline-hidden")
+            t_segments = gr.Dataframe(headers=tabs.SEGMENT_HEADERS, interactive=False, label="Segments",
+                                      elem_id="timeline-segments")
+            t_clip = gr.Video(autoplay=True, interactive=False, label="Moment", elem_id="timeline-clip")
+            gr.Markdown(tabs.NOTE, elem_id="timeline-note")
+        with gr.Tab("Insights"):
+            from tpa_index.indicators import HEADLINE
+            from tpa_index.report import INDEX_CAVEAT
+
+            i_source = gr.Markdown(ins.source_line(), elem_id="insights-source")
+            i_empty = gr.Markdown(ins.message(), elem_id="insights-empty")
+            figs = ins.figures()
+            # shortcut: one plot slot per 005 headline indicator; extra indicators show in the table only
+            with gr.Row():
+                i_plots = [gr.Plot(figs[i] if i < len(figs) else None, label=None, elem_id=f"insights-chart-{i}")
+                           for i in range(len(HEADLINE))]
+            i_table = gr.Dataframe(ins.table(), headers=tabs.TABLE_HEADERS, interactive=False,
+                                   label="Headline indicators (youth only, program level)", elem_id="insights-table")
+            i_context = gr.Markdown(ins.context(), elem_id="insights-context")
+            gr.Markdown("### TPA Expression Index (optional example)\n\n" + INDEX_CAVEAT +
+                        " Shown next to the indicators above, never instead of them.", elem_id="insights-index-note")
+            i_index = gr.Dataframe(ins.index_table(), headers=tabs.INDEX_HEADERS, interactive=False,
+                                   label="Expression Index by phase", elem_id="insights-index")
+            i_ablation = gr.Dataframe(ins.ablation_table(), headers=tabs.ABLATION_HEADERS, interactive=False,
+                                      label="Ablation (model vs blind labels on eval videos)",
+                                      elem_id="insights-ablation")
 
         outputs = [state, clip, progress, primary, *group_boxes, uncertain, status]
         start_btn.click(blind.start, [reviewer, queue], outputs)
@@ -449,14 +488,39 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
         obs_btn.click(lambda c, who, o, n: saved(rv.add_observation(c, who, o, n)),
                       [current, reviewer, obs_pick, note_box], save_out).then(rv.timeline, filters, [timeline, rows, r_msg])
 
+        def segments(video_id, moment_id, show_staff):
+            rows_v, hidden = tl.segments_table(video_id, moment_id, show_staff)
+            return rows_v, f"{hidden} staff-led segment(s) hidden." if hidden else ""
+
+        def pick_video(video_id, show_staff):
+            table, ids = tl.moments_table(video_id)
+            return [table, ids, None, *segments(video_id, None, show_staff), None]
+
+        def pick_moment(video_id, ids, show_staff, evt: gr.SelectData):
+            moment_id = ids[evt.index[0]] if ids and 0 <= evt.index[0] < len(ids) else None
+            clip_path, _ = tl.clip(video_id, moment_id)
+            return [moment_id, *segments(video_id, moment_id, show_staff), clip_path]
+
+        t_video.change(pick_video, [t_video, t_show], [t_moments, t_ids, t_moment, t_segments, t_hidden, t_clip])
+        t_moments.select(pick_moment, [t_video, t_ids, t_show], [t_moment, t_segments, t_hidden, t_clip])
+        t_show.change(segments, [t_video, t_moment, t_show], [t_segments, t_hidden])
+
         def reload():
             blind.reload()
             rv.reload()
+            tl.reload()
             names, note = blind.queue_choices()
             v_choices, reason = rv.video_choices()
-            return gr.update(choices=names), note, gr.update(choices=v_choices), reason
+            t_choices, t_reason = tl.video_choices()
+            ins.load()
+            figs = ins.figures()
+            return (gr.update(choices=names), note, gr.update(choices=v_choices), reason, gr.update(choices=t_choices),
+                    t_reason, tl.note, ins.source_line(), ins.message(),
+                    *[figs[i] if i < len(figs) else None for i in range(len(i_plots))], ins.table(), ins.context(),
+                    ins.index_table(), ins.ablation_table())
 
-        reload_btn.click(reload, None, [queue, topup_note, video, lock_note])
+        reload_btn.click(reload, None, [queue, topup_note, video, lock_note, t_video, t_lock, t_signals, i_source,
+                                        i_empty, *i_plots, i_table, i_context, i_index, i_ablation])
         start_btn.click(lambda: blind.queue_choices()[1], None, topup_note)
         gr.Markdown(palette["credit"], elem_id="app-credit-footer")
     return demo

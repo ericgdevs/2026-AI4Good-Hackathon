@@ -561,7 +561,7 @@ def effective_settings(pipeline: dict, video: dict) -> dict:
 
 # ---- 006: app theme (config/theme.yaml) --------------------------------------------------------------------------
 THEME = CONFIG_DIR / "theme.yaml"
-THEME_COLOURS = ("background", "surface", "text", "text_secondary", "accent", "accent_deep")
+THEME_COLOURS = ("background", "surface", "text", "text_secondary", "accent", "accent_deep", "muted")
 AA = 4.5  # WCAG AA, normal text
 
 

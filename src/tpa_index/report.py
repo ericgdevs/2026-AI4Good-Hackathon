@@ -195,8 +195,7 @@ def evaluate_summary(p: dict) -> str:
 
 # ---- charts (white background, TPA palette, tag in every title or footnote) ----------------------------------------
 _THEME = load_theme()  # colours live only in config/theme.yaml
-PALETTE, TEXT, WHITE = _THEME["chart_series"], _THEME["text"], _THEME["surface"]
-GREY = "#C9C4CF"
+PALETTE, TEXT, WHITE, GREY = _THEME["chart_series"], _THEME["text"], _THEME["surface"], _THEME["muted"]
 
 
 def _plt():
@@ -205,7 +204,7 @@ def _plt():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    plt.rcParams.update({"figure.facecolor": "white", "axes.facecolor": "white", "savefig.facecolor": "white",
+    plt.rcParams.update({"figure.facecolor": WHITE, "axes.facecolor": WHITE, "savefig.facecolor": WHITE,
                          "text.color": TEXT, "axes.labelcolor": TEXT, "xtick.color": TEXT, "ytick.color": TEXT,
                          "axes.edgecolor": TEXT, "axes.titlecolor": TEXT, "font.size": 10})
     return plt
@@ -285,7 +284,7 @@ def evaluate_charts(p: dict, out: Path) -> list[str]:
         for j in range(len(classes)):
             if grid[i, j]:
                 ax.text(j, i, int(grid[i, j]), ha="center", va="center",
-                        color="white" if grid[i, j] > grid.max() / 2 else TEXT)
+                        color=WHITE if grid[i, j] > grid.max() / 2 else TEXT)
     ax.set_title(f"Primary activity confusion, {heads[0]['system']} (metric)")
     files.append(_save(fig, out, "confusion.png", f"Tag: metric · counts of labeled eval segments · n={n}"))
 

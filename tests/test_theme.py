@@ -44,6 +44,9 @@ def test_palette_meets_wcag_aa(tmp_path):
         text = (repo_root() / f).read_text(errors="ignore").upper()
         hits = [h for h in palette if h in text]
         assert not hits, (f, hits)
+    assert p["muted"].upper() == "#C9C4CF"  # neutral chart fill, kept at 005's value
+    report = (repo_root() / "src/tpa_index/report.py").read_text()
+    assert not re.findall(r"#[0-9a-fA-F]{3,8}\b|rgba?\(|[\"']white[\"']", report)  # every chart colour from the theme
 
 
 def test_light_theme_and_credit(tmp_path, monkeypatch, pipeline, labels):

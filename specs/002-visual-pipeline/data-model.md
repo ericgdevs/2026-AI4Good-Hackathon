@@ -1,6 +1,6 @@
 # Data Model: Visual Pipeline
 
-**No table schema changes.** 002 writes the existing 001 tables. See `specs/001-foundation/contracts/tables.md`.
+**One schema change:** `segments` gains two nullable `float32` columns, `idle_score` and `visual_change`. Older runs read them back as null. Otherwise 002 writes the existing 001 tables; see `specs/001-foundation/contracts/tables.md`.
 
 ## What one predict run writes (one run per video)
 
@@ -9,7 +9,7 @@
 | file | rows | notes |
 |---|---|---|
 | `videos.parquet` | 1 | same fields as the segment stage (probed) |
-| `segments.parquet` | 1 per window | `is_idle` filled; other signals null |
+| `segments.parquet` | 1 per window | `is_idle`, `idle_score` and `visual_change` filled; other signals null |
 | `predictions.parquet` | segments × (visual labels + 1) | main model: one row per visual label scored by the model. `rules`: one `uncertain_mixed` row. Optional motion model: one row per motion label. |
 | `moments.parquet` | merged | from main-model rows only, non-idle segments only, using the video's effective `window_s` |
 | `runs.parquet` | 1 | written last (completion marker); `stage = "predict"`, `model` = main model id |
@@ -31,7 +31,7 @@
 | secondary labels | other visual labels ≥ their own threshold |
 | `uncertain_mixed` | stored as a rules row: 1 if no activity clears its threshold, or top1 − top2 < `uncertain_margin` |
 | moment `needs_review` | `confidence < threshold(model, primary_label) × (1 + moments.needs_review_margin)` or any segment `uncertain_mixed = 1` |
-| `is_idle` | stored on the segment: idle-prompt score ≥ `idle.score_threshold` AND frame change < `idle.change_threshold` (needs ≥ 2 frames) |
+| `is_idle` | stored on the segment: `idle_score` ≥ `idle_threshold(model)` (calibrated per model, falling back to `idle.score_threshold`) AND `visual_change` < `idle.change_threshold` (hand-set; null when there are fewer than 2 frames, and then never idle) |
 
 ## Official runs
 
@@ -59,6 +59,7 @@ Errors name the run ID, never a path.
 | file | rows | notes |
 |---|---|---|
 | `videos.parquet` | 1 | copied from the source predict run |
+| `segments.parquet` | 1 per window | copied, with `is_idle` recomputed from the stored `idle_score` and `visual_change` |
 | `predictions.parquet` | segments | `uncertain_mixed` rules rows only, recomputed with the current thresholds |
 | `moments.parquet` | merged | current thresholds and the effective window |
 | `runs.parquet` | 1 | `stage = "moments"`, `model` = main model id |
@@ -70,4 +71,11 @@ Errors name the run ID, never a path.
 ```yaml
 label_thresholds:
   siglip2-so400m-patch14-384: {singing: 0.14, dancing: 0.11}   # key = predictions.model
+idle_thresholds:
+  siglip2-so400m-patch14-384: 0.03
 ```
+
+Calibration rules:
+- label threshold = max(percentile `(100 − calibrate.top_pct)` of dev scores, `calibrate.min_threshold`);
+- idle threshold = percentile `(100 − idle.calibrate_top_pct)` of `idle_score` over dev segments with `visual_change < idle.change_threshold`;
+- labels with fewer than `calibrate.min_segments` dev segments, and an idle set that small, keep the fallback.

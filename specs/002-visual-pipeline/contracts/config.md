@@ -42,8 +42,13 @@ idle:
     - "an empty room"
     - "people setting up equipment before a show"
     - "people waiting around with nothing happening"
-  score_threshold: 0.1           # SigLIP sigmoid scale; tune on dev split
-  change_threshold: 0.02         # mean |frame diff| on 64x64 grayscale in 0-1
+  score_threshold: 0.1           # fallback; per-model value from calibrate wins
+  change_threshold: 0.02         # mean |frame diff| on 64x64 grayscale in 0-1; hand-set, never calibrated
+  calibrate_top_pct: 20          # idle percentile, separate from the label one (idle share differs from any label's)
+calibrate:
+  top_pct: 10                    # label thresholds: (100 - top_pct) percentile of dev scores
+  min_threshold: 0.05            # absolute floor, so labels absent from dev data don't produce fake moments
+  min_segments: 20               # fewer dev segments than this: keep the fallback
 ```
 
 Removed keys: `moments.needs_review_below` and `moments.conflict_margin`, replaced by per-label thresholds, `uncertain_margin` and `moments.needs_review_margin`.
@@ -63,7 +68,10 @@ Validation:
 - `batch_windows` values ≥ 1;
 - every `motion.labels` entry is an activity label;
 - `idle.prompts` has 1–5 entries;
-- both idle thresholds are in [0, 1].
+- both idle thresholds are in [0, 1];
+- `0 < idle.calibrate_top_pct < 100` and `0 < calibrate.top_pct < 100`;
+- `0 ≤ calibrate.min_threshold ≤ 1`;
+- `calibrate.min_segments ≥ 1`.
 
 ## config/official_runs.yaml (new, committed)
 
@@ -80,7 +88,9 @@ Run IDs only, never filenames or metadata.
 
 ```yaml
 label_thresholds:
-  <model_id>: {<label>: <0-1>, ...}
+  <model name>: {<label>: <0-1>, ...}
+idle_thresholds:
+  <model name>: <0-1>
 ```
 
 `load_pipeline()` merges this file over `pipeline.yaml: label_thresholds`, and the local file wins. `TPA_THRESHOLDS_FILE` overrides its path, for tests and checkpoints only. It is never committed, because its values are derived from footage (Constitution I).

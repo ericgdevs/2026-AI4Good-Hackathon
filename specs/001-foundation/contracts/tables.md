@@ -29,6 +29,8 @@ Source of truth is `src/tpa_index/schema.py`. This document must match it. Nulla
 | has_speech | bool | yes | |
 | transcript_chars | int32 | yes | count only, no text |
 | is_idle | bool | yes | |
+| idle_score | float32 | yes | idle-prompt score 0-1 (added in 002; null before) |
+| visual_change | float32 | yes | mean frame difference 0-1; null with < 2 frames (added in 002) |
 
 ## predictions (long format)
 

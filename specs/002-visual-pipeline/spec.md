@@ -153,8 +153,8 @@ A team member syncs the repo to their HPC work folder and pulls HPC outputs back
 - **FR-008**: Moments MUST be built with the existing merge rules, using each video's effective window settings, including per-kind and per-video overrides. The current shortcut that always uses the default window MUST be removed.
 - **FR-009**: Idle segments MUST NOT start or extend moments.
 - **FR-009a**: A moment MUST be marked `needs_review` when its confidence is below its primary label's threshold × (1 + `needs_review_margin`), with the margin configurable from 0 to 1 and defaulting to 0.2, or when any of its segments is flagged `uncertain_mixed`. `needs_review` is a rule-derived status label with no prompts.
-- **FR-009b**: Thresholds MUST be settable per label (per model), falling back to the global threshold. A calibrate command MUST propose per-label thresholds from official **dev-split** predictions only. It MUST never read eval-split videos, and it writes the result to a local, gitignored thresholds file (Constitution I: data-derived values stay out of git).
-- **FR-009c**: A moments command MUST rebuild moments from existing official predictions with the current thresholds, as a new run per video, without re-running any model.
+- **FR-009b**: Thresholds MUST be settable per label (per model), falling back to the global threshold. A calibrate command MUST propose per-label thresholds from official **dev-split** predictions only, as the higher of the configured percentile and an absolute floor (`calibrate.min_threshold`). Without the floor, a label that never appears in the dev videos would still get a share of segments above threshold and produce fake moments. The command MUST print which labels hit the floor. It MUST also propose the idle score threshold per model, from dev-split low-change segments, at its own percentile (`idle.calibrate_top_pct`), because the share of idle footage differs from any label's share. The change threshold stays hand-set. Calibrate MUST never read eval-split videos, and it writes the results to a local, gitignored thresholds file (Constitution I: data-derived values stay out of git).
+- **FR-009c**: A moments command MUST rebuild idle flags and moments from existing official predict runs with the current thresholds, as a new run per video, without re-running any model. To make this possible, predict MUST store each segment's idle score and visual change.
 - **FR-010**: The predict run MUST write the segments (with the idle signal filled in), predictions and moments for each video as a new run. Existing runs MUST NOT be modified.
 
 **Idle**
@@ -189,7 +189,7 @@ A team member syncs the repo to their HPC work folder and pulls HPC outputs back
 ### Key Entities
 
 - **Prediction** (from 001): one score per segment × label × model × run. 002 fills it for the visual groups, under the main model and, optionally, the motion model.
-- **Segment** (from 001): 002 writes a new version per predict run, with `is_idle` filled in. The other signals stay empty.
+- **Segment** (from 001): 002 writes a new version per predict run, with `is_idle` and the two new nullable columns `idle_score` and `visual_change` filled in. The other signals stay empty. A moments rebuild writes another version with `is_idle` recomputed.
 - **Moment** (from 001): built per video from the main model's scores, idle-aware, using the effective window settings.
 - **Run** (from 001): one per video per predict invocation, with model, hardware, runtime and peak memory.
 - **Official runs**: a per-stage list of the run IDs that count for results.

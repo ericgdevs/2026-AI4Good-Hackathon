@@ -21,7 +21,7 @@ reviews ── target_id → segments.segment_id | moments.moment_id   (by targe
 | Entity | Primary key | Lifecycle |
 |---|---|---|
 | Video | `video_id` (opaque, e.g. `v01`; mock: `mock01`) | Written once per segmenter or mock run from video metadata plus a probe. |
-| Segment | `segment_id` = `{video_id}_{start_ms}` | Created by the segmenter; signal columns stay null until later features fill them. Those features write a new run, never patch an old one. |
+| Segment | `segment_id` = `{video_id}_{start_ms}` | Created by the segmenter; signal columns (incl. `idle_score`, `visual_change`, added in 002) stay null until later features fill them. Those features write a new run, never patch an old one. |
 | Prediction | (`segment_id`, `label`, `model`, `run_id`) | One row per segment × label × model run. |
 | Moment | `moment_id` = `{video_id}_{start_ms}_{primary_label}` | Derived by the merge rules in research §12. |
 | Run | `run_id` = `{stage}-{YYYYmmddTHHMMSS}-{4hex}` | One row per successful stage execution, written when the stage ends. Its `runs.parquet` marks the run folder complete; failed runs have none and are ignored by readers. `git_commit` (nullable, added in 002) records the code version. |

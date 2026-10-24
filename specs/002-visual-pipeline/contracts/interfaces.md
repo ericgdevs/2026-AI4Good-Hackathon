@@ -41,13 +41,19 @@ threshold(pipeline, model, label) -> float     # per-label (per model) with glob
 # load_pipeline() merges config/thresholds.local.yaml (gitignored) over pipeline.yaml
 
 # calibrate.py (new)
-propose_thresholds(predictions, videos, model, top_pct=10, min_segments=20) -> dict[str, float | None]   # dev only
-write_local_thresholds(model, thresholds, path=None) -> None
+propose_thresholds(predictions, videos, model, top_pct, min_segments, min_threshold) -> dict[str, tuple[float | None, bool]]
+#   dev only; value = max(percentile, min_threshold); bool = floor used
+propose_idle_threshold(segments, videos, top_pct, change_threshold, min_segments) -> float | None   # dev, low-change only
+write_local_thresholds(model, thresholds, idle_score_threshold=None, path=None) -> None
+
+# config.py (new, with T031)
+idle_threshold(pipeline, model) -> float   # idle_thresholds[model], else idle.score_threshold
 
 # schema.py (new)
 load_official(path=None) -> dict[str, list[str]]
 read_official(table, stage=None, root=None) -> pa.Table   # result-facing code MUST use this, not read_table
-#   stage None: moments -> "moments" if listed else "predict"; others -> "predict" (rules rows from official moments runs replace predict's)
+#   stage None: moments and segments -> the official "moments" run for a video if listed, else "predict"; others -> "predict"
+#   (rules rows from official moments runs replace predict's)
 list_runs(root=None) -> list[dict]   # run_id, stage, video_ids, hardware, n_segments, n_predictions, runtime_s, peak_mem_gb
 ```
 
@@ -57,8 +63,8 @@ list_runs(root=None) -> list[dict]   # run_id, stage, video_ids, hardware, n_seg
 |---|---|---|
 | `tpa-index predict [--videos PATH] [--video-id ID …] [--kind KIND …] [--model ID]` | one predict run per video: segments with `is_idle`, predictions (model + rules [+ motion]), moments, runs | 0; 1 if any video failed (IDs listed); 2 guard; 3 config/model not found |
 | `tpa-index runs` | lists complete runs, one line each; no filenames or paths | 0 / 2 |
-| `tpa-index calibrate --stage predict --split dev [--top-pct 10] [--dry-run]` | official dev-split predictions only; prints label, proposed threshold, count clearing; writes `config/thresholds.local.yaml` | 0; 3 if `--split eval` or no official dev runs |
-| `tpa-index moments [--video-id ID …]` | rebuilds moments and `uncertain_mixed` rows from official predict runs with the current thresholds; one `moments` run per video; no model loaded | 0; 1 if any video failed |
+| `tpa-index calibrate --stage predict --split dev [--top-pct N] [--idle-top-pct N] [--dry-run]` | official dev-split data only. Prints label, threshold, n_dev, clearing and floored; the labels at the floor; and the idle threshold. Writes `config/thresholds.local.yaml` (label and idle thresholds per model). Defaults come from `calibrate.top_pct` and `idle.calibrate_top_pct`. | 0; 3 if `--split eval` or no official dev runs |
+| `tpa-index moments [--video-id ID …]` | rebuilds `is_idle` (from the stored `idle_score` and `visual_change`), `uncertain_mixed` rows and moments from official predict runs with the current thresholds; one `moments` run per video (videos, segments, rules predictions, moments); no model loaded | 0; 1 if any video failed |
 
 `--model` defaults to `models.main.hpc` on CUDA and `models.main.mac` otherwise. The model is loaded once, before the first video. A missing model exits 3 before any video is processed.
 

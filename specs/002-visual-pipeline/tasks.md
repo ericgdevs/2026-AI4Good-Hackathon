@@ -263,44 +263,72 @@
 
 ## Phase 8: User Story 2 (continued) — Calibrate thresholds and rebuild moments
 
-**Goal**: Per-label thresholds come from official **dev** predictions only. Moments are then rebuilt without re-running the model.
+**Goal**: Per-label thresholds (with an absolute floor) and the idle score threshold come from official **dev** data only. Idle flags and moments are then rebuilt without re-running the model.
 
-**Independent test**: Eval rows never influence a threshold, `--split eval` is rejected, and a rebuild with new thresholds changes moments while leaving predict runs untouched.
+**Independent test**: Eval rows never influence a threshold, `--split eval` is rejected, labels absent from the dev videos stop at the floor, the idle threshold comes from its own percentile, and a rebuild with new thresholds changes idle flags and moments while leaving predict runs untouched.
 
-- [ ] T030 [US2] Create `src/tpa_index/calibrate.py` with:
-  - `propose_thresholds(predictions, videos, model, top_pct=10, min_segments=20)`:
+- [ ] T030 [US2] Store the idle inputs, so idle can be calibrated and rebuilt without the model. Add two nullable `float32` columns to `segments` in `src/tpa_index/schema.py`, after `is_idle`: `idle_score` (the ensembled idle-prompt sigmoid score) and `visual_change` (the `visual_change(frames)` value, null when there are fewer than 2 frames).
+  - In `predict_video` (`src/tpa_index/score.py`), fill both on every segment row next to `is_idle`.
+  - The 001 segmenter and the mock generator write them as `None`. Older run folders read back as null through `_conform`.
+  - Update `specs/001-foundation/contracts/tables.md` (segments table) and `specs/001-foundation/data-model.md`.
+
+  Add tests:
+  - `tests/test_predict.py`: `idle_score` is in [0, 1] and `visual_change` ≥ 0 on every segment. `t04` (static) has `visual_change == 0`. With `frames_per_window: 1`, `visual_change` is null.
+  - `tests/test_schema.py`: an older segments file without the two columns reads back with nulls.
+- [ ] T031 [US2] Create `src/tpa_index/calibrate.py` with:
+  - Config first: add `calibrate: {top_pct: 10, min_threshold: 0.05, min_segments: 20}` and `idle.calibrate_top_pct: 20` to `config/pipeline.yaml`, following `contracts/config.md`. Validate them in `_check_pipeline`: both percentiles in (0, 100), `min_threshold` in [0, 1], `min_segments` ≥ 1. Add one failing case each to `tests/test_config.py`.
+  - `propose_thresholds(predictions, videos, model, top_pct, min_segments, min_threshold)`:
     - keep only rows whose segment belongs to a video with `split == "dev"` (join via `segment_id` prefix → `video_id`) and `model == model`;
-    - per model label, return `np.percentile(scores, 100 - top_pct)`, or `None` if there are fewer than `min_segments` scores.
-  - `write_local_thresholds(model, thresholds, path=None)`:
+    - per model label, return `(value, floored)`, where `value = max(np.percentile(scores, 100 - top_pct), min_threshold)` and `floored` is True when the floor was used. Return `(None, False)` if there are fewer than `min_segments` scores.
+    - The floor stops a label that never appears in the dev videos from getting `top_pct`% of segments above threshold, which would produce fake moments.
+  - `propose_idle_threshold(segments, videos, top_pct, change_threshold, min_segments)`:
+    - use dev-split segments only, with `visual_change` not null and `< change_threshold`;
+    - return the `(100 - top_pct)` percentile of their `idle_score`, or `None` if there are fewer than `min_segments`.
+    - `change_threshold` stays hand-set and is never proposed.
+  - `write_local_thresholds(model, thresholds, idle_score_threshold=None, path=None)`:
     - load the existing `config.THRESHOLDS_LOCAL` if present;
-    - replace only `label_thresholds[model]` (skipping `None` values) and keep other models;
+    - replace only `label_thresholds[model]` (skipping `None` values) and, when given, `idle_thresholds[model]`;
+    - keep other models;
     - write with `yaml.safe_dump(sort_keys=True)` and a header comment `# written by tpa-index calibrate; gitignored, data-derived`.
+  - In `src/tpa_index/config.py`:
+    - `load_pipeline()` also merges `idle_thresholds` from the local file;
+    - add `idle_threshold(pipeline, model)`, which returns `idle_thresholds[model]` and falls back to `idle.score_threshold`;
+    - `predict_video` and the moments rebuild use it.
 
   Add `tests/test_calibrate.py` covering:
   - the percentile on known scores;
   - changing eval-split scores leaves the thresholds unchanged;
+  - a label scoring near 0 on every dev segment returns `(min_threshold, True)`;
   - too few segments gives `None`;
-  - writing keeps another model's block.
-- [ ] T031 [US2] In `cli.py`, add `tpa-index calibrate --stage predict --split dev [--top-pct 10] [--dry-run]`:
+  - the idle proposal ignores high-change segments and eval segments;
+  - writing keeps another model's label and idle blocks;
+  - `idle_threshold()` falls back and overrides correctly.
+- [ ] T032 [US2] In `cli.py`, add `tpa-index calibrate --stage predict --split dev [--top-pct N] [--idle-top-pct N] [--dry-run]`:
+  - The defaults come from `pipeline.yaml`: `calibrate.top_pct` for labels and `idle.calibrate_top_pct` for idle. They are separate settings, because the share of idle footage differs from any label's share.
   - `--split` other than `dev` raises `ConfigError("calibration uses the dev split only")`, exiting 3.
-  - Read `read_official("predictions", stage)` and `read_official("videos", stage)`. If either is empty, raise `ConfigError("no official dev runs for stage …")`.
+  - Read `read_official("predictions", stage)`, `read_official("segments", stage)` and `read_official("videos", stage)`. If any is empty, raise `ConfigError("no official dev runs for stage …")`.
   - The model is the most common non-`rules` model in the official predictions.
-  - Print a `label | threshold | n_dev | clearing` table with aggregate numbers only. Write via `write_local_thresholds` unless `--dry-run`.
+  - Print a `label | threshold | n_dev | clearing | floored` table, a line `labels at the floor (min_threshold): a, b, …` (or `none`), and a line `idle score_threshold: <value> (n_dev low-change segments)`. All of these are aggregate numbers only.
+  - Write via `write_local_thresholds` unless `--dry-run`.
 
   Add tests to `tests/test_cli.py`:
   - `--split eval` exits 3;
   - `--dry-run` writes nothing;
-  - a real run writes the patched `THRESHOLDS_LOCAL`.
-- [ ] T032 [US2] In `cli.py`, add `tpa-index moments [--video-id ID …]`. For each official predict run (filtered by video), inside `track_run("moments", model=<main model of that run>)`:
+  - a real run writes the patched `THRESHOLDS_LOCAL`, with both `label_thresholds` and `idle_thresholds`;
+  - a label that never scores above 0.01 on mock dev data appears in the "labels at the floor" line;
+  - `--idle-top-pct` changes only the idle value.
+- [ ] T033 [US2] In `cli.py`, add `tpa-index moments [--video-id ID …]`. For each official predict run (filtered by video), inside `track_run("moments", model=<main model of that run>)`:
   - read that run's `videos`, `segments` and `predictions` via `read_table(..., run_ids=[id])`;
+  - recompute `is_idle` from the stored `idle_score` and `visual_change`, using `idle_threshold(pipeline, model)` and the hand-set `idle.change_threshold`. Segments whose `visual_change` is null are never idle;
   - recompute the `uncertain_mixed` rows with the current `load_pipeline()` thresholds;
   - run `merge_moments(..., window_s=effective, model=main)`;
-  - write `videos` (copied), `predictions` (the rules rows only), and `moments`.
+  - write `videos` (copied), `segments` (with the recomputed `is_idle`), `predictions` (the rules rows only), and `moments`.
 
-  Failures are listed and exit 1. Add tests to `tests/test_cli.py`:
+  In `read_official`, `segments` now prefers an official `moments` run for that video, the same way `moments` does. Failures are listed and exit 1. Add tests to `tests/test_cli.py`:
   - after raising one label's threshold in the patched local file, the rebuilt moments differ from predict's;
+  - after setting a model's idle threshold to 0 in the patched local file, the low-change segments become idle and their moments disappear;
   - the predict run's files are byte-identical before and after;
-  - with the moments run listed under `moments:`, `read_official("moments")` returns the rebuilt rows.
+  - with the moments run listed under `moments:`, `read_official("moments")` and `read_official("segments")` return the rebuilt rows.
 
 ---
 
@@ -310,7 +338,7 @@
 
 **Independent test**: With a fake `rsync` on `PATH`, the scripts pass the right excludes, stop when keys are missing, and merge thresholds without losing the Mac's models.
 
-- [ ] T033 [US6] Create `scripts/sync.exclude` (one pattern per line):
+- [ ] T034 [US6] Create `scripts/sync.exclude` (one pattern per line):
   - `.venv/`, `.env`, `.env.*`, `!.env.example`, `models/`, `__pycache__/`, `outputs/`;
   - `*.mp4`, `*.mov`, `*.m4v`, `*.mkv`, `*.avi`, `*.wav`, `*.mp3`, `*.m4a`, `*.parquet`, `*.duckdb`;
   - `config/*.local.yaml` (covers `videos.local.yaml` and `thresholds.local.yaml`) and `slurm-*.out`.
@@ -321,13 +349,13 @@
   - `--dry-run` adds `-n -v`;
   - `rsync -az --exclude-from=scripts/sync.exclude "$REPO/" "$HPC_USER@$HPC_HOST:~/tpa-work/repo/"`, with no `--delete`;
   - run from any directory (`REPO=$(cd "$(dirname "$0")/.." && pwd)`).
-- [ ] T034 [US6] Create `scripts/sync_outputs_from_hpc.sh`:
+- [ ] T035 [US6] Create `scripts/sync_outputs_from_hpc.sh`:
   1. Parse `HPC_USER`, `HPC_HOST`, and `HPC_OUTPUT_DIR` the same way.
   2. Resolve `LOCAL=$(uv run --project "$REPO" python -c "from tpa_index.paths import output_dir; print(output_dir())")`. Guard failure exits 2.
   3. Run `rsync -az --ignore-existing --exclude-from="$REPO/scripts/sync.exclude" --include='*.parquet' --exclude='reviews.duckdb' "$HPC_USER@$HPC_HOST:$HPC_OUTPUT_DIR/runs/" "$LOCAL/runs/"`. Parquet must be included here, because these are output folders.
-  4. Fetch `~/tpa-work/repo/config/thresholds.local.yaml` with rsync into a `mktemp` file. If it exists, merge it per model into `$REPO/config/thresholds.local.yaml` through `uv run python -c` (HPC models replace their own blocks, and other models are kept).
+  4. Fetch `~/tpa-work/repo/config/thresholds.local.yaml` with rsync into a `mktemp` file. If it exists, merge it per model into `$REPO/config/thresholds.local.yaml` through `uv run python -c`. This covers both `label_thresholds` and `idle_thresholds`: HPC models replace their own blocks, and other models are kept.
   5. `--dry-run` passes `-n -v` to the runs rsync and prints the models that would be merged, without writing.
-- [ ] T035 [US6] Add to `tests/test_scripts.py`, putting a fake `rsync` (a bash script in `tmp_path` that appends its args to a log and, for the thresholds fetch, copies a fixture YAML to its last argument) first on `PATH` and setting `TPA_ENV_FILE` to a tmp env file. Check that:
+- [ ] T036 [US6] Add to `tests/test_scripts.py`, putting a fake `rsync` (a bash script in `tmp_path` that appends its args to a log and, for the thresholds fetch, copies a fixture YAML to its last argument) first on `PATH` and setting `TPA_ENV_FILE` to a tmp env file. Check that:
   - the code sync passes `--exclude-from`, there is no `--delete`, and `sync.exclude` lists `.env`, `*.mp4`, `config/*.local.yaml`, and `models/` but not `official_runs.yaml`;
   - a missing `HPC_HOST` exits 2 and the log is empty;
   - the output sync passes `--ignore-existing` and `--exclude=reviews.duckdb`, and a guard failure (`OUTPUT_DIR` inside the repo) exits 2 before any rsync call;
@@ -340,13 +368,13 @@
 
 ## Phase 10: Polish & Final Checkpoint
 
-- [ ] T036 Update `README.md` with `predict`, `runs`, `calibrate`, `moments`, the sync scripts, and `predict.sbatch`. Note that HPC keeps its own `.env` and `config/videos.local.yaml`, which are never synced. Cross-check against the contracts:
+- [ ] T037 Update `README.md` with `predict`, `runs`, `calibrate`, `moments`, the sync scripts, and `predict.sbatch`. Note that HPC keeps its own `.env` and `config/videos.local.yaml`, which are never synced. Cross-check against the contracts:
   - the signatures in `contracts/interfaces.md`;
   - the config keys in `contracts/config.md`;
   - the run-folder contents in `data-model.md`.
 
   Fix any drift. Grep `src/` for leftover `shortcut:` comments about windows (there should be none) and for `needs_review_below` or `conflict_margin` (there should be none).
-- [ ] T037 **Final checkpoint (Mac)**:
+- [ ] T038 **Final checkpoint (Mac)**:
   1. Run `uv run pytest`, then `uv run pytest -m slow`. Record the counts.
   2. Quickstart in scratch, with `DATA_DIR` and `OUTPUT_DIR` exported to scratch paths and `.env` untouched:
      - `tpa-index check`;
@@ -376,9 +404,9 @@
 - **US3 (T019–T021)** needs US1.
 - **US4 (T022–T026)** needs US1–US3. Checkpoint 1 (T026) needs a working `predict`.
 - **US5 (T027–T029)** needs only Foundational, but comes after US4 by priority.
-- **US2, part 2 (T030–T032)** needs US5 (`read_official`).
-- **US6 (T033–T035)** needs only `paths.output_dir` (001) and the thresholds file format (T006).
-- **Polish (T036–T037)** needs everything else.
+- **US2, part 2 (T030–T033)** needs US5 (`read_official`). T030 changes the segments table, and T031–T033 use its new columns.
+- **US6 (T034–T036)** needs only `paths.output_dir` (001) and the thresholds file format (T006).
+- **Polish (T037–T038)** needs everything else.
 
 ## Parallel Opportunities
 
@@ -388,6 +416,6 @@ None are marked. One developer works through the tasks in ID order.
 
 1. **MVP**: T001–T018 (config updates, scoring, and moments from `predict_video`). Moments can be demonstrated on synthetic clips with the fake embedder.
 2. **Real-model proof**: T019–T026, ending at Checkpoint 1 with siglip2-base on the Mac.
-3. **Trustworthy results**: T027–T032 (official runs, calibration, moments rebuild).
-4. **HPC workflow**: T033–T035 (sync scripts).
-5. **Wrap-up**: T036–T037, including the printed promo test-run commands.
+3. **Trustworthy results**: T027–T033 (official runs, idle inputs, calibration, moments rebuild).
+4. **HPC workflow**: T034–T036 (sync scripts).
+5. **Wrap-up**: T037–T038, including the printed promo test-run commands.

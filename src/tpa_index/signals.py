@@ -221,26 +221,35 @@ def _audio_stage(model, wav: Path, video_row: dict, official: list[dict], run_id
     return len(official)
 
 
-def _fail(results: dict, key: tuple[str, str], e: BaseException) -> None:
+def _fail(put, key: tuple[str, str], e: BaseException) -> None:
     name = type(e).__name__ if not isinstance(e, TranscriptError) else f"TranscriptError({e})"
-    results[key] = f"failed:{name}"
     log.error("%s failed for %s: %s", key[1], key[0], name)
+    put(key, f"failed:{name}")
 
 
 def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels: dict, force: bool = False,
-                root=None, device: str = "cpu") -> dict[tuple[str, str], str]:
+                root=None, device: str = "cpu", report=None) -> dict[tuple[str, str], str]:
     """Run the selected stages per video; one run per (video, stage). Returns {(video_id, stage): status} with
-    status "done:<run_id>", "skipped:<run_id>" or "failed:<ErrorType>". One pair failing never stops the others."""
+    status "done:<run_id>", "skipped:<run_id>" or "failed:<ErrorType>". One pair failing never stops the others.
+    `report(key, status, n_segments, secs)` is called as soon as each pair ends."""
+    import time
+
     from tpa_index.config import effective_settings, stage_config_hash
     from tpa_index.runs import track_run
     from tpa_index.schema import find_complete_run
+
+    results: dict[tuple[str, str], str] = {}
+
+    def put(key, status, n_segments=None, secs=None):
+        results[key] = status
+        if report:
+            report(key, status, n_segments, secs)
 
     stages = [s for s in (*AUDIO_STAGES, *FRAME_STAGES) if s in set(stages)]
     hardware = "hpc" if device == "cuda" else "mac"
     scratch = scratch_dir()
     clean_stale_scratch(scratch)
     rate, batch = pipeline["audio_sample_rate"], pipeline["models"]["batch_windows"][device]
-    results: dict[tuple[str, str], str] = {}
     for video in videos:
         vid = video["video_id"]
         try:
@@ -248,14 +257,14 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
             check_windows(video_row, effective_settings(pipeline, video), official)
         except Exception as e:  # noqa: BLE001
             for stage in stages:
-                _fail(results, (vid, stage), e)
+                _fail(put, (vid, stage), e)
             continue
         todo = []
         for stage in stages:
             cfg = stage_config_hash(stage, labels, pipeline, video, hardware)
             done = None if force else find_complete_run(stage, vid, models[stage].name, cfg, root)
             if done:
-                results[(vid, stage)] = f"skipped:{done}"
+                put((vid, stage), f"skipped:{done}")
             else:
                 todo.append((stage, cfg))
 
@@ -263,6 +272,7 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
         wav = scratch / f"tpa-audio-{os.getpid()}-{vid}.wav"
         try:
             for stage, cfg in audio_todo:
+                t0 = time.perf_counter()
                 try:
                     with track_run(stage, model=models[stage].name, cfg_hash=cfg, root=root) as ctx:
                         if not wav.exists():  # extracted once, inside the first audio stage's run
@@ -273,19 +283,31 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
                         else:
                             ctx.n_segments = _audio_stage(models[stage], wav, video_row, official, ctx.run_id,
                                                           batch, rate, root)
-                    results[(vid, stage)] = f"done:{ctx.run_id}"
+                    put((vid, stage), f"done:{ctx.run_id}", ctx.n_segments, time.perf_counter() - t0)
                 except Exception as e:  # noqa: BLE001
-                    _fail(results, (vid, stage), e)
+                    _fail(put, (vid, stage), e)
         finally:
             wav.unlink(missing_ok=True)
 
         frame_todo = [(s, c) for s, c in todo if s in FRAME_STAGES]
         if frame_todo:
-            results.update(_frame_stages(video, video_row, official, frame_todo, models, pipeline, root, device))
+            _frame_stages(video, video_row, official, frame_todo, models, pipeline, root, device, put)
     return results
 
 
-def _frame_stages(video, video_row, official, todo, models, pipeline, root, device) -> dict:
+def _score_segment_faces(scorer, frames) -> list:
+    """Faces of every frame scored in one batch, split back per frame: one (n_faces, n_labels) array per frame."""
+    import numpy as np
+
+    crops = [scorer.faces(frame) for frame in frames]
+    flat = [c for cs in crops for c in cs]
+    scores = scorer.score(flat) if flat else np.zeros((0, len(scorer.labels)), np.float32)
+    del flat
+    return np.split(np.asarray(scores, np.float32).reshape(-1, len(scorer.labels)),
+                    np.cumsum([len(cs) for cs in crops])[:-1])
+
+
+def _frame_stages(video, video_row, official, todo, models, pipeline, root, device, put) -> None:
     """People and expression share one streaming pass over 002's frame sampling, one official segment at a time.
     Each stage fails on its own; frames and face crops stay in memory and are dropped as soon as they are scored.
     The pass is timed once, and both runs record that runtime and peak memory (overlapping: do not sum)."""
@@ -299,7 +321,7 @@ def _frame_stages(video, video_row, official, todo, models, pipeline, root, devi
     from tpa_index.runs import _peak_mem_gb, track_run
     from tpa_index.segment import _sample_frames
 
-    vid, results = video["video_id"], {}
+    vid = video["video_id"]
     active = [stage for stage, _ in todo]
     out: dict[str, dict] = {stage: {} for stage in active}
     n_frames = effective_settings(pipeline, video)["frames_per_window"]
@@ -320,21 +342,17 @@ def _frame_stages(video, video_row, official, todo, models, pipeline, root, devi
                         if stage == "people":
                             out[stage][seg["segment_id"]] = median_count(models["people"].count(frames))
                         else:
-                            scorer, per_frame = models["expression"], []
-                            for frame in frames:
-                                crops = scorer.faces(frame)
-                                per_frame.append(scorer.score(crops) if crops
-                                                 else np.zeros((0, len(scorer.labels)), np.float32))
-                                del crops
-                            out[stage][seg["segment_id"]] = aggregate_expression(per_frame, scorer.labels)
+                            scorer = models["expression"]
+                            out[stage][seg["segment_id"]] = aggregate_expression(
+                                _score_segment_faces(scorer, frames), scorer.labels)
                     except Exception as e:  # noqa: BLE001
-                        _fail(results, (vid, stage), e)
+                        _fail(put, (vid, stage), e)
                         active.remove(stage)
                 del frames
     except Exception as e:  # noqa: BLE001 (the video could not be decoded: every remaining stage fails)
         for stage in active:
-            _fail(results, (vid, stage), e)
-        return results
+            _fail(put, (vid, stage), e)
+        return
     runtime, peak = max(time.perf_counter() - t0, 1e-6), _peak_mem_gb(device)
 
     for stage, cfg in todo:
@@ -356,7 +374,6 @@ def _frame_stages(video, video_row, official, todo, models, pipeline, root, devi
                                    "run_id": ctx.run_id} for label, v in (scores or {}).items()]
                 _write_run_tables(ctx.run_id, video_row, rows, preds, root)
                 ctx.n_segments, ctx.runtime_s, ctx.peak_mem_gb = len(rows), runtime, peak
-            results[(vid, stage)] = f"done:{ctx.run_id}"
+            put((vid, stage), f"done:{ctx.run_id}", len(rows), runtime)
         except Exception as e:  # noqa: BLE001
-            _fail(results, (vid, stage), e)
-    return results
+            _fail(put, (vid, stage), e)

@@ -162,8 +162,9 @@ def _make_signal_models(stages: list[str], pipeline: dict, dev: str) -> dict:
                                               pipeline["signals"]["people"]["person_conf"])
         elif stage == "expression":
             e = cfg["expression"]
-            models[stage] = FaceExpression(e["face_detector"], e["model"], pipeline["signals"]["expression"]["mapping"],
-                                           pipeline["signals"]["expression"]["face_score"], pipeline["min_face_px"])
+            sx = pipeline["signals"]["expression"]
+            models[stage] = FaceExpression(e["face_detector"], e["model"], sx["mapping"], sx["face_score"],
+                                           pipeline["min_face_px"], sx["detect_max_side"])
     return models
 
 
@@ -185,11 +186,14 @@ def _signals(args) -> int:
     os.environ.setdefault("HF_HUB_OFFLINE", "1")  # weights come from the local cache only
     os.environ["YOLO_OFFLINE"] = "1"
     models = _make_signal_models(stages, pipeline, dev)  # once, before any video; failures exit 3
-    results = run_signals(videos, stages, models, pipeline, labels, force=args.force, device=dev)
-    for (vid, stage), status in sorted(results.items()):
+
+    def report(key, status, n_segments=None, secs=None):  # one line per pair as soon as it ends (Slurm logs live)
         kind, _, detail = status.partition(":")
-        shown = {"done": f"done {detail}", "skipped": f"skipped (done: {detail})"}.get(kind, f"failed {detail}")
-        print(f"{stage} {vid}: {shown}")
+        shown = {"done": f"done {detail} {n_segments} segs {secs:.0f}s" if kind == "done" else "",
+                 "skipped": f"skipped (done: {detail})"}.get(kind, f"failed {detail}")
+        print(f"{key[1]} {key[0]}: {shown}", flush=True)
+
+    results = run_signals(videos, stages, models, pipeline, labels, force=args.force, device=dev, report=report)
     failed = [f"{stage} {vid}" for (vid, stage), status in sorted(results.items()) if status.startswith("failed:")]
     if failed:
         print(f"failed: {', '.join(failed)}", file=sys.stderr)

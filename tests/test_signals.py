@@ -486,3 +486,157 @@ def test_job_b_shared_runtime(job_b):
     rows = {r["run_id"]: r for r in schema.read_table("runs").to_pylist()}
     t01 = [rows[results[("t01", s)].split(":")[1]] for s in ("people", "expression")]
     assert t01[0]["runtime_s"] == t01[1]["runtime_s"] and t01[0]["peak_mem_gb"] == t01[1]["peak_mem_gb"]
+
+
+# ---- job B speed-ups: downscaled detection, batching, threads, live report ----------------------------------------
+class _FakeYuNet:
+    """Stands in for cv2.FaceDetectorYN: returns fixed rows in the coordinates of the image it is given."""
+
+    def __init__(self, rows_at_input):
+        self.rows, self.sizes = rows_at_input, []
+
+    def setInputSize(self, size):
+        self.sizes.append(size)
+
+    def detect(self, img):
+        import numpy as np
+
+        assert (img.shape[1], img.shape[0]) == self.sizes[-1]
+        return 1, np.array(self.rows, np.float32) if self.rows else None
+
+
+def _face_expression(detector, max_side=1280, min_face_px=48):
+    import cv2
+
+    from tpa_index.signal_models import FaceExpression
+
+    fe = FaceExpression.__new__(FaceExpression)  # no weights: only faces() is exercised
+    fe.detector, fe.cv2, fe.face_score, fe.min_face_px, fe.detect_max_side = detector, cv2, 0.8, min_face_px, max_side
+    return fe
+
+
+def _row(x, y, w, h, score=0.95):
+    return [x, y, w, h, *range(10), score]
+
+
+def test_faces_detect_on_downscaled_copy_and_map_back():
+    import numpy as np
+
+    frame = np.zeros((2560, 2560, 3), np.uint8)  # 1440p letterboxed: scale 0.5 to 1280
+    # rows in the 1280 px detector image: a 40 px face (80 px in source), a 20 px face (40 px in source: too small)
+    det = _FakeYuNet([_row(100, 100, 40, 40), _row(600, 600, 20, 20)])
+    crops = _face_expression(det).faces(frame)
+    assert det.sizes == [(1280, 1280)]
+    assert [c.shape[:2] for c in crops] == [(80, 80)]  # cut from the original frame, in source pixels
+
+
+def test_faces_min_size_rule_unchanged_in_source_pixels():
+    import numpy as np
+
+    frame = np.zeros((1920, 1920, 3), np.uint8)
+    scale = 1280 / 1920
+    # 48 px and 47 px faces in source pixels, as the detector sees them on the downscaled copy
+    det = _FakeYuNet([_row(10 * scale, 10 * scale, 48 * scale, 48 * scale),
+                      _row(500 * scale, 500 * scale, 47 * scale, 47 * scale)])
+    crops = _face_expression(det).faces(frame)
+    assert len(crops) == 1 and min(crops[0].shape[:2]) >= 47  # 48 kept (int rounding of the box), 47 dropped
+    small = np.zeros((720, 720, 3), np.uint8)  # already below the limit: detected at full size
+    det = _FakeYuNet([_row(10, 10, 48, 48)])
+    assert len(_face_expression(det).faces(small)) == 1 and det.sizes == [(720, 720)]
+
+
+def test_to_source_pixels_scales_only_the_box():
+    import numpy as np
+
+    from tpa_index.signal_models import to_source_pixels
+
+    rows = np.array([_row(10, 20, 30, 40, 0.9)], np.float32)
+    out = to_source_pixels(rows, 0.5)
+    assert out[0, :4].tolist() == [20, 40, 60, 80] and out[0, 14] == pytest.approx(0.9)
+    assert rows[0, 0] == 10  # input not modified
+    assert to_source_pixels(None, 0.5) is None
+
+
+def test_expression_scored_once_per_segment_same_result():
+    import numpy as np
+
+    from tests.fakes import FakeExpressionScorer
+
+    class Counting(FakeExpressionScorer):
+        def score(self, crops):
+            self.score_calls = getattr(self, "score_calls", 0) + 1
+            return np.array([[i, 0, 0, 0] for i in range(len(crops))], np.float32)
+
+    frames = np.stack([np.full((16, 16, 3), v, np.uint8) for v in (0, 50, 100, 150)])
+    frames[1:, 0, 0] = 255  # frames 1-3 non-uniform: faces; frame 0 uniform: none
+    scorer = Counting(EXPR_LABELS, faces_per_frame=2)
+    per_frame = signals._score_segment_faces(scorer, frames)
+    assert scorer.score_calls == 1
+    assert [len(a) for a in per_frame] == [0, 2, 2, 2]
+    assert [a[:, 0].tolist() for a in per_frame[1:]] == [[0, 1], [2, 3], [4, 5]]  # rows back on their own frame
+    assert signals.aggregate_expression(per_frame, EXPR_LABELS)[0] == 2
+
+
+def test_cpu_threads(monkeypatch):
+    from tpa_index.signal_models import cpu_threads
+
+    monkeypatch.delenv("TPA_THREADS", raising=False)
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    assert cpu_threads() == min(8, os.cpu_count())
+    monkeypatch.setenv("TPA_THREADS", "3")
+    assert cpu_threads() == 3
+
+
+def test_emotiefflib_session_gets_thread_options(tmp_path, monkeypatch, pipeline):
+    import emotiefflib.facial_analysis as fa
+    import huggingface_hub
+    import onnxruntime
+
+    from tpa_index import config
+    from tpa_index.signal_models import FaceExpression
+
+    seen = {}
+
+    class Recognizer:  # builds its session the way the library does: through its module-level `ort`
+        def __init__(self, name):
+            fa.ort.set_default_logger_severity(3)
+            self.ort_session = fa.ort.InferenceSession(b"model", providers=["CPUExecutionProvider"])
+            self.idx_to_emotion_class = dict(enumerate(
+                ["Anger", "Contempt", "Disgust", "Fear", "Happiness", "Neutral", "Sadness", "Surprise"]))
+
+    def fake_session(model, sess_options=None, providers=None):
+        seen.update(threads=sess_options.intra_op_num_threads, providers=providers)
+        return "session"
+
+    monkeypatch.setenv("TPA_THREADS", "5")
+    monkeypatch.setattr(config, "pinned_weight", lambda entry: tmp_path / entry["file"])
+    monkeypatch.setattr(config, "check_sha256", lambda path, entry: path)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda *a, **k: str(tmp_path / "yunet.onnx"))
+    monkeypatch.setattr(fa, "EmotiEffLibRecognizerOnnx", Recognizer)
+    monkeypatch.setattr(onnxruntime, "InferenceSession", fake_session)
+    e = pipeline["models"]["expression"]
+    with pytest.raises(Exception):  # stops at the YuNet file (fake path), after the recognizer is built
+        FaceExpression(e["face_detector"], e["model"], pipeline["signals"]["expression"]["mapping"], 0.8, 48)
+    assert seen == {"threads": 5, "providers": ["CPUExecutionProvider"]}
+    assert fa.ort is onnxruntime  # the library's own name is restored
+
+
+def test_expression_hash_tracks_detect_max_side(pipeline, labels):
+    import copy
+
+    from tpa_index.config import stage_config_hash
+
+    v = {"video_id": "v01", "kind": "live"}
+    edited = copy.deepcopy(pipeline)
+    edited["signals"]["expression"]["detect_max_side"] = 960
+    assert stage_config_hash("expression", labels, edited, v) != stage_config_hash("expression", labels, pipeline, v)
+    assert stage_config_hash("people", labels, edited, v) == stage_config_hash("people", labels, pipeline, v)
+
+
+def test_report_called_as_each_pair_ends(job_b):
+    run, _, vids = job_b
+    calls = []
+    run(report=lambda key, status, n, secs: calls.append((key, status.split(":")[0], n, secs)))
+    assert [c[0] for c in calls] == [(v["video_id"], s) for v in vids for s in ("people", "expression")]
+    assert all(kind == "done" and n == len(signals.official_segments(k[0])) and secs > 0
+               for k, kind, n, secs in calls)

@@ -32,7 +32,7 @@ The licences below are as published upstream. **Verify each one against the upst
 - **`person_count` includes the audience.** Every visible person is counted, not only participants.
 - **`has_speech` can include sung lyrics.** It means "words were transcribed", not speech as opposed to singing.
 - **Expression labels are unvalidated suggestions of observable expressions**, never feelings or mental state. Fear and Surprise are dropped, because both misfire on open mouths while singing. Scores are not renormalized after dropping. `confident` is not model-scored (it is derived later).
-- **Expression needs a face of at least 48 px** (`min_face_px`) with a detector score of at least 0.8. Segments without one get `faces_detected = 0` and no expression scores.
+- **Expression needs a face of at least 48 px** (`min_face_px`, in source pixels) with a detector score of at least 0.8. YuNet runs on a copy of each frame whose longer side is at most 1280 px (`signals.expression.detect_max_side`), and its boxes are mapped back to source pixels before the size rule; crops come from the original frame. Segments without one get `faces_detected = 0` and no expression scores.
 - **Transcript peak memory on CUDA is approximate**: CTranslate2 allocates GPU memory outside torch's counters.
 - **The transcript run's runtime includes the shared audio extraction** (it runs inside whichever audio stage goes first).
 - **People and expression share one frame pass**, so their runs record the same runtime and peak memory. Do not sum them.

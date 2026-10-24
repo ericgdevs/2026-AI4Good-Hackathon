@@ -53,6 +53,7 @@ signals:                         # 004: per-segment signals (observable cues onl
     person_conf: 0.4
   expression:
     face_score: 0.8              # YuNet score; minimum face size is min_face_px
+    detect_max_side: 1280        # YuNet runs on a copy at most this long; min_face_px stays in source pixels
     mapping:                     # model class -> label; unlisted classes are dropped (Fear, Surprise)
       positive: [Happiness]
       neutral: [Neutral]

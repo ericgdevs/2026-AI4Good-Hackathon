@@ -19,6 +19,10 @@ export HF_HOME="$HOME/hf-cache"
 export HF_HUB_OFFLINE=1
 export YOLO_OFFLINE=1
 export TPA_WEIGHTS_DIR="$HOME/hf-cache/tpa-weights"
+# library thread pools default to the whole node; keep them inside this job's CPUs
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}" OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}" \
+       MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+export PYTHONUNBUFFERED=1                  # progress lines reach slurm-*.out as they happen
 
 cd "$SLURM_SUBMIT_DIR"
 nvidia-smi -L

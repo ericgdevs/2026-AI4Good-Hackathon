@@ -469,6 +469,9 @@ def test_signals_done_skipped_and_failed_lines(monkeypatch, clip_videos, pipelin
     assert cli.main(["signals", "--stages", "transcript,audio", *sel]) == 1
     out, err = capsys.readouterr()
     assert "transcript t01: done transcript-" in out and "audio t03: done audio-" in out
+    import re
+
+    assert re.search(r"audio t03: done audio-\S+ \d+ segs \d+s", out)
     assert "transcript t03: failed TranscriptError(RuntimeError)" in out
     assert err.strip().splitlines()[-1] == "failed: transcript t03"
     models["transcript"].fail_for = set()

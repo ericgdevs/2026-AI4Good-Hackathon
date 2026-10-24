@@ -220,6 +220,8 @@ def test_signals_sbatch_syntax_and_directives():
                  'uv run --frozen tpa-index signals "$@"'):
         assert line in text, line
     assert "--stages transcript,audio" in text and "--stages people,expression" in text
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+        assert f'{var}="${{SLURM_CPUS_PER_TASK:-8}}"' in text, var
 
 
 def test_signals_sbatch_prepends_cuda12_libs_and_passes_args(tmp_path):

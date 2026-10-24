@@ -308,6 +308,9 @@ def _check_signals(d: dict, labels: dict) -> None:
             raise ConfigError(f"{where}: section missing")
         if not 0 < _number(block, key, where) < 1:
             raise ConfigError(f"{where}: {key} must be within (0, 1)")
+    side = sig["expression"].get("detect_max_side")
+    if not isinstance(side, int) or isinstance(side, bool) or side < 320:
+        raise ConfigError("pipeline.signals.expression.detect_max_side: must be an integer >= 320")
     audio_labels = {lab["name"] for lab in model_labels(labels, {"audio"})}
     amap = (sig.get("audio") or {}).get("mapping")
     _check_mapping(amap, "pipeline.signals.audio.mapping", audio_labels)

@@ -307,6 +307,7 @@ def test_singing_voice_is_an_audio_label(labels):
     (lambda p: p["models"]["people"]["mac"].update(file="../yolo11n.pt"), "people.mac.file: must be a bare"),
     (lambda p: p["models"]["expression"]["model"].update(file="a/b.onnx"), "expression.model.file"),
     (lambda p: p["signals"]["expression"].update(face_score=1.5), "face_score must be within"),
+    (lambda p: p["signals"]["expression"].update(detect_max_side=100), "detect_max_side: must be an integer"),
     (lambda p: p["signals"]["people"].update(person_conf=0), "person_conf must be within"),
     (lambda p: p["models"]["transcript"].update(hpc_device="tpu"), "hpc_device: must be cuda or cpu"),
     (lambda p: p["models"].pop("audio"), "models.audio"),

@@ -31,8 +31,11 @@ COLUMNS = {
     "headline.csv": ["indicator", "phase", "value", "unit", "tag", "verified_share", "change_vs_early", "status"],
     "time_breakdown.csv": ["scope_type", "scope", "youth_s", "staff_led_verified_s", "staff_led_model_s", "idle_s",
                            "total_s"],
+    "expression_index.csv": ["scope_type", "scope", "component", "value", "unit", "cap", "scaled_0_100", "weight",
+                             "contribution", "tag", "verified_share", "status", "label"],
 }
-INSIGHT_TABLES = {"indicators.csv": "indicators", "headline.csv": "headline", "time_breakdown.csv": "time_breakdown"}
+INSIGHT_TABLES = {"indicators.csv": "indicators", "headline.csv": "headline", "time_breakdown.csv": "time_breakdown",
+                  "expression_index.csv": "expression_index"}
 UNITS = {"share": lambda v: f"{100 * v:.0f}%", "minutes": lambda v: f"{v:.1f} min", "count": lambda v: f"{v:.0f}",
          "ratio": lambda v: f"{v:.2f}", "per_minute": lambda v: f"{v:.2f} per min",
          "per_hour": lambda v: f"{v:.1f} min/h", "index_0_100": lambda v: f"{v:.0f}"}
@@ -72,12 +75,31 @@ def insights_summary(p: dict) -> str:
               f"- Idle / setup time: {tb['idle_s'] / 60:.1f} min (tag: {UNVALIDATED_TAG})"]
     if p["excluded_videos"]:
         lines.append(f"- Left out of the headline (phase unknown): {', '.join(p['excluded_videos'])}")
-    lines += ["", "Positive expression rate: observable, unvalidated; segments with faces only.", "",
-              "## Limitations", "", *[f"- {x}" for x in p["limitations"]], ""]
+    lines += ["", "Positive expression rate: observable, unvalidated; segments with faces only.", ""]
+    idx = [r for r in p["expression_index"] if r["scope_type"] == "phase"]
+    if idx:
+        lines += ["## TPA Expression Index (optional example)", "",
+                  "Equal-weight mean of the four headline indicators, each scaled to 0-100 (shares x 100; per-hour "
+                  "values against the cap in `insights.expression_index`). Program level only, not a ranking. "
+                  "Caveats: performance share rises partly by design as the program moves toward the showcase, and "
+                  "expressions are unvalidated model estimates.", "",
+                  "| phase | index | " + " | ".join(HEADLINE_NAMES) + " | label | weakest component tag |",
+                  "|---|---|" + "---|" * len(HEADLINE_NAMES) + "---|---|"]
+        for ph in dict.fromkeys(r["scope"] for r in idx):
+            rs = {r["component"]: r for r in idx if r["scope"] == ph}
+            tot = rs.pop("expression_index")
+            parts = [f"{r['contribution']:.1f}" if r["contribution"] is not None else r["status"]
+                     for r in rs.values()]
+            value = f"{tot['value']:.1f}" if tot["value"] is not None else tot["status"]
+            lines.append(f"| {ph} | {value}"
+                         f" | {' | '.join(parts)} | {tot['label']} | {tot['tag']} |")
+        lines += ["", "Component columns are contributions (weight x scaled value); they sum to the index.", ""]
+    lines += ["## Limitations", "", *[f"- {x}" for x in p["limitations"]], ""]
     return "\n".join(lines)
 
 
 UNVALIDATED_TAG = "model estimate (unvalidated)"
+HEADLINE_NAMES = ["performance share", "solo moments", "youth voice", "positive expression"]
 TABLES = {"metrics.csv": "metrics", "confusion.csv": "confusion", "signal_indicators.csv": "signal_indicators",
           "ablation.csv": "ablation", "topup.csv": "topup", "failure_gallery.csv": "failure_gallery",
           "learned_predictions.csv": "learned_predictions"}
@@ -315,6 +337,29 @@ def insights_charts(p: dict, out: Path) -> list[str]:
     ax.legend(frameon=False, fontsize=8)
     files.append(_save(fig, out, "time_breakdown.png",
                        f"Tags: staff-led split into staff-verified and {p['model_tag']}; idle from the model's idle rule"))
+
+    idx = [r for r in p["expression_index"] if r["scope_type"] == "phase"]
+    phases = list(dict.fromkeys(r["scope"] for r in idx))
+    fig, ax = plt.subplots(figsize=(7, 4))
+    bottom = [0.0] * len(phases)
+    comps = [c for c in dict.fromkeys(r["component"] for r in idx) if c != "expression_index"]
+    for comp, color, name in zip(comps, PALETTE + [GREY], HEADLINE_NAMES):
+        vals = [next(r["contribution"] or 0.0 for r in idx if r["scope"] == ph and r["component"] == comp)
+                for ph in phases]
+        ax.bar(phases, vals, bottom=bottom, color=color, label=name)
+        bottom = [a + v for a, v in zip(bottom, vals)]
+    for i, ph in enumerate(phases):
+        tot = next(r for r in idx if r["scope"] == ph and r["component"] == "expression_index")
+        ax.text(i, bottom[i], show(tot["value"], "index_0_100") if tot["value"] is not None else tot["status"],
+                ha="center", va="bottom", fontsize=9)
+    ax.set_ylim(0, 105)
+    ax.set_ylabel("index (0-100), stacked contributions")
+    ax.set_title("TPA Expression Index per phase (example)")
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+    tags = "; ".join(f"{r['scope']}: {r['label']}, weakest component {r['tag']}"
+                     for r in idx if r["component"] == "expression_index")
+    files.append(_save(fig, out, "expression_index.png",
+                       f"Tags: {tags} · performance share rises partly by design; expressions are unvalidated"))
     return files
 
 
@@ -338,7 +383,7 @@ def write_result(kind: str, payload: dict, root=None) -> Path:
             files.append(name)
         (out / "indicators.json").write_text(_json({k: payload[k] for k in (
             "indicators", "headline", "time_breakdown", "excluded_videos", "labels_source", "model_tag",
-            "phase_source", "model_staff_share", "limitations")}))
+            "phase_source", "model_staff_share", "limitations", "expression_index")}))
         (out / "summary.md").write_text(insights_summary(payload))
         files += ["indicators.json", "summary.md"]
     else:

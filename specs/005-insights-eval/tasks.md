@@ -262,8 +262,8 @@
 
 ## Phase 6: Optional TPA Expression Index (US5), after Checkpoint 3 only
 
-- [ ] T047 [US5] In `src/tpa_index/indicators.py`, add `expression_index(headline_rows)`. Each of the four headline indicators is scaled to 0–100: shares × 100; solo moments and youth voice as a share of youth time × 100. They are averaged with equal weights per phase, and the result is written as an `indicators.csv` row with `indicator=expression_index`, `unit=index_0_100`, `tag="model estimate (unvalidated)"`, `status="example"`, with its four components in `indicators.json`. Program level only, no per-video ranking.
-- [ ] T048 [P] [US5] In `tests/test_indicators.py`, add `test_expression_index_reproducible_from_components`. The index equals the mean of its listed components, the row is tagged as an example, and it never appears as a video-level ranking.
+- [X] T047 [US5] In `src/tpa_index/indicators.py`, add `expression_index(headline_rows)`. Each of the four headline indicators is scaled to 0–100: shares × 100; solo moments and youth voice as a share of youth time × 100. They are averaged with equal weights per phase, and the result is written as an `indicators.csv` row with `indicator=expression_index`, `unit=index_0_100`, `tag="model estimate (unvalidated)"`, `status="example"`, with its four components in `indicators.json`. Program level only, no per-video ranking.
+- [X] T048 [P] [US5] In `tests/test_indicators.py`, add `test_expression_index_reproducible_from_components`. The index equals the mean of its listed components, the row is tagged as an example, and it never appears as a video-level ranking.
 
 ---
 

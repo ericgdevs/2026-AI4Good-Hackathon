@@ -75,6 +75,8 @@ insights:                        # 005 evaluate / insights (read-only; aggregate
   audio_threshold: 0.5           # fixed AST probability for audio conditions (not the calibrated top-10% value)
   learned: {folds: 5, C: 1.0, max_iter: 2000, seed: 2026}   # logistic regressions on official signals (no embeddings)
   labels_source: learned         # insights model fallback: learned | zero-shot
+  expression_index:              # optional example index (0-100): shares x 100, per-hour / cap x 100 (clipped)
+    per_hour_cap: {solo_moments_minutes_per_hour: 60, youth_voice_minutes_per_hour: 60}   # 60 = all youth time
   primary_like: [singing, lyricism_spoken_word, acting_theater, dance]   # "performing" primaries used by rules
   fusion:                        # "zero-shot + signal rules": drop a visual activity unless a condition holds
     - {label: singing, require_any: [{audio: singing_voice}, {audio: music}]}

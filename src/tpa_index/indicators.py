@@ -265,6 +265,52 @@ def headline(rows: list[dict], phases_present: list[str]) -> list[dict]:
     return out
 
 
+EXAMPLE = "example, based on unvalidated model suggestions"
+
+
+def _weakest(rows: list[dict]) -> dict:
+    """The component with the lowest verified share; on a tie, the unverified model tag wins."""
+    return min(rows, key=lambda r: (r["verified_share"], r["tag"] == STAFF_VERIFIED))
+
+
+def expression_index(rows: list[dict], caps: dict) -> list[dict]:
+    """Optional 0-100 example index per program scope (all, phase, video; never per person, never ranked): the four
+    HEADLINE indicators with equal weights. Shares x 100; per-hour values / their config cap x 100, clipped to 100.
+    One row per component (its contribution = weight x scaled) and one `expression_index` row (the sum)."""
+    by = {(r["indicator"], r["scope_type"], r["scope"]): r for r in rows}
+    scopes = list(dict.fromkeys((r["scope_type"], r["scope"]) for r in rows))
+    weight, out = 1 / len(HEADLINE), []
+    for scope_type, scope in scopes:
+        comps = [by[(ind, scope_type, scope)] for ind in HEADLINE]
+        parts = []
+        for c in comps:
+            cap = caps.get(c["indicator"])  # None for share-type components
+            scaled = None if c["value"] is None else 100 * (c["value"] if cap is None else min(c["value"] / cap, 1.0))
+            parts.append({"scope_type": scope_type, "scope": scope, "component": c["indicator"], "value": c["value"],
+                          "unit": c["unit"], "cap": cap, "scaled_0_100": scaled, "weight": weight,
+                          "contribution": None if scaled is None else weight * scaled, "tag": c["tag"],
+                          "verified_share": c["verified_share"], "status": c["status"], "label": ""})
+        bad = next((c["status"] for c in comps if c["status"] != "ok"), None)
+        verified = all(c["tag"] == STAFF_VERIFIED for c in comps)
+        weak = _weakest(comps)
+        index = None if bad else sum(p["contribution"] for p in parts)
+        out += parts + [{"scope_type": scope_type, "scope": scope, "component": "expression_index", "value": index,
+                         "unit": "index_0_100", "cap": None, "scaled_0_100": index, "weight": 1.0,
+                         "contribution": index, "tag": weak["tag"], "verified_share": weak["verified_share"],
+                         "status": bad or ("ok" if verified else "example"),
+                         "label": STAFF_VERIFIED if verified else EXAMPLE}]
+    return out
+
+
+def index_indicator_rows(index: list[dict]) -> list[dict]:
+    """The `expression_index` rows in indicators.csv form (tag = weakest component tag, status example)."""
+    return [{"indicator": "expression_index", "scope_type": r["scope_type"], "scope": r["scope"], "value": r["value"],
+             "unit": "index_0_100", "numerator": None, "denominator": None,
+             "base": "equal-weight mean of the four headline indicators, each scaled to 0-100", "tag": r["tag"],
+             "verified_share": r["verified_share"], "status": r["status"]}
+            for r in index if r["component"] == "expression_index"]
+
+
 def run_insights(pipeline: dict, labels: dict, root=None) -> dict:
     """Everything for the insights result folder. Raises ConfigError first if any input is missing."""
     from tpa_index.config import ConfigError, config_hash
@@ -298,11 +344,14 @@ def run_insights(pipeline: dict, labels: dict, root=None) -> dict:
     rows = []
     for scope_type, scope, mask in scopes:
         rows += _rows_for_scope(seg[mask], scope_type, scope, pipeline, labels, model_tag)
+    index = expression_index(rows, ins["expression_index"]["per_hour_cap"])
+    head = headline(rows, phases_present)
+    rows += index_indicator_rows(index)
     excluded = sorted(seg.loc[~seg["phase"].isin(PHASES), "video_id"].unique())
     breakdown = time_breakdown(seg, scopes)
     total = sum(b["total_s"] for b in breakdown if b["scope_type"] == "all")
     model_staff = sum(b["staff_led_model_s"] for b in breakdown if b["scope_type"] == "all")
-    return {"kind": "insights", "indicators": rows, "headline": headline(rows, phases_present),
+    return {"kind": "insights", "indicators": rows, "headline": head, "expression_index": index,
             "time_breakdown": breakdown, "excluded_videos": excluded, "labels_source": source,
             "model_tag": model_tag, "phase_source": phase_source, "model_staff_share": model_staff / total if total else 0.0,
             "limitations": LIMITATIONS, "official_runs": {k: v for k, v in load_official().items() if v},

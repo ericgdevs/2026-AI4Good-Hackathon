@@ -193,3 +193,50 @@ def test_headline_uses_per_hour(world):
     total, rate = rows[("youth_voice_minutes", "e01")], rows[("youth_voice_minutes_per_hour", "e01")]
     assert rate["tag"] == total["tag"] and rate["unit"] == "per_hour"
     assert rate["value"] == pytest.approx(total["value"] / (rate["denominator"] / 3600))
+
+
+def test_expression_index_reproducible_from_components(world):
+    """US5: 0-100, contributions sum to the index, example label + weakest tag, program scopes only, never ranked."""
+    from tpa_index.indicators import EXAMPLE, HEADLINE
+
+    out = run_insights(world["pipeline"], world["labels"])
+    idx = out["expression_index"]
+    assert all(not set(r) & {"person_id", "track_id", "face_id", "segment_id"} for r in idx)
+    assert {r["scope_type"] for r in idx} == {"all", "phase", "video"}
+    totals = [r for r in idx if r["component"] == "expression_index"]
+    assert totals and [r["scope"] for r in totals if r["scope_type"] == "video"] == sorted(
+        r["scope"] for r in totals if r["scope_type"] == "video")  # listed by ID, not by value
+    for t in totals:
+        parts = [r for r in idx if (r["scope_type"], r["scope"]) == (t["scope_type"], t["scope"])
+                 and r["component"] != "expression_index"]
+        assert [r["component"] for r in parts] == list(HEADLINE)
+        assert t["label"] == EXAMPLE and t["status"] == "example"  # positive expression is never verified
+        assert TAG.match(t["tag"]) and t["tag"] == min(parts, key=lambda r: r["verified_share"])["tag"]
+        if t["value"] is not None:
+            assert 0 <= t["value"] <= 100
+            assert all(0 <= r["scaled_0_100"] <= 100 for r in parts)
+            assert t["value"] == pytest.approx(sum(r["contribution"] for r in parts))
+            assert t["value"] == pytest.approx(sum(r["scaled_0_100"] for r in parts) / 4)
+        row = _ind(out, "expression_index", t["scope"])
+        assert row["value"] == t["value"] and row["unit"] == "index_0_100" and row["tag"] == t["tag"]
+    assert any(t["value"] is not None for t in totals)
+
+
+def test_expression_index_scaling_and_labels():
+    from tpa_index.indicators import EXAMPLE, HEADLINE, expression_index
+
+    def rows(values, tag_value):
+        return [{"indicator": i, "scope_type": "phase", "scope": "early", "value": v, "unit": "u", "tag": tag_value,
+                 "verified_share": 1.0 if tag_value == STAFF_VERIFIED else 0.0, "status": "ok" if v is not None
+                 else "signal not available"} for i, v in zip(HEADLINE, values)]
+
+    caps = {"solo_moments_minutes_per_hour": 10, "youth_voice_minutes_per_hour": 60}
+    (*parts, total) = expression_index(rows([0.5, 20.0, 30.0, 0.2], STAFF_VERIFIED), caps)
+    assert [p["scaled_0_100"] for p in parts] == pytest.approx([50, 100, 50, 20])  # solo clipped at its cap
+    assert total["value"] == pytest.approx(55) and total["label"] == STAFF_VERIFIED and total["status"] == "ok"
+    mixed = rows([0.5, 20.0, 30.0, 0.2], STAFF_VERIFIED)
+    mixed[3] = {**mixed[3], "tag": "model estimate (unvalidated)", "verified_share": 0.0}
+    total = expression_index(mixed, caps)[-1]
+    assert total["label"] == EXAMPLE and total["tag"] == "model estimate (unvalidated)"
+    total = expression_index(rows([0.5, 20.0, None, 0.2], STAFF_VERIFIED), caps)[-1]
+    assert total["value"] is None and total["status"] == "signal not available"

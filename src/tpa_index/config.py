@@ -376,6 +376,11 @@ def _check_insights(d: dict, labels: dict) -> None:
             or not isinstance(lc.get("max_iter"), int) or lc["max_iter"] < 1 or not isinstance(lc.get("seed"), int) \
             or not isinstance(lc.get("C"), (int, float)) or lc["C"] <= 0:
         raise ConfigError(f"{where}.learned: needs folds (int >= 2), C (> 0), max_iter (int >= 1) and seed (int)")
+    caps = (ins.get("expression_index") or {}).get("per_hour_cap")
+    if not isinstance(caps, dict) or set(caps) != {"solo_moments_minutes_per_hour", "youth_voice_minutes_per_hour"} \
+            or not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 for v in caps.values()):
+        raise ConfigError(f"{where}.expression_index.per_hour_cap: needs solo_moments_minutes_per_hour and "
+                          "youth_voice_minutes_per_hour, each a number > 0")
     if ins.get("labels_source") not in ("learned", "zero-shot"):
         raise ConfigError(f"{where}.labels_source: must be learned or zero-shot")
     names = {"audio": {lab["name"] for lab in model_labels(labels, {"audio"})},

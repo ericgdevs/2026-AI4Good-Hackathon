@@ -525,7 +525,8 @@ def test_evaluate_missing_audio_exits_3(tmp_path, monkeypatch, capsys):
 
 # ---- insights (005): mock world only ---------------------------------------------------------------------------
 INSIGHTS_FILES = {"indicators.csv", "indicators.json", "headline.csv", "time_breakdown.csv", "summary.md",
-                  "manifest.json", "headline.png", "time_breakdown.png"}
+                  "manifest.json", "headline.png", "time_breakdown.png", "expression_index.csv",
+                  "expression_index.png"}
 
 
 def test_insights_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):
@@ -542,6 +543,9 @@ def test_insights_writes_one_complete_folder(tmp_path, monkeypatch):
     (folder,) = list((tmp_path / "out/results").iterdir())
     assert folder.name.startswith("insights-")
     assert INSIGHTS_FILES == {p.name for p in folder.iterdir()}
+    summary = (folder / "summary.md").read_text()
+    assert "TPA Expression Index" in summary and "rises partly by design" in summary
+    assert "example, based on unvalidated model suggestions" in summary
 
 
 def test_insights_missing_expression_exits_3(tmp_path, monkeypatch, capsys):

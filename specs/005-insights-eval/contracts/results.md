@@ -100,3 +100,25 @@ Every indicator row also has `verified_share` (0–1) as a number, so readers ne
 - Columns are only ever added at the end. Readers must select columns by name.
 - Tag strings are exactly as above.
 - Phases come from `config/videos.local.yaml` when that file exists (validated), else from the `videos.phase` stored in the official runs; `phase_source` says which. `split` always comes from the stored runs. `unknown` never appears as a headline scope; it is listed in `indicators.json` under `excluded_videos`.
+
+## Addendum: optional TPA Expression Index (T047–T048, `schema_version` stays 1)
+
+Added files only. No existing column or file name changed.
+
+| file | content |
+|---|---|
+| `expression_index.csv` | one row per (scope, component), plus one `expression_index` row per scope |
+| `expression_index.png` | stacked per-phase contributions, TPA palette, labels and the weakest tag in the footnote |
+
+`indicators.json` gains the key `expression_index` (the same rows). `indicators.csv` gains one `indicator=expression_index` row per scope (`all`, each phase, each video): `unit=index_0_100`, `tag` = the weakest component's tag (one of the tag values above, the lowest `verified_share`), `verified_share` = that component's share, and `status` = `example` (or `ok` only when all four components are `staff-verified`; any other component status such as `signal not available` is carried and `value` is left empty). `summary.md` gains a "TPA Expression Index (optional example)" section, per phase only.
+
+### expression_index.csv columns
+
+`scope_type, scope, component, value, unit, cap, scaled_0_100, weight, contribution, tag, verified_share, status, label`
+
+- `component`: the four headline indicators in headline order, then `expression_index`.
+- Scaling (config `insights.expression_index.per_hour_cap`): `share` components → `value × 100`. `per_hour` components → `min(value / cap, 1) × 100`. The default cap is 60 min/h, so the result equals the share of youth time × 100. `cap` is empty for shares.
+- `weight` = 0.25 (equal weights). `contribution` = `weight × scaled_0_100`. On the `expression_index` row, `value` = `scaled_0_100` = `contribution` = the sum of the four contributions (0–100), and `weight` = 1.
+- `tag`, `verified_share` and `status` are the component's own. On the `expression_index` row they're the weakest component's tag and share, and the status is as described above.
+- `label`: empty on component rows. On the `expression_index` row it is `example, based on unvalidated model suggestions`, or `staff-verified` only when every component is staff-verified.
+- Program level only. Rows are listed by scope ID, never sorted by value, and there are no per-person fields. Caveat for readers: performance share rises partly by design toward the showcase, and expressions are unvalidated model estimates.

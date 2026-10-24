@@ -243,7 +243,8 @@ def _read_reviews_table(root, name: str, order: str) -> pa.Table:
     path = _reviews_db(root)
     if not path.exists():
         return SCHEMAS[name].empty_table()
-    con = duckdb.connect(str(path), read_only=True)
+    # same settings as writes: DuckDB refuses a second in-process connection with different ones
+    con = duckdb.connect(str(path))
     try:
         # databases written before _open_reviews may lack a table
         if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = ?", [name]).fetchall()[0][0]:

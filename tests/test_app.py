@@ -286,6 +286,45 @@ def test_review_tab_reminder_and_observation_choices(mock_env, labels):
     assert [v for _, v in by_id["review-add-obs"]["choices"]] == observation_types(labels)
 
 
+def test_reviewer_names_are_case_insensitive(mock_env, labels):
+    from tpa_index.app import BlindController
+    from tpa_index.review import eval_unlocked, load_queue
+
+    b = BlindController(mock_env["cutter"], labels=labels, pipeline=mock_env["pipeline"])
+    groups = [[] for _ in b.checklist["groups"]]
+    out = b.start("  Ana ", "Main sample")
+    for _ in range(2):
+        out = b.save(out[0], b.checklist["primary"][0], *groups, False)
+    assert b.start("ana", "Main sample")[0]["position"] == 2  # same reviewer: resumes
+    out = b.start("Ana", "Overlap set (second labeler)")
+    while out[0]["position"] is not None:
+        out = b.save(out[0], b.checklist["primary"][0], *groups, False)
+    assert b.start("ANA", "Overlap set (second labeler)")[0]["position"] is None  # already finished
+    reviewers = {r["reviewer"] for r in schema.read_reviews().to_pylist() if r["mode"] == "blind"}
+    assert reviewers == {"ana"}
+    _, reason = eval_unlocked()
+    assert f"{len(load_queue('overlap'))} overlap" in reason  # one reviewer, not two
+
+
+def test_note_cleared_after_save_kept_on_error(mock_env, labels, tmp_path):
+    from tpa_index.app import build_app
+    from tpa_index.config import observation_types
+
+    demo = build_app(cutter=RecordingCutter(tmp_path), pipeline=mock_env["pipeline"], labels=labels)
+    note_id = next(b._id for b in demo.blocks.values() if getattr(b, "elem_id", None) == "review-note")
+    obs_btn = next(b._id for b in demo.blocks.values() if getattr(b, "elem_id", None) == "review-obs")
+    fn = next(f for f in demo.fns.values() if any(t[0] == obs_btn for t in f.targets)
+              and note_id in [o._id for o in f.outputs])
+    rv = demo.review
+    vid = rv.video_choices()[0][0][1]
+    current = rv.open(rv.timeline(vid)[1], 0)[0]
+    obs = observation_types(labels)[0]
+    refused = fn.fn(current, "", obs, "keep me")  # no reviewer: nothing saved
+    assert refused[-1] != "" and "Enter a reviewer" in refused[3]
+    ok = fn.fn(current, "staff-a", obs, "a note")
+    assert ok[-1] == "" and ok[3].startswith("Saved")
+
+
 # ---- US5: local only, no outbound connections, no lasting clip copies (T017-T018) -----------------------------
 def _free_port():
     import socket
@@ -305,7 +344,7 @@ def test_launch_is_loopback_only_and_leaves_nothing(mock_env, labels, monkeypatc
     from tpa_index.app import build_app, launch_kwargs
 
     session = mock_env["cutter"].session
-    monkeypatch.setenv("GRADIO_TEMP_DIR", str(session / "gradio"))
+    monkeypatch.setenv("GRADIO_TEMP_DIR", str(session))  # as launch() does
     demo = build_app(cutter=mock_env["cutter"], pipeline=mock_env["pipeline"], labels=labels)
     port = _free_port()
     kwargs = launch_kwargs(session, port)
@@ -316,7 +355,12 @@ def test_launch_is_loopback_only_and_leaves_nothing(mock_env, labels, monkeypatc
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=10) as resp:
             assert resp.status == 200
         out = demo.blind.start("tester-a", "Main sample")
-        demo.blind.save(out[0], demo.blind.checklist["primary"][0], *[[] for _ in demo.blind.checklist["groups"]], False)
+        video = next(b for b in demo.blocks.values() if getattr(b, "elem_id", None) == "blind-clip")
+        assert video.move_resource_to_block_cache(out[1]) == out[1]  # served in place: no second copy
+        out = demo.blind.save(out[0], demo.blind.checklist["primary"][0], *[[] for _ in demo.blind.checklist["groups"]],
+                              False)
+        assert video.move_resource_to_block_cache(out[1]) == out[1]
+        assert len(list(session.rglob("*.mp4"))) <= 2  # shown clip + one prefetch; the previous clip was deleted
         remote = [c.raddr.ip for c in psutil.Process(os.getpid()).net_connections(kind="inet") if c.raddr]
         assert all(ipaddress.ip_address(ip).is_loopback for ip in remote), remote
         listening = [c.laddr.ip for c in psutil.Process(os.getpid()).net_connections(kind="inet")
@@ -325,7 +369,7 @@ def test_launch_is_loopback_only_and_leaves_nothing(mock_env, labels, monkeypatc
     finally:
         demo.close()
     mock_env["cutter"].cleanup()
-    assert not session.exists() and not (session / "gradio").exists()
+    assert not session.exists()
 
 
 def test_share_never_enabled_in_source():

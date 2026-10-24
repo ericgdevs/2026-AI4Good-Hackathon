@@ -400,3 +400,24 @@ def test_calibrate_lists_labels_and_idle_at_min_threshold(tmp_path, monkeypatch,
     data = yaml.safe_load(config.THRESHOLDS_LOCAL.read_text())
     assert data["label_thresholds"]["mock-model"]["acting_theater"] == 0.001
     assert data["idle_thresholds"]["mock-model"] == 0.001
+
+
+def test_missing_official_run_exits_with_message_not_traceback(tmp_path, monkeypatch, capsys):
+    from tpa_index import clips
+
+    cli = _official_mock(tmp_path, monkeypatch)
+    (tmp_path / "official.yaml").write_text("predict: [mock-seed0, not-on-disk]\n")
+    assert cli.main(["calibrate", "--dry-run"]) == 3
+    assert "run not-on-disk not found or incomplete" in capsys.readouterr().err
+    # the app too: startup reads the official runs before it serves anything
+    monkeypatch.setattr(clips, "register_cleanup", lambda cutter: None)  # no signal handlers inside pytest
+    monkeypatch.setattr(clips, "session_dir", lambda: tmp_path / "session")
+    (tmp_path / "session").mkdir()
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    assert cli.main(["app", "--port", str(port)]) == 3
+    err = capsys.readouterr().err
+    assert "run not-on-disk not found or incomplete" in err and "Traceback" not in err

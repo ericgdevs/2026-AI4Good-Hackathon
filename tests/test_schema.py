@@ -200,3 +200,16 @@ def test_blind_queue_rejects_duplicate_segments_and_mixed_queues():
         append_blind_queue(_queue_rows("main", ["mock04_0", "mock04_0"]))
     with pytest.raises(SchemaError, match="one queue"):
         append_blind_queue(_queue_rows("main", ["a"]) + [dict(_queue_rows("overlap", ["b"])[0], position=1)])
+
+
+def test_reads_and_writes_share_the_database_in_one_process():
+    """Gradio runs handlers in parallel: a read while a write connection is open must not fail."""
+    from tpa_index.schema import _open_reviews, append_reviews, read_blind_queue, read_reviews
+
+    append_reviews([row("reviews")])
+    assert read_reviews().num_rows == 1  # back to back
+    con = _open_reviews(None)  # a write connection still open (another handler mid-save)
+    try:
+        assert read_reviews().num_rows == 1 and read_blind_queue().num_rows == 0
+    finally:
+        con.close()

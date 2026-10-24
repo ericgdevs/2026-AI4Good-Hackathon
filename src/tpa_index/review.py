@@ -296,7 +296,12 @@ def badge(row: dict | None) -> str:
     if row is None:
         return UNVALIDATED
     what = f"edit → {row['new_label']}" if row["action"] == "edit" else row["action"]
-    return f"{what} by {row['reviewer']}, {row['created_at']:%Y-%m-%d %H:%M}"
+    return f"{what} by {row['reviewer']}, {local_time(row['created_at'])}"
+
+
+def local_time(ts) -> str:
+    """Stored times are UTC; staff read them in the machine's local time."""
+    return f"{ts.astimezone():%Y-%m-%d %H:%M}"
 
 
 def label_panel(moment: dict, state: dict, labels: dict, confidences: dict[str, float],

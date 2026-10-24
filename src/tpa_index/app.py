@@ -1,6 +1,5 @@
 """Local review app (Gradio): blind labeling and review. Binds 127.0.0.1 only; no sharing, analytics or monitoring.
 Every label and group shown comes from labels.yaml / pipeline.yaml at runtime."""
-import json
 import os
 
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"  # before gradio is imported anywhere
@@ -39,6 +38,16 @@ PAGE_JS = """
   });
 }
 """
+
+
+def _cut(cutter, video, start, end, pad=0) -> tuple[str | None, str]:
+    """(clip path, message) for both tabs; errors shown to staff are redacted."""
+    if video is None or cutter is None:
+        return None, "Clip unavailable: video not in the official runs."
+    try:
+        return str(cutter.cut(video, start, end, pad_s=pad)), ""
+    except Exception as e:
+        return None, redact(f"Clip unavailable ({e}).")
 
 
 class BlindController:
@@ -82,13 +91,8 @@ class BlindController:
         return f"**{done} / {total}** done"
 
     def _clip(self, item):
-        video = self.videos.get(item["video_id"])
-        if video is None or self.cutter is None:
-            return None, "Clip unavailable: video not in the official runs. Use Skip."
-        try:
-            return str(self.cutter.cut(video, item["start_s"], item["end_s"])), ""
-        except Exception as e:
-            return None, redact(f"Clip unavailable ({e}). Use Skip.")
+        clip, msg = _cut(self.cutter, self.videos.get(item["video_id"]), item["start_s"], item["end_s"])
+        return clip, msg and msg + " Use Skip."
 
     def _prefetch(self, queue, position):
         items = review.load_queue(queue, self.root)
@@ -115,7 +119,7 @@ class BlindController:
 
     # ---- handlers ----
     def start(self, reviewer: str, queue_display: str):
-        reviewer = (reviewer or "").strip()
+        reviewer = (reviewer or "").strip().lower()  # "Ana" and "ana" are one reviewer (resume, eval lock)
         if not reviewer:
             return [None, None, "", *self._empty(), f"Enter a reviewer ({REVIEWER_HINT}) first."]
         queue = QUEUE_NAMES[queue_display]
@@ -273,7 +277,7 @@ class ReviewController:
         rows = review.label_panel(m, state, self.labels, self._confidences(m), self.thresholds)
         panel = [[r["label"] + (" (retired)" if r["retired"] else ""), r["role"], _fmt_conf(r["confidence"]),
                   r["badge"]] for r in rows]
-        history = [[f"{r['created_at']:%Y-%m-%d %H:%M}", r["reviewer"],
+        history = [[review.local_time(r["created_at"]), r["reviewer"],
                     f"{r['label']} → {r['new_label']}" if r["action"] == "edit" else r["label"], r["action"],
                     r["note"] or ""]
                    for r in sorted(self._history_rows(m), key=lambda r: (r["created_at"], r["review_id"]))]
@@ -293,14 +297,7 @@ class ReviewController:
             return [None, None, [], [], [], "", ""]
         r = rows[index]
         video = next((v for v in review.review_videos(self.root) if v["video_id"] == r["video_id"]), None)
-        clip, msg = None, ""
-        if video is None or self.cutter is None:
-            msg = "Clip unavailable: video not in the official runs."
-        else:
-            try:
-                clip = str(self.cutter.cut(video, r["start_s"], r["end_s"], pad_s=self.pipeline["app"]["padding_s"]))
-            except Exception as e:
-                msg = redact(f"Clip unavailable ({e}).")
+        clip, msg = _cut(self.cutter, video, r["start_s"], r["end_s"], self.pipeline["app"]["padding_s"])
         if r["kind"] != "moment":
             return [None, clip, [], [], [], "Idle stretch (no labels).", msg]
         m = {k: v for k, v in r.items() if k not in ("kind", "review_status")}
@@ -308,7 +305,7 @@ class ReviewController:
 
     def _save(self, current, reviewer, make):
         """Outputs: panel, history, moment status, message."""
-        reviewer = (reviewer or "").strip()
+        reviewer = (reviewer or "").strip().lower()
         if current is None:
             return [None, None, None, "Select a moment first."]
         if not reviewer:
@@ -434,10 +431,11 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
 
         def saved(out):
             panel_v, history_v, status_v, msg = out
-            keep = lambda v: gr.update() if v is None else v  # noqa: E731
-            return [keep(panel_v), keep(history_v), keep(status_v), msg]
+            if panel_v is None:  # refused: nothing saved, keep everything (including the note) as it was
+                return [gr.update(), gr.update(), gr.update(), msg, gr.update()]
+            return [panel_v, history_v, status_v, msg, ""]
 
-        save_out = [panel, history, m_status, r_msg]
+        save_out = [panel, history, m_status, r_msg, note_box]
         for btn, action in ((accept_btn, "accept"), (reject_btn, "reject"), (defer_btn, "defer")):
             btn.click(lambda c, who, lab, n, a=action: saved(rv.act(c, who, lab, a, note=n)),
                       [current, reviewer, ai_pick, note_box], save_out).then(rv.timeline, filters, [timeline, rows, r_msg])
@@ -479,14 +477,10 @@ def launch(port: int | None = None) -> None:
 
     pipeline = load_pipeline()
     session = session_dir()
-    os.environ["GRADIO_TEMP_DIR"] = str(session / "gradio")  # Gradio's own copies of clips stay in the session
+    # clips already inside Gradio's cache folder are served in place (no copy), so cut()'s deletion applies
+    os.environ["GRADIO_TEMP_DIR"] = str(session)
     cutter = ClipCutter(session, pipeline["app"]["clip_height"])
     register_cleanup(cutter)
     port = port or pipeline["app"]["port"]
     print(f"TPA review app: http://127.0.0.1:{port}  (this machine only; Ctrl+C to stop)")
     build_app(cutter=cutter, pipeline=pipeline).launch(**launch_kwargs(session, port))
-
-
-def page_config_json(demo) -> str:
-    """The page's component config (for tests): what the browser receives."""
-    return json.dumps(demo.config, default=str)

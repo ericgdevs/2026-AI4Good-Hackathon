@@ -4,6 +4,7 @@ import sys
 from tpa_index import config
 from tpa_index.config import ConfigError, load_labels, load_pipeline, load_videos
 from tpa_index.paths import GuardError, check_guard, data_dir, install_redaction, redact
+from tpa_index.schema import SchemaError
 
 
 def _check(args) -> int:
@@ -340,6 +341,6 @@ def main(argv=None) -> int:
     except GuardError as e:
         print(redact(str(e)), file=sys.stderr)
         return 2
-    except ConfigError as e:
+    except (ConfigError, SchemaError) as e:
         print(redact(str(e)), file=sys.stderr)
         return 3

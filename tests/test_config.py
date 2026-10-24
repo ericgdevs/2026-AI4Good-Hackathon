@@ -148,6 +148,7 @@ def test_bad_pipeline_keys(pipeline, change, match):
     (lambda p: p.update(label_thresholds={"m": {"nope": 0.2}}), "nope: not a model-scored label"),
     (lambda p: p.update(label_thresholds={"m": {"uncertain_mixed": 0.2}}), "uncertain_mixed: not a model-scored"),
     (lambda p: p.update(visual_groups=["status"]), "group status \\(visual or null\\) has no model-scored labels"),
+    (lambda p: p.pop("app"), "pipeline: app section missing"),
 ])
 def test_pipeline_checks_against_labels(pipeline, labels, change, match):
     from tpa_index.config import _check_pipeline_labels

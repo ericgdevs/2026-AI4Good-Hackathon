@@ -240,8 +240,9 @@ def _check_pipeline_labels(d: dict, labels: dict) -> dict:
     for label in (d["models"].get("motion") or {}).get("labels") or []:
         if label not in activity:
             raise ConfigError(f"pipeline.models.motion: {label} is not an activity label")
-    if "app" in d:
-        _check_app(d["app"], d, labels)
+    if not isinstance(d.get("app"), dict):
+        raise ConfigError("pipeline: app section missing")
+    _check_app(d["app"], d, labels)
     return d
 
 

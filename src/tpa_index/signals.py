@@ -148,6 +148,28 @@ def map_scores(probs, class_index: dict[str, list[int]]):
     return np.stack([probs[:, idx].max(axis=1) for idx in class_index.values()], axis=1).astype(np.float32)
 
 
+# ---- people and expression ----------------------------------------------------------------------------------------
+def median_count(counts: list[int]) -> int:
+    """Per-frame counts -> one count for the segment: the median, halves rounded down."""
+    import math
+    import statistics
+
+    return int(math.floor(statistics.median(counts)))
+
+
+def aggregate_expression(per_frame_scores: list, labels: list[str]) -> tuple[int, dict[str, float] | None]:
+    """per_frame_scores: one (n_faces, n_labels) array per sampled frame. Returns (faces_detected, scores):
+    faces_detected = most usable faces in any one frame; scores = mean over every face in every frame,
+    or None when there is no face at all (then no expression rows are written)."""
+    import numpy as np
+
+    faces = max((len(a) for a in per_frame_scores), default=0)
+    if not faces:
+        return 0, None
+    mean = np.concatenate([a for a in per_frame_scores if len(a)]).mean(axis=0)
+    return faces, {label: float(v) for label, v in zip(labels, mean)}
+
+
 # ---- orchestration -------------------------------------------------------------------------------------------------
 AUDIO_STAGES, FRAME_STAGES = ("transcript", "audio"), ("people", "expression")
 
@@ -262,5 +284,77 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
 
 
 def _frame_stages(video, video_row, official, todo, models, pipeline, root, device) -> dict:
-    """People and expression share one frame pass (Phase 4)."""
-    return {(video["video_id"], stage): "failed:NotImplementedError" for stage, _ in todo}
+    """People and expression share one streaming pass over 002's frame sampling, one official segment at a time.
+    Each stage fails on its own; frames and face crops stay in memory and are dropped as soon as they are scored.
+    The pass is timed once, and both runs record that runtime and peak memory (overlapping: do not sum)."""
+    import time
+
+    import av
+    import numpy as np
+
+    from tpa_index.config import effective_settings
+    from tpa_index.paths import data_dir
+    from tpa_index.runs import _peak_mem_gb, track_run
+    from tpa_index.segment import _sample_frames
+
+    vid, results = video["video_id"], {}
+    active = [stage for stage, _ in todo]
+    out: dict[str, dict] = {stage: {} for stage in active}
+    n_frames = effective_settings(pipeline, video)["frames_per_window"]
+    if device == "cuda":
+        import torch
+
+        torch.cuda.reset_peak_memory_stats()
+    t0 = time.perf_counter()
+    try:
+        with av.open(str(data_dir() / video["filename"])) as container:
+            stream = container.streams.video[0]
+            for seg in official:
+                if not active:
+                    break
+                frames = _sample_frames(container, stream, seg["start_s"], seg["end_s"], n_frames)
+                for stage in list(active):
+                    try:
+                        if stage == "people":
+                            out[stage][seg["segment_id"]] = median_count(models["people"].count(frames))
+                        else:
+                            scorer, per_frame = models["expression"], []
+                            for frame in frames:
+                                crops = scorer.faces(frame)
+                                per_frame.append(scorer.score(crops) if crops
+                                                 else np.zeros((0, len(scorer.labels)), np.float32))
+                                del crops
+                            out[stage][seg["segment_id"]] = aggregate_expression(per_frame, scorer.labels)
+                    except Exception as e:  # noqa: BLE001
+                        _fail(results, (vid, stage), e)
+                        active.remove(stage)
+                del frames
+    except Exception as e:  # noqa: BLE001 (the video could not be decoded: every remaining stage fails)
+        for stage in active:
+            _fail(results, (vid, stage), e)
+        return results
+    runtime, peak = max(time.perf_counter() - t0, 1e-6), _peak_mem_gb(device)
+
+    for stage, cfg in todo:
+        if stage not in active:
+            continue
+        try:
+            with track_run(stage, model=models[stage].name, cfg_hash=cfg, root=root) as ctx:
+                rows, preds = base_rows(official), None
+                if stage == "people":
+                    for r in rows:
+                        r["person_count"] = out[stage][r["segment_id"]]
+                else:
+                    preds = []
+                    for r in rows:
+                        faces, scores = out[stage][r["segment_id"]]
+                        r["faces_detected"] = faces
+                        preds += [{"segment_id": r["segment_id"], "label": label, "label_group": "expression",
+                                   "score": float(np.clip(v, 0.0, 1.0)), "model": models[stage].name,
+                                   "run_id": ctx.run_id} for label, v in (scores or {}).items()]
+                _write_run_tables(ctx.run_id, video_row, rows, preds, root)
+                ctx.n_segments, ctx.runtime_s, ctx.peak_mem_gb = len(rows), runtime, peak
+            results[(vid, stage)] = f"done:{ctx.run_id}"
+        except Exception as e:  # noqa: BLE001
+            _fail(results, (vid, stage), e)
+    return results

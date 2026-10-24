@@ -147,7 +147,7 @@ def _predict(args) -> int:
 
 def _make_signal_models(stages: list[str], pipeline: dict, dev: str) -> dict:
     """Each selected stage's model, loaded once before any video (tests replace this function)."""
-    from tpa_index.signal_models import AstTagger, WhisperTranscriber
+    from tpa_index.signal_models import AstTagger, FaceExpression, WhisperTranscriber, YoloPersonCounter
 
     hpc, models, cfg = dev == "cuda", {}, pipeline["models"]
     for stage in stages:
@@ -157,8 +157,13 @@ def _make_signal_models(stages: list[str], pipeline: dict, dev: str) -> dict:
             models[stage] = WhisperTranscriber(t["hpc" if hpc else "mac"], wdev, t["compute_type"][wdev])
         elif stage == "audio":
             models[stage] = AstTagger(cfg["audio"]["hpc" if hpc else "mac"], dev, pipeline["signals"]["audio"]["mapping"])
-        else:
-            raise ConfigError(f"stage {stage} is not available yet")
+        elif stage == "people":
+            models[stage] = YoloPersonCounter(cfg["people"]["hpc" if hpc else "mac"], dev,
+                                              pipeline["signals"]["people"]["person_conf"])
+        elif stage == "expression":
+            e = cfg["expression"]
+            models[stage] = FaceExpression(e["face_detector"], e["model"], pipeline["signals"]["expression"]["mapping"],
+                                           pipeline["signals"]["expression"]["face_score"], pipeline["min_face_px"])
     return models
 
 

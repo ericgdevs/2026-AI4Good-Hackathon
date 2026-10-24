@@ -49,7 +49,11 @@ class WhisperTranscriber:
                               "; set models.transcript.hpc_device: cpu to run on CPU") from None
 
     def transcribe(self, wav_path: Path) -> list[dict]:
-        segments, info = self.model.transcribe(str(wav_path), vad_filter=True, word_timestamps=True,
+        import soundfile as sf
+
+        # an array, not the path: faster-whisper 1.2.1's own decoder passes an argument PyAV 19 rejects
+        audio, _ = sf.read(str(wav_path), dtype="float32", always_2d=False)
+        segments, info = self.model.transcribe(audio, vad_filter=True, word_timestamps=True,
                                                condition_on_previous_text=False)
         out = [{"start": s.start, "end": s.end, "text": s.text,
                 "words": [{"start": w.start, "end": w.end, "word": w.word} for w in s.words or []]}
@@ -87,3 +91,100 @@ class AstTagger:
         with self.torch.inference_mode():
             logits = self.model(input_values=inputs["input_values"].to(self.device)).logits
         return map_scores(self.torch.sigmoid(logits.float()).cpu().numpy(), self.class_index)
+
+
+class PersonCounter(Protocol):
+    name: str
+
+    def count(self, frames: np.ndarray) -> list[int]: ...  # (N,S,S,3) RGB -> persons per frame
+
+
+class ExpressionScorer(Protocol):
+    name: str
+    labels: list[str]
+
+    def faces(self, frame: np.ndarray) -> list[np.ndarray]: ...  # usable in-memory RGB crops
+
+    def score(self, crops: list[np.ndarray]) -> np.ndarray: ...  # (n_faces, len(labels)), mapped sums
+
+
+class YoloPersonCounter:
+    """YOLO11, person class only, detection only (no tracking). Only the count per frame leaves this class."""
+
+    def __init__(self, weights_entry: dict, device: str, conf: float):
+        import os
+
+        from tpa_index.config import pinned_weight
+
+        path = pinned_weight(weights_entry)  # first: a missing file never reaches ultralytics (it would download)
+        os.environ["YOLO_OFFLINE"] = "1"
+        from ultralytics import YOLO
+
+        self.model, self.device, self.conf = YOLO(str(path)), device, conf
+        self.name = Path(weights_entry["file"]).stem
+
+    def count(self, frames: np.ndarray) -> list[int]:
+        results = self.model.predict(list(frames), classes=[0], conf=self.conf, verbose=False, device=self.device)
+        return [len(r.boxes) for r in results]
+
+
+def usable_faces(detections, frame_shape, face_score: float, min_face_px: int) -> list[tuple[int, int, int, int]]:
+    """YuNet rows [x, y, w, h, 10 landmark values, score] -> boxes clipped to the frame, kept when the score and
+    the shorter side are high enough. Landmarks are never returned."""
+    if detections is None:
+        return []
+    h_img, w_img = frame_shape[:2]
+    boxes = []
+    for row in detections:
+        if row[14] < face_score:
+            continue
+        x0, y0 = max(int(row[0]), 0), max(int(row[1]), 0)
+        x1, y1 = min(int(row[0] + row[2]), w_img), min(int(row[1] + row[3]), h_img)
+        if min(x1 - x0, y1 - y0) >= min_face_px:
+            boxes.append((x0, y0, x1, y1))
+    return boxes
+
+
+class FaceExpression:
+    """YuNet face detection, then EmotiEffLib (ONNX, CPU) on in-memory crops. Classes mapped to our expression
+    labels in config (sum rule, no renormalization); valence/arousal outputs are dropped."""
+
+    def __init__(self, detector_entry: dict, model_entry: dict, mapping: dict[str, list[str]], face_score: float,
+                 min_face_px: int):
+        import cv2
+        from huggingface_hub import hf_hub_download
+        from huggingface_hub.errors import LocalEntryNotFoundError
+
+        from tpa_index.config import pinned_weight
+
+        path = pinned_weight(model_entry)  # before importing the library: it downloads missing files
+        try:
+            yunet = hf_hub_download(detector_entry["repo"], detector_entry["file"], local_files_only=True)
+        except LocalEntryNotFoundError:
+            raise ConfigError(f"model not found locally: {detector_entry['repo']}") from None
+        import emotiefflib.facial_analysis as fa
+
+        fa.get_model_path_onnx = lambda name: str(path)  # shortcut: library has no path argument; drop when it gets one
+        self.recognizer = fa.EmotiEffLibRecognizerOnnx(model_entry["name"])
+        classes = list(self.recognizer.idx_to_emotion_class.values())
+        missing = [c for cs in mapping.values() for c in cs if c not in classes]
+        if missing:
+            raise ConfigError(f"signals.expression.mapping: class {missing[0]!r} not in model classes")
+        self.columns = {label: [classes.index(c) for c in cs] for label, cs in mapping.items()}
+        self.n_classes = len(classes)
+        self.detector = cv2.FaceDetectorYN.create(yunet, "", (320, 320), face_score)
+        self.cv2, self.face_score, self.min_face_px = cv2, face_score, min_face_px
+        self.labels, self.name = list(mapping), model_entry["name"]
+
+    def faces(self, frame: np.ndarray) -> list[np.ndarray]:
+        h, w = frame.shape[:2]
+        self.detector.setInputSize((w, h))
+        _, detections = self.detector.detect(self.cv2.cvtColor(frame, self.cv2.COLOR_RGB2BGR))
+        boxes = usable_faces(detections, frame.shape, self.face_score, self.min_face_px)
+        del detections  # boxes only; landmarks dropped here
+        return [frame[y0:y1, x0:x1].copy() for x0, y0, x1, y1 in boxes]
+
+    def score(self, crops: list[np.ndarray]) -> np.ndarray:
+        _, probs = self.recognizer.predict_emotions(crops, logits=False)
+        probs = np.asarray(probs)[:, :self.n_classes]  # trailing valence/arousal columns are never kept
+        return np.stack([probs[:, cols].sum(axis=1) for cols in self.columns.values()], axis=1).astype(np.float32)

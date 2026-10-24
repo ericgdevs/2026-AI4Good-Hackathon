@@ -20,7 +20,7 @@ mkdir -p "$TPA_WEIGHTS_DIR"
 sha() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 
 # Hugging Face (offline at run time via HF_HUB_OFFLINE=1)
-for repo in Systran/faster-whisper-large-v3 Systran/faster-whisper-base Systran/faster-whisper-tiny \
+for repo in Systran/faster-whisper-large-v3 Systran/faster-whisper-small \
             MIT/ast-finetuned-audioset-10-10-0.4593; do
     uv run hf download "$repo" >/dev/null
     echo "hf: $repo"

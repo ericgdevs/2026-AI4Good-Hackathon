@@ -325,3 +325,160 @@ def test_whisper_missing_model_is_config_error(monkeypatch):
     monkeypatch.setattr(faster_whisper, "WhisperModel", missing)
     with pytest.raises(ConfigError, match="model not found locally: faster-whisper-base"):
         WhisperTranscriber("base", "cpu", "int8")
+
+
+# ---- people and expression helpers (T034) ---------------------------------------------------------------------------
+def test_median_count_rounds_halves_down():
+    assert signals.median_count([1, 2]) == 1
+    assert signals.median_count([1, 2, 3, 4]) == 2
+    assert signals.median_count([3]) == 3
+    assert signals.median_count([0, 5, 5, 0]) == 2
+
+
+def test_aggregate_expression():
+    import numpy as np
+
+    labels = ["positive", "neutral", "negative", "upset"]
+    assert signals.aggregate_expression([np.zeros((0, 4))] * 3, labels) == (0, None)
+    frames = [np.zeros((0, 4)), np.array([[0.6, 0.2, 0.1, 0.0], [0.2, 0.2, 0.1, 0.1]]),
+              np.array([[0.4, 0.5, 0.0, 0.0]])]
+    faces, scores = signals.aggregate_expression(frames, labels)
+    assert faces == 2  # most faces in one frame, not the total (no tracking, no double counting)
+    assert scores == pytest.approx({"positive": 0.4, "neutral": 0.3, "negative": 0.2 / 3, "upset": 0.1 / 3})
+    assert sum(scores.values()) < 1  # dropped classes are not renormalized
+
+
+# ---- weight loading never downloads (T037) --------------------------------------------------------------------------
+def test_missing_weights_raise_our_error_and_never_download(tmp_path, monkeypatch, pipeline):
+    import urllib.request
+
+    import emotiefflib.utils
+    import ultralytics
+
+    from tpa_index.signal_models import FaceExpression, YoloPersonCounter
+
+    def forbidden(*a, **k):
+        raise AssertionError("a download was attempted")
+
+    monkeypatch.setattr(urllib.request, "urlretrieve", forbidden)
+    monkeypatch.setattr(emotiefflib.utils, "download_model", forbidden)
+    monkeypatch.setattr(ultralytics, "YOLO", forbidden)
+    monkeypatch.setenv("TPA_WEIGHTS_DIR", str(tmp_path / "empty"))
+    monkeypatch.delenv("YOLO_OFFLINE", raising=False)
+    m = pipeline["models"]
+    with pytest.raises(ConfigError, match="weights not found: yolo11n.pt"):
+        YoloPersonCounter(m["people"]["mac"], "cpu", 0.4)
+    with pytest.raises(ConfigError, match="weights not found: enet_b0_8_va_mtl.onnx"):
+        FaceExpression(m["expression"]["face_detector"], m["expression"]["model"],
+                       pipeline["signals"]["expression"]["mapping"], 0.8, 48)
+
+
+def test_unpinned_weights_refused(tmp_path, monkeypatch, pipeline):
+    from tpa_index.signal_models import YoloPersonCounter
+
+    monkeypatch.setenv("TPA_WEIGHTS_DIR", str(tmp_path))
+    (tmp_path / "yolo11n.pt").write_bytes(b"not really weights")
+    with pytest.raises(ConfigError, match="weights not pinned: set sha256 for yolo11n.pt"):
+        YoloPersonCounter(pipeline["models"]["people"]["mac"], "cpu", 0.4)
+
+
+def test_cli_sets_yolo_offline(monkeypatch, clip_videos, pipeline, tmp_path):
+    from tests.test_cli import _job_a_models, signals_cli
+
+    monkeypatch.delenv("YOLO_OFFLINE", raising=False)
+    cli, sel = signals_cli(monkeypatch, _job_a_models(), clip_videos, pipeline, tmp_path)
+    cli.main(["signals", "--stages", "audio", *sel])
+    assert os.environ["YOLO_OFFLINE"] == "1"
+
+
+def test_usable_faces_filters_score_size_and_clips():
+    import numpy as np
+
+    from tpa_index.signal_models import usable_faces
+
+    def row(x, y, w, h, score):
+        return [x, y, w, h, *range(10), score]  # 10 landmark values, never returned
+
+    dets = np.array([row(10, 10, 60, 60, 0.95), row(100, 10, 60, 60, 0.5), row(200, 10, 30, 30, 0.99),
+                     row(-20, 300, 80, 80, 0.9)], np.float32)
+    boxes = usable_faces(dets, (400, 400, 3), 0.8, 48)
+    assert boxes == [(10, 10, 70, 70), (0, 300, 60, 380)]  # low score, small face dropped; edge face clipped
+    assert usable_faces(None, (400, 400, 3), 0.8, 48) == []
+    assert usable_faces(np.array([row(-40, 0, 80, 80, 0.9)], np.float32), (400, 400, 3), 0.8, 48) == []
+
+
+# ---- orchestration: people + expression with fakes (T039) ---------------------------------------------------------
+EXPR_LABELS = ["positive", "neutral", "negative", "upset"]
+
+
+@pytest.fixture
+def job_b(clip_videos, pipeline, labels, tmp_path, monkeypatch):
+    from tests.fakes import FakeExpressionScorer, FakePersonCounter
+
+    monkeypatch.setenv("TPA_SCRATCH_DIR", str(tmp_path / "scratch"))
+    vids = [clip_videos["t01"], clip_videos["t02"]]  # live 8 s windows and clip 4 s windows
+    official_clip_runs(vids, pipeline, tmp_path, monkeypatch)
+    models = {"people": FakePersonCounter(count=3), "expression": FakeExpressionScorer(EXPR_LABELS, faces_per_frame=2)}
+
+    def run(stages=("people", "expression"), **kw):
+        return signals.run_signals(vids, stages, models, pipeline, labels, **kw)
+    return run, models, vids
+
+
+def test_job_b_one_run_per_pair_with_rows(job_b, labels, pipeline):
+    from tpa_index.config import stage_config_hash
+
+    run, models, vids = job_b
+    results = run()
+    assert all(v.startswith("done:") for v in results.values()) and len(results) == 4
+    for v in vids:
+        n = len(signals.official_segments(v["video_id"]))
+        people = results[(v["video_id"], "people")].split(":")[1]
+        expr = results[(v["video_id"], "expression")].split(":")[1]
+        (prow,) = schema.read_table("runs", run_ids=[people]).to_pylist()
+        assert prow["config_hash"] == stage_config_hash("people", labels, pipeline, v)
+        assert {s["person_count"] for s in schema.read_table("segments", run_ids=[people]).to_pylist()} == {3}
+        segs = schema.read_table("segments", run_ids=[expr]).to_pylist()
+        assert {s["faces_detected"] for s in segs} == {2} and all(s["person_count"] is None for s in segs)
+        preds = schema.read_table("predictions", run_ids=[expr]).to_pylist()
+        assert len(preds) == n * 4 and {p["label_group"] for p in preds} == {"expression"}
+        assert "confident" not in {p["label"] for p in preds}
+
+
+def test_job_b_frames_decoded_once(job_b, monkeypatch):
+    from tpa_index import segment
+
+    run, _, vids = job_b
+    calls = []
+    real = segment._sample_frames
+    monkeypatch.setattr(segment, "_sample_frames", lambda *a, **k: calls.append(1) or real(*a, **k))
+    run()
+    assert len(calls) == sum(len(signals.official_segments(v["video_id"])) for v in vids)
+
+
+def test_job_b_expression_failure_keeps_people(job_b):
+    run, models, _ = job_b
+    models["expression"].fail_on_call = 3  # mid-pass, first video
+    results = run()
+    assert results[("t01", "expression")] == "failed:RuntimeError"
+    assert results[("t01", "people")].startswith("done:")
+    assert results[("t02", "expression")].startswith("done:")
+    expr_runs = [r for r in schema.read_table("runs").to_pylist() if r["stage"] == "expression"]
+    assert len(expr_runs) == 1
+
+
+def test_job_b_resume_and_force(job_b):
+    run, _, _ = job_b
+    run()
+    again = run()
+    assert all(v.startswith("skipped:") for v in again.values())
+    forced = run(force=True)
+    assert all(v.startswith("done:") for v in forced.values())
+
+
+def test_job_b_shared_runtime(job_b):
+    run, _, _ = job_b
+    results = run()
+    rows = {r["run_id"]: r for r in schema.read_table("runs").to_pylist()}
+    t01 = [rows[results[("t01", s)].split(":")[1]] for s in ("people", "expression")]
+    assert t01[0]["runtime_s"] == t01[1]["runtime_s"] and t01[0]["peak_mem_gb"] == t01[1]["peak_mem_gb"]

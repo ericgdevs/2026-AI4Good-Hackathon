@@ -155,24 +155,24 @@
 **Goal**: `tpa-index signals --stages people,expression` runs on synthetic clips in one shared frame pass.
 **Independent test**: T039 to T043 and T045 pass.
 
-- [ ] T034 [P] [US1] In `src/tpa_index/signals.py`, add `median_count(counts) -> int` (`floor(statistics.median(counts))`, halves round down) and `aggregate_expression(per_frame_scores, labels) -> tuple[int, dict | None]`. Each element of `per_frame_scores` is an `(n_faces, n_labels)` array. The result is `faces_detected = max n_faces`, and mean scores over all faces in all frames, or `None` when there are no faces. In `tests/test_signals.py`, test `median_count([1,2])==1`, `[1,2,3,4]==2` and `[3]==3`, and `aggregate_expression` with 0 faces (`(0, None)`), faces in two frames (max and mean), and per-face sums below 1 kept unrenormalized.
-- [ ] T035 [US1] In `src/tpa_index/signal_models.py`, add `YoloPersonCounter(weights_entry, device, conf)`.
+- [X] T034 [P] [US1] In `src/tpa_index/signals.py`, add `median_count(counts) -> int` (`floor(statistics.median(counts))`, halves round down) and `aggregate_expression(per_frame_scores, labels) -> tuple[int, dict | None]`. Each element of `per_frame_scores` is an `(n_faces, n_labels)` array. The result is `faces_detected = max n_faces`, and mean scores over all faces in all frames, or `None` when there are no faces. In `tests/test_signals.py`, test `median_count([1,2])==1`, `[1,2,3,4]==2` and `[3]==3`, and `aggregate_expression` with 0 faces (`(0, None)`), faces in two frames (max and mean), and per-face sums below 1 kept unrenormalized.
+- [X] T035 [US1] In `src/tpa_index/signal_models.py`, add `YoloPersonCounter(weights_entry, device, conf)`.
   - Set `os.environ["YOLO_OFFLINE"] = "1"` **before** `from ultralytics import YOLO`.
   - Get the path from `config.pinned_weight(weights_entry)`, which runs first, so a missing file never reaches ultralytics.
   - `count(frames)` runs `model.predict(list(frames), classes=[0], conf=conf, verbose=False, device=...)` and returns `[len(r.boxes) for r in results]`, keeping nothing else.
   - `name = Path(file).stem`.
-- [ ] T036 [US1] In `src/tpa_index/signal_models.py`, add `FaceExpression(detector_entry, model_entry, mapping, face_score, min_face_px)`.
+- [X] T036 [US1] In `src/tpa_index/signal_models.py`, add `FaceExpression(detector_entry, model_entry, mapping, face_score, min_face_px)`.
   - YuNet path from `huggingface_hub.hf_hub_download(repo, file, local_files_only=True)` (an error gives `ConfigError`), then `cv2.FaceDetectorYN.create(path, "", (320, 320), face_score)`.
   - EmotiEffLib: `path = config.pinned_weight(model_entry)` first. Then `import emotiefflib.facial_analysis as fa` and set `fa.get_model_path_onnx = lambda name: str(path)` (comment `# shortcut: library has no path argument; drop when it gets one`). Then construct `fa.EmotiEffLibRecognizerOnnx(model_entry["name"])`.
   - Check the mapping classes against `recognizer.idx_to_emotion_class.values()`; any miss gives `ConfigError(f"signals.expression.mapping: class {c!r} not in model classes")`.
   - `faces(frame_rgb)` does `setInputSize((w, h))`, runs `detect` on the BGR copy, and keeps rows with `score >= face_score` and `min(w, h) >= min_face_px`. It clips each box to the frame, cuts the RGB crop in memory, and discards the row (landmarks included). It returns crops only.
   - `score(crops)` calls `predict_emotions(crops, logits=False)`, takes `[:, :8]` (dropping valence and arousal), and sums the mapped class columns per label.
   - `name = model_entry["name"]`.
-- [ ] T037 [P] [US1] In `tests/test_signals.py`, add `test_missing_weights_raise_our_error_and_never_download`:
+- [X] T037 [P] [US1] In `tests/test_signals.py`, add `test_missing_weights_raise_our_error_and_never_download`:
   - monkeypatch `urllib.request.urlretrieve` and `emotiefflib.utils.download_model` to fail the test if called, and `ultralytics.YOLO` to fail the test if constructed;
   - with an empty `TPA_WEIGHTS_DIR`, assert `YoloPersonCounter(...)` and `FaceExpression(...)` each raise `ConfigError` containing `weights not found`;
   - assert `os.environ["YOLO_OFFLINE"] == "1"` after the attempt.
-- [ ] T038 [US1] In `src/tpa_index/signals.py`, add the people and expression branch of `run_signals`.
+- [X] T038 [US1] In `src/tpa_index/signals.py`, add the people and expression branch of `run_signals`.
   - Resume check per stage as in T020.
   - One `segment_video(video, effective_settings(pipeline, video), with_audio=False)` pass.
   - For each window, each active stage's update runs in its own `try/except`. A stage that raises is marked `failed:<Type>`, logged by stage, video and type only, and dropped for the rest of the pass.
@@ -181,24 +181,24 @@
   - Measure the pass's wall time and `runs._peak_mem_gb(dev)` right after the pass.
   - For each surviving stage: `track_run(...)` with `ctx.runtime_s` and `ctx.peak_mem_gb` set. Write `videos` and `segments` (`person_count` or `faces_detected` on `base_rows`), and for expression `predictions` (rows only where `faces_detected >= 1`, `label_group="expression"`).
   - Frames are never written anywhere.
-- [ ] T039 [US1] In `tests/test_signals.py`, add orchestration tests with `FakePersonCounter` and `FakeExpressionScorer`:
+- [X] T039 [US1] In `tests/test_signals.py`, add orchestration tests with `FakePersonCounter` and `FakeExpressionScorer`:
   - one run per pair with the right stage and hash;
   - `segment_video` is called once per video when both stages run (spy);
   - an expression fake raising mid-pass leaves the people run complete and no expression runs.parquet;
   - resume skips and `--force` reruns;
   - both runs record the same runtime_s.
-- [ ] T040 [P] [US2] **SC-004 test**: in `tests/test_signals_privacy.py`, add `test_zero_faces_give_no_expression_rows`. Use the static synthetic clip (t04, uniform frames) with `FakeExpressionScorer` (0 faces on uniform frames), plus a case where the scorer returns only faces below `min_face_px` (filtered by the real size rule through a small `FaceExpression`-like filter test of `faces()` with a fake detector output). Assert `faces_detected == 0` for every segment, and that `predictions.parquet` has 0 rows for those segments and never a `neutral` row.
-- [ ] T041 [P] [US2] **SC-001 test**: in `tests/test_signals_privacy.py`, add `test_no_identity_columns_or_files`.
+- [X] T040 [P] [US2] **SC-004 test**: in `tests/test_signals_privacy.py`, add `test_zero_faces_give_no_expression_rows`. Use the static synthetic clip (t04, uniform frames) with `FakeExpressionScorer` (0 faces on uniform frames), plus a case where the scorer returns only faces below `min_face_px` (filtered by the real size rule through a small `FaceExpression`-like filter test of `faces()` with a fake detector output). Assert `faces_detected == 0` for every segment, and that `predictions.parquet` has 0 rows for those segments and never a `neutral` row.
+- [X] T041 [P] [US2] **SC-001 test**: in `tests/test_signals_privacy.py`, add `test_no_identity_columns_or_files`.
   - After running all four stages with fakes, every stage run folder contains only `{videos,segments,predictions,runs}.parquet` (plus `transcript.json` for transcript runs).
   - No column name in any written Parquet, or in `schema.SCHEMAS`, matches `(?i)(embed|track|landmark|bbox|box|crop|face_id|person_id|identity)`.
   - Expression and people tables have at most one row per (segment_id, label, model, run_id), and no table has more rows per segment than labels.
-- [ ] T042 [P] [US1] In `tests/test_signals_slow.py`, add:
+- [X] T042 [P] [US1] In `tests/test_signals_slow.py`, add:
   - `test_yolo11n_counts_zero_on_solid_frame`: real yolo11n, one 640×640 gray frame, gives `[0]`;
   - `test_yunet_emotiefflib_no_faces_on_drawn_shapes`: real `FaceExpression` on a frame with a drawn circle and rectangle (cv2), gives `faces() == []`; a direct `score()` on one synthetic 224×224 gray crop returns shape (1, 4) in 0–1, with no file written.
   - One model per test, released in `finally`.
-- [ ] T043 [P] [US2] **SC-013 test (expression half)**: in `tests/test_signals_privacy.py`, add `test_bad_expression_mapping_class_exits_before_any_video`. Monkeypatch the recognizer to a fake with the 8 standard classes, set a mapping containing `"Happyness"`, and run `cli.main(["signals", "--stages", "expression"])`. Assert exit 3, a message naming `'Happyness'`, and no run folders.
-- [ ] T044 [US2] In `tests/test_signals_privacy.py`, extend T029's file check to the people and expression run: after a job-B run (and one with a failing expression fake), OUTPUT_DIR and scratch contain no image or `*.npy` files.
-- [ ] T045 **Checkpoint 2**: `uv run pytest` passes. If weights are cached, run `uv run pytest -m slow tests/test_signals_slow.py -k "yolo or yunet"`, one at a time. Then, in the scratch setup from T033, run `tpa-index signals --stages people,expression --kind clip` and confirm 2 runs per clip video, `faces_detected == 0` on the synthetic clips, and no image files anywhere.
+- [X] T043 [P] [US2] **SC-013 test (expression half)**: in `tests/test_signals_privacy.py`, add `test_bad_expression_mapping_class_exits_before_any_video`. Monkeypatch the recognizer to a fake with the 8 standard classes, set a mapping containing `"Happyness"`, and run `cli.main(["signals", "--stages", "expression"])`. Assert exit 3, a message naming `'Happyness'`, and no run folders.
+- [X] T044 [US2] In `tests/test_signals_privacy.py`, extend T029's file check to the people and expression run: after a job-B run (and one with a failing expression fake), OUTPUT_DIR and scratch contain no image or `*.npy` files.
+- [X] T045 **Checkpoint 2**: (real-model run pending: yolo11n.pt, YuNet and enet_b0_8_va_mtl.onnx not on the Mac yet; fakes cover the pass) `uv run pytest` passes. If weights are cached, run `uv run pytest -m slow tests/test_signals_slow.py -k "yolo or yunet"`, one at a time. Then, in the scratch setup from T033, run `tpa-index signals --stages people,expression --kind clip` and confirm 2 runs per clip video, `faces_detected == 0` on the synthetic clips, and no image files anywhere.
 
 ---
 

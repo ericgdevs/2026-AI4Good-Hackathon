@@ -32,7 +32,7 @@ models:
   # 004 signal stages: weights load from local files only (HF_HOME, or weights_dir() for GitHub assets)
   transcript:
     hpc: large-v3                # faster-whisper size; Systran/faster-whisper-<size> in HF_HOME
-    mac: base
+    mac: small                   # cached on the Mac; base/tiny are smaller if fetched
     hpc_device: cuda             # cpu = int8 on CPU; a cuda load failure stops with the missing library named
     compute_type: {cuda: float16, cpu: int8}
   audio:

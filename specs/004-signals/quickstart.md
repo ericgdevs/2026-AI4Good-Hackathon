@@ -6,7 +6,7 @@ Only steps 2–3 belong to this feature's development work. Steps 1 and 4–6 ar
 
 ```bash
 export HF_HOME=$HOME/hf-cache
-uv run hf download Systran/faster-whisper-large-v3        # Mac: Systran/faster-whisper-base (and -tiny for slow tests)
+uv run hf download Systran/faster-whisper-large-v3        # Mac: Systran/faster-whisper-small (already cached)
 uv run hf download MIT/ast-finetuned-audioset-10-10-0.4593
 uv run hf download opencv/face_detection_yunet face_detection_yunet_2023mar.onnx
 mkdir -p $HF_HOME/tpa-weights && cd $HF_HOME/tpa-weights
@@ -40,6 +40,19 @@ sbatch scripts/slurm/signals.sbatch --stages transcript,audio --kind promo
 ```
 
 If transcript fails with "could not load on cuda", set `models.transcript.hpc_device: cpu` (research R3).
+
+### CUDA 12 libraries for faster-whisper (HPC)
+
+The nodes have CUDA 13, but faster-whisper's CTranslate2 backend needs CUDA 12 cuBLAS and cuDNN 9. These come from
+the Linux-only dependencies `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` (in `uv.lock`; nothing changes on the Mac).
+`scripts/slurm/signals.sbatch` finds their library folders from the installed `nvidia.cublas.lib` and
+`nvidia.cudnn.lib` packages and prepends them to `LD_LIBRARY_PATH` before running, so a manual export is not needed:
+
+```bash
+export LD_LIBRARY_PATH="$(uv run python -c 'import nvidia.cublas.lib as b, nvidia.cudnn.lib as d; print(b.__path__[0] + ":" + d.__path__[0])'):${LD_LIBRARY_PATH:-}"
+```
+
+If transcript still stops with "could not load on cuda: missing lib…", the error names the missing library.
 
 ## 5. HPC full run: two parallel jobs
 

@@ -123,7 +123,7 @@ class ExpressionScorer(Protocol):
 class YoloPersonCounter:
     """YOLO11, person class only, detection only (no tracking). Only the count per frame leaves this class."""
 
-    def __init__(self, weights_entry: dict, device: str, conf: float):
+    def __init__(self, weights_entry: dict, device: str, conf: float, min_box_height_frac: float):
         import os
 
         from tpa_index.config import pinned_weight
@@ -136,11 +136,12 @@ class YoloPersonCounter:
 
         torch.set_num_threads(cpu_threads())  # pre/post-processing runs on the CPU
         self.model, self.device, self.conf = YOLO(str(path)), device, conf
+        self.min_h = min_box_height_frac
         self.name = Path(weights_entry["file"]).stem
 
     def count(self, frames: np.ndarray) -> list[int]:
         results = self.model.predict(list(frames), classes=[0], conf=self.conf, verbose=False, device=self.device)
-        return [len(r.boxes) for r in results]
+        return [int((r.boxes.xywhn[:, 3] >= self.min_h).sum()) for r in results]  # small/distant people do not count
 
 
 def usable_faces(detections, frame_shape, face_score: float, min_face_px: int) -> list[tuple[int, int, int, int]]:

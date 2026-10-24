@@ -241,6 +241,7 @@ def _check_pipeline_labels(d: dict, labels: dict) -> dict:
         if label not in activity:
             raise ConfigError(f"pipeline.models.motion: {label} is not an activity label")
     _check_signals(d, labels)
+    _check_insights(d, labels)
     if not isinstance(d.get("app"), dict):
         raise ConfigError("pipeline: app section missing")
     _check_app(d["app"], d, labels)
@@ -308,6 +309,8 @@ def _check_signals(d: dict, labels: dict) -> None:
             raise ConfigError(f"{where}: section missing")
         if not 0 < _number(block, key, where) < 1:
             raise ConfigError(f"{where}: {key} must be within (0, 1)")
+    if not 0 <= _number(sig["people"], "min_box_height_frac", "pipeline.signals.people") < 1:
+        raise ConfigError("pipeline.signals.people: min_box_height_frac must be within [0, 1)")
     side = sig["expression"].get("detect_max_side")
     if not isinstance(side, int) or isinstance(side, bool) or side < 320:
         raise ConfigError("pipeline.signals.expression.detect_max_side: must be an integer >= 320")
@@ -320,6 +323,96 @@ def _check_signals(d: dict, labels: dict) -> None:
     # confident is derived later (005), never model-scored here
     expr_labels = {lab["name"] for lab in model_labels(labels, {"expression"})} - {"confident"}
     _check_mapping(sig["expression"].get("mapping"), "pipeline.signals.expression.mapping", expr_labels)
+
+
+_CONDITIONS = ("audio", "has_speech", "clears", "primary_in", "person_count", "indicator", "all", "any")
+
+
+def _check_condition(c, where: str, names: dict, defined: list[str]) -> None:
+    """One rule condition (contracts/config.md grammar); recursive for all/any."""
+    if not isinstance(c, dict) or len(c) != 1:
+        raise ConfigError(f"{where}: a condition is a mapping with exactly one key")
+    (key, value), = c.items()
+    if key not in _CONDITIONS:
+        raise ConfigError(f"{where}: unknown condition {key!r} (allowed: {', '.join(_CONDITIONS)})")
+    if key in ("all", "any"):
+        if not isinstance(value, list) or not value:
+            raise ConfigError(f"{where}.{key}: must be a non-empty list")
+        for i, sub in enumerate(value):
+            _check_condition(sub, f"{where}.{key}[{i}]", names, defined)
+    elif key == "audio" and value not in names["audio"]:
+        raise ConfigError(f"{where}.audio: {value!r} is not an audio label")
+    elif key == "has_speech" and value is not True:
+        raise ConfigError(f"{where}.has_speech: must be true")
+    elif key == "clears" and value not in names["visual"]:
+        raise ConfigError(f"{where}.clears: {value!r} is not a model-scored visual label")
+    elif key == "primary_in" and value != "primary_like" and not (
+            isinstance(value, list) and value and all(v in names["activity"] for v in value)):
+        raise ConfigError(f"{where}.primary_in: must be primary_like or a list of activity labels")
+    elif key == "person_count" and not (isinstance(value, dict) and len(value) == 1 and next(iter(value)) in
+                                        ("eq", "gte", "lte") and isinstance(next(iter(value.values())), int)
+                                        and not isinstance(next(iter(value.values())), bool)):
+        raise ConfigError(f"{where}.person_count: must be {{eq|gte|lte: integer}}")
+    elif key == "indicator" and value not in defined:
+        raise ConfigError(f"{where}.indicator: {value!r} is not an earlier indicator rule")
+
+
+def _check_insights(d: dict, labels: dict) -> None:
+    """005 insights: block (load time)."""
+    ins, where = d.get("insights"), "pipeline.insights"
+    if not isinstance(ins, dict):
+        raise ConfigError(f"{where}: section missing")
+    for key, block in (("min_support", ins), ("failure_gallery", ins), ("resamples", ins.get("bootstrap") or {}),
+                       ("block", ins.get("bootstrap") or {}), ("seed", ins.get("bootstrap") or {})):
+        v = block.get(key)
+        if not isinstance(v, int) or isinstance(v, bool) or v < (0 if key == "seed" else 1):
+            raise ConfigError(f"{where}: {key} must be an integer >= {0 if key == 'seed' else 1}")
+    if _number(ins, "applause_after_s", where) < 0:
+        raise ConfigError(f"{where}: applause_after_s must be >= 0")
+    if not 0 < _number(ins, "audio_threshold", where) < 1:
+        raise ConfigError(f"{where}: audio_threshold must be within (0, 1)")
+    lc = ins.get("learned")
+    if not isinstance(lc, dict) or not isinstance(lc.get("folds"), int) or lc["folds"] < 2 \
+            or not isinstance(lc.get("max_iter"), int) or lc["max_iter"] < 1 or not isinstance(lc.get("seed"), int) \
+            or not isinstance(lc.get("C"), (int, float)) or lc["C"] <= 0:
+        raise ConfigError(f"{where}.learned: needs folds (int >= 2), C (> 0), max_iter (int >= 1) and seed (int)")
+    if ins.get("labels_source") not in ("learned", "zero-shot"):
+        raise ConfigError(f"{where}.labels_source: must be learned or zero-shot")
+    names = {"audio": {lab["name"] for lab in model_labels(labels, {"audio"})},
+             "activity": {lab["name"] for lab in model_labels(labels, {"activity"})},
+             "visual": {lab["name"] for lab in model_labels(labels, set(d["visual_groups"]))}}
+    pl = ins.get("primary_like")
+    if not isinstance(pl, list) or not pl or not all(v in names["activity"] for v in pl):
+        raise ConfigError(f"{where}.primary_like: must be a non-empty list of activity labels")
+    fusion = ins.get("fusion")
+    if not isinstance(fusion, list):
+        raise ConfigError(f"{where}.fusion: must be a list")
+    for i, rule in enumerate(fusion):
+        w = f"{where}.fusion[{i}]"
+        if not isinstance(rule, dict) or set(rule) != {"label", "require_any"}:
+            raise ConfigError(f"{w}: needs exactly label and require_any")
+        if rule["label"] not in names["activity"]:
+            raise ConfigError(f"{w}.label: {rule['label']!r} is not a model-scored activity label")
+        _check_condition({"any": rule["require_any"]}, f"{w}.require_any", names, [])
+    rules = ins.get("indicator_rules")
+    indicators = {lab["name"] for lab in labels["labels"] if lab["group"] == "indicator"}
+    if not isinstance(rules, dict):
+        raise ConfigError(f"{where}.indicator_rules: must map indicator -> condition")
+    defined: list[str] = []
+    for name, cond in rules.items():
+        if name not in indicators:
+            raise ConfigError(f"{where}.indicator_rules.{name}: not an indicator label")
+        _check_condition(cond, f"{where}.indicator_rules.{name}", names, defined)
+        defined.append(name)
+
+
+def required_threshold(pipeline: dict, model: str, label: str, stage_hint: str = "predict") -> float:
+    """Calibrated per-model threshold; never the global label_threshold (005 must not silently fall back)."""
+    value = (pipeline.get("label_thresholds") or {}).get(model, {}).get(label)
+    if value is None:
+        raise ConfigError(f"no calibrated threshold for {label} (model {model}): run tpa-index calibrate "
+                          f"--stage {stage_hint} --split dev on HPC, then sync")
+    return value
 
 
 SIGNAL_STAGES = ("transcript", "audio", "people", "expression")

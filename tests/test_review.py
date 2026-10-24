@@ -79,6 +79,7 @@ def test_vocabulary_swap(tmp_path, labels, pipeline):
     alt_pipe["app"]["blind_groups"] = [primary_group, venue, indicator_group]
     alt_pipe["app"]["uncertain_label"] = "unsure"
     alt_pipe["models"]["motion"]["labels"] = ["juggling"]
+    alt_pipe["insights"].update(primary_like=["juggling"], fusion=[], indicator_rules={})  # 005 rules follow the vocabulary
     alt_pipe["label_thresholds"] = {}
     (tmp_path / "pipeline.yaml").write_text(yaml.safe_dump(alt_pipe, sort_keys=False))
 

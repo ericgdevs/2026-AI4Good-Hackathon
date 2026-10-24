@@ -86,7 +86,8 @@ def test_yolo11n_counts_zero_on_solid_frame():
 
     cfg = load_pipeline()
     try:
-        model = YoloPersonCounter(cfg["models"]["people"]["mac"], "cpu", cfg["signals"]["people"]["person_conf"])
+        model = YoloPersonCounter(cfg["models"]["people"]["mac"], "cpu", cfg["signals"]["people"]["person_conf"],
+                                  cfg["signals"]["people"]["min_box_height_frac"])
     except ConfigError as e:
         _skip_unless_loaded(e, "yolo11n.pt (ultralytics/assets v8.3.0) with sha256 in config")
     try:

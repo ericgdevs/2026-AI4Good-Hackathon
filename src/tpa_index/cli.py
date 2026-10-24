@@ -159,8 +159,9 @@ def _make_signal_models(stages: list[str], pipeline: dict, dev: str) -> dict:
         elif stage == "audio":
             models[stage] = AstTagger(cfg["audio"]["hpc" if hpc else "mac"], dev, pipeline["signals"]["audio"]["mapping"])
         elif stage == "people":
-            models[stage] = YoloPersonCounter(cfg["people"]["hpc" if hpc else "mac"], dev,
-                                              pipeline["signals"]["people"]["person_conf"])
+            sp = pipeline["signals"]["people"]
+            models[stage] = YoloPersonCounter(cfg["people"]["hpc" if hpc else "mac"], dev, sp["person_conf"],
+                                              sp["min_box_height_frac"])
         elif stage == "expression":
             e = cfg["expression"]
             sx = pipeline["signals"]["expression"]
@@ -199,6 +200,55 @@ def _signals(args) -> int:
     if failed:
         print(f"failed: {', '.join(failed)}", file=sys.stderr)
         return 1
+    return 0
+
+
+def _evaluate(args) -> int:
+    from tpa_index.evaluate import run_evaluate
+    from tpa_index.report import _ci, write_result
+
+    payload = run_evaluate(load_pipeline(), load_labels())  # missing stage/threshold/labels -> ConfigError (exit 3)
+    es = payload["eval_set"]
+    print("eval segments: " + ", ".join(f"{v} {n}" for v, n in sorted(es["per_video"].items()))
+          + f" (skipped {es['skipped']}, not scored {es['not_scored']}, dev labels ignored {es['dev_labels_ignored']})")
+    for h in payload["headline"]:
+        print(f"{h['system']}: primary accuracy {_ci(h['primary_accuracy'], h['primary_accuracy_ci'])}), "
+              + ", ".join(f"macro-F1 {g} {_ci(h[f'macro_f1_{g}'], h[f'macro_f1_{g}_ci'])})"
+                          for g in ("activity", "category", "actor")))
+        print(f"  {h['kappa_primary_sentence']}")
+        print(f"  category {h['kappa_category_sentence']} ({h['category_kappa_excluded']} segments with 2+ "
+              "categories excluded)")
+    for r in payload["signal_indicators"]:
+        shown = "too few to score" if r["status"] != "ok" else f"F1 {_ci(r['f1'], (r['ci_low'], r['ci_high']))})"
+        print(f"signal-based {r['indicator']}: support {r['support']}, {shown}, not available {r['not_available']}")
+    if args.dry_run:
+        print("dry run: nothing written")
+        return 0
+    out = write_result("evaluate", payload)
+    print(f"written: <OUTPUT_DIR>/results/{out.name}")
+    return 0
+
+
+def _insights(args) -> int:
+    from tpa_index.indicators import run_insights
+    from tpa_index.report import show, show_change, write_result
+
+    payload = run_insights(load_pipeline(), load_labels())  # missing stage/threshold/labels -> ConfigError (exit 3)
+    print(f"model fallback: {payload['labels_source']} ({payload['model_tag']}); staff-verified labels first")
+    for r in payload["headline"]:
+        value = show(r["value"], r["unit"]) if r["status"] == "ok" else r["status"]
+        change = "" if r["change_vs_early"] is None else f" (change vs early {show_change(r['change_vs_early'], r['unit'])})"
+        print(f"{r['indicator']} [{r['phase']}]: {value}{change}  [{r['tag'] or '-'}]")
+    tb = next(b for b in payload["time_breakdown"] if b["scope_type"] == "all")
+    print(f"time (all videos): youth {tb['youth_s'] / 60:.1f} min, staff-led {tb['staff_led_verified_s'] / 60:.1f} "
+          f"min verified + {tb['staff_led_model_s'] / 60:.1f} min model rule, idle {tb['idle_s'] / 60:.1f} min")
+    if payload["excluded_videos"]:
+        print(f"left out of the headline (phase unknown): {', '.join(payload['excluded_videos'])}")
+    if args.dry_run:
+        print("dry run: nothing written")
+        return 0
+    out = write_result("insights", payload)
+    print(f"written: <OUTPUT_DIR>/results/{out.name}")
     return 0
 
 
@@ -421,6 +471,12 @@ def main(argv=None) -> int:
     sig.add_argument("--kind", action="append", help="only videos of this kind (repeatable)")
     sig.add_argument("--force", action="store_true", help="rerun pairs that already have a finished run")
     sig.set_defaults(func=_signals)
+    ev = sub.add_parser("evaluate", help="005: model vs blind labels on eval videos (metrics, ablation, CIs)")
+    ev.add_argument("--dry-run", action="store_true", help="print the numbers, write nothing")
+    ev.set_defaults(func=_evaluate)
+    ins = sub.add_parser("insights", help="005: youth-only program indicators per video and phase, tagged")
+    ins.add_argument("--dry-run", action="store_true", help="print the headline, write nothing")
+    ins.set_defaults(func=_insights)
     pred = sub.choices["predict"]
     pred.add_argument("--kind", action="append", help="only videos of this kind (repeatable), e.g. promo")
     pred.add_argument("--model", help="model id (default: models.main.hpc on cuda, models.main.mac otherwise)")

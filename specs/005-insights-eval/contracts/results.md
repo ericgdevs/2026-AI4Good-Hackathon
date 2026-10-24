@@ -1,0 +1,102 @@
+# Contract: Result Folders (005 → 006)
+
+006 reads 005's results by files only. This contract is the interface. A change that removes or renames anything here bumps `schema_version`.
+
+## Location and completion
+
+```
+{OUTPUT_DIR}/results/
+  evaluate-20261024T213005-1a2b/      # one per `tpa-index evaluate` run
+  insights-20261024T213040-3c4d/      # one per `tpa-index insights` run
+```
+
+- The folder name is `{kind}-{YYYYmmddTHHMMSS}-{4 hex}`. It is created once and never modified afterwards.
+- **A folder is complete when it contains `manifest.json`.** That file is written last, atomically (temp file + rename). Readers MUST ignore folders without it.
+- **Latest result**: the complete folder of that kind whose name sorts last.
+- Everything here is aggregate. There are no filenames, no transcript text, no frames, and no per-person or per-face fields. Video IDs are opaque (`v01`).
+
+## manifest.json
+
+```json
+{
+  "schema_version": 1,
+  "kind": "evaluate",
+  "created_at": "2026-10-24T21:30:05Z",
+  "git_commit": "abc1234",
+  "config_hash": "0123456789ab",
+  "guideline_versions": ["0.4.0", "0.5.0"],
+  "official_runs": {"predict": ["predict-…"], "moments": ["moments-…"], "audio": ["audio-…"], "people": ["people-…"]},
+  "files": {"metrics.csv": "<sha256>", "metrics.json": "<sha256>"},
+  "limitations": ["single labeler: no human-vs-human agreement", "..."]
+}
+```
+
+Insights manifests also carry `"phase_source"`: `local config` | `stored runs` | `local config (stored runs for unlisted videos)`.
+
+## Tag values (exact strings)
+
+| `tag` | meaning |
+|---|---|
+| `staff-verified` | every contributing segment's label is verified by staff (blind label or review decision) |
+| `model estimate (unvalidated)` | no contributing segment is verified |
+| `model estimate (learned)` | no contributing segment is verified and the model fallback is the learned final model (`insights.labels_source: learned`, the default); also every row of `learned_predictions.csv` and the learned rows of `signal_indicators.csv` |
+| `mixed (NN% staff-verified)` | NN = round(100 × verified_share); 1 ≤ NN ≤ 99 |
+| `metric` | an evaluation number (model vs blind labels); carries an interval instead of a verified share |
+
+Every indicator row also has `verified_share` (0–1) as a number, so readers never parse the tag.
+
+## evaluate-* folder
+
+| file | content |
+|---|---|
+| `metrics.csv` | one row per (system, scope, group, label, metric) |
+| `metrics.json` | keys `metrics` (the same rows), `headline` (one object per system), `eval_set` (counts per video, skipped, not scored, dev labels ignored, category_kappa_excluded), `limitations`, `guideline_versions` |
+| `confusion.csv` | system, human_primary, model_primary, count |
+| `signal_indicators.csv` | per indicator: support, tp, fp, fn, precision, recall, f1, ci_low, ci_high, not_available, status, tag, system (`zero-shot` or the learned system; added at the end) |
+| `ablation.csv` | one row per system; columns in order: system, n_segments, primary_accuracy, primary_accuracy_ci_low, primary_accuracy_ci_high, macro_f1_activity, macro_f1_activity_ci_low, macro_f1_activity_ci_high, macro_f1_category, macro_f1_category_ci_low, macro_f1_category_ci_high, macro_f1_actor, macro_f1_actor_ci_low, macro_f1_actor_ci_high, kappa_primary, kappa_category, rules_fired, rules_not_applicable (`label:count;…`, only on the signal-rules row) |
+| `topup.csv` | label, predicted_positive, tp, precision (top-up labels only; empty with header if none) |
+| `failure_gallery.csv` | rank, segment_id, video_id, model_primary, human_primary, model_strength |
+| `learned_predictions.csv` | final learned model, every official segment: segment_id, video_id, primary, primary_prob, activities, categories, actors, tag (`model estimate (learned)`); label lists are `;`-joined |
+| `ablation.png`, `per_label_f1.png`, `confusion.png`, `coverage.png` | charts |
+| `summary.md` | slide text: headline numbers with support and 95% CI, kappa sentence, limitations |
+| `manifest.json` | written last |
+
+### metrics.csv columns
+
+`system, scope, group, label, metric, value, ci_low, ci_high, support, n_segments, status, tag`
+
+- `system`: `zero-shot` | `zero-shot + signal rules` | `learned (cross-validated on our labels)`.
+- `scope`: `all` | a video ID.
+- `group`: `activity` | `category` | `actor` | `primary` | `uncertainty`.
+- `metric`: `precision` | `recall` | `f1` | `macro_f1` | `accuracy` | `accuracy_real_activity` | `kappa` | `rate` | `coverage` | `accuracy_confident` | `accuracy_flagged`.
+- `status`: `ok` | `too few to score` | `undefined`. When the status isn't `ok`, `value` and the CI are empty.
+- `tag`: always `metric`.
+
+## insights-* folder
+
+| file | content |
+|---|---|
+| `indicators.csv` | one row per (indicator, scope) |
+| `indicators.json` | keys `indicators` (the same rows), `headline`, `time_breakdown`, `excluded_videos`, `labels_source` (`learned` \| `zero-shot`), `model_tag`, `phase_source`, `model_staff_share` (share of all time excluded by the model staff rule), `limitations` |
+| `headline.csv` | indicator, phase, value, unit, tag, verified_share, change_vs_early, status (added at the end). Indicators: performance_share, solo_moments_minutes_per_hour, youth_voice_minutes_per_hour, positive_expression_rate |
+| `time_breakdown.csv` | scope_type, scope, youth_s, staff_led_verified_s, staff_led_model_s, idle_s, total_s |
+| `headline.png`, `time_breakdown.png` | charts |
+| `summary.md` | slide text; every number carries its tag |
+| `manifest.json` | written last |
+
+### indicators.csv columns
+
+`indicator, scope_type, scope, value, unit, numerator, denominator, base, tag, verified_share, status`
+
+- `indicator`: `performance_share` | `active_participation_share` | `solo_moments_count` | `solo_moments_minutes` | `youth_voice_minutes` | `activity_share:<label>` | `activity_diversity_count` | `activity_diversity_entropy` | `audience_response_per_perf_min` | `positive_expression_rate` | `original_work_minutes` | `solo_moments_minutes_per_hour` | `youth_voice_minutes_per_hour` | `original_work_minutes_per_hour` | `instruction_participation_ratio` | `coverage_faces` | `coverage_reviewed` | `expression_index` (optional, with `tag` = `model estimate (unvalidated)` and `status` = `example`).
+- `scope_type`: `video` | `phase` | `all`. `scope` is a video ID, a phase name (`early`, `mid`, `showcase`) or `all`.
+- `unit`: `share` (0–1) | `minutes` | `per_hour` (minutes per hour of youth non-idle time in the scope; the headline uses these instead of minute totals) | `count` | `ratio` | `per_minute` | `index_0_100`.
+- `base`: a short text naming the denominator, for example `youth non-idle time` or `segments with faces`.
+- `status`: `ok` | `undefined` (a zero denominator, e.g. no participation time for the ratio) | `signal not available` | `not tagged yet` | `no videos in this phase` (headline only). When the status isn't `ok`, `value` is empty.
+- Each `*_minutes` total has a `*_minutes_per_hour` twin with the same tag and status: minutes per hour of youth non-idle time in that scope. Totals scale with video length; the per-hour values do not, so the headline uses them.
+
+## Stability promise
+
+- Columns are only ever added at the end. Readers must select columns by name.
+- Tag strings are exactly as above.
+- Phases come from `config/videos.local.yaml` when that file exists (validated), else from the `videos.phase` stored in the official runs; `phase_source` says which. `split` always comes from the stored runs. `unknown` never appears as a headline scope; it is listed in `indicators.json` under `excluded_videos`.

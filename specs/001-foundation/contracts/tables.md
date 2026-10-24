@@ -69,6 +69,7 @@ Source of truth is `src/tpa_index/schema.py`. This document must match it. Nulla
 | runtime_s | float64 | no | > 0 |
 | peak_mem_gb | float64 | yes | null if unmeasurable |
 | started_at | timestamp[us, UTC] | no | |
+| git_commit | string | yes | short commit (7) + `+dirty` if tracked files changed, or `nogit`; null for runs written before 002 |
 
 ## reviews (DuckDB `reviews` table, append-only)
 

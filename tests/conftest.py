@@ -11,7 +11,12 @@ def _isolated_env(tmp_path, monkeypatch):
     out.mkdir()
     monkeypatch.setenv("DATA_DIR", str(data))
     monkeypatch.setenv("OUTPUT_DIR", str(out))
-    monkeypatch.setattr(config, "LOCAL_VIDEOS", tmp_path / "no-local-videos.yaml")
+    no_local = tmp_path / "no-local-videos.yaml"
+    monkeypatch.setenv("TPA_LOCAL_VIDEOS", str(no_local))  # subprocesses inherit this
+    monkeypatch.setattr(config, "LOCAL_VIDEOS", no_local)
+    no_thresholds = tmp_path / "no-thresholds.local.yaml"
+    monkeypatch.setenv("TPA_THRESHOLDS_FILE", str(no_thresholds))
+    monkeypatch.setattr(config, "THRESHOLDS_LOCAL", no_thresholds)
     paths._reset_redaction_cache()
     yield
     paths._reset_redaction_cache()
@@ -34,13 +39,14 @@ def example_videos():
 
 @pytest.fixture(scope="session")
 def clips(tmp_path_factory):
-    """Synthetic clips only: t01 landscape, t02 portrait, t03 landscape without audio (20 s each)."""
+    """Synthetic clips only: t01 landscape, t02 portrait, t03 no audio, t04 static (20 s each)."""
     from tests.clips import make_clip
 
     root = tmp_path_factory.mktemp("clips")
     make_clip(root / "t01.mp4", 160, 90)
     make_clip(root / "t02.mp4", 90, 160)
     make_clip(root / "t03.mp4", 160, 90, audio=False)
+    make_clip(root / "t04.mp4", 160, 90, static=True)
     return root
 
 
@@ -52,4 +58,5 @@ def clip_videos(clips, monkeypatch):
         "t01": {**base, "video_id": "t01", "filename": "t01.mp4", "orientation": "landscape", "kind": "live"},
         "t02": {**base, "video_id": "t02", "filename": "t02.mp4", "orientation": "portrait", "kind": "clip"},
         "t03": {**base, "video_id": "t03", "filename": "t03.mp4", "orientation": "landscape", "kind": "live"},
+        "t04": {**base, "video_id": "t04", "filename": "t04.mp4", "orientation": "landscape", "kind": "live"},
     }

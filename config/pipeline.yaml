@@ -2,7 +2,10 @@ window_s: 8
 overlap_s: 2                   # must be < window_s
 frames_per_window: 4           # >= 1
 min_face_px: 48
-label_threshold: 0.5
+label_threshold: 0.5            # global fallback; per-label values in label_thresholds
+label_thresholds: {}            # {model name as in predictions.model: {label: t}}; config/thresholds.local.yaml wins
+uncertain_margin: 0.1           # top1 - top2 activity gap below this => uncertain_mixed
+visual_groups: [category, actor, activity]
 video_phases: [early, mid, showcase, unknown]
 audio_sample_rate: 16000
 moments:
@@ -10,9 +13,25 @@ moments:
   secondary_groups: [category, actor, audio, expression]
   max_gap_windows: 1           # merge across gaps up to this many windows
   min_windows: 1               # drop moments shorter than this many windows
-  needs_review_below: 0.6
-  conflict_margin: 0.1
 overrides:                     # only window_s, overlap_s, frames_per_window allowed
   by_kind:
     clip: { window_s: 4, overlap_s: 1 }
   by_video: {}                 # e.g. v03: { frames_per_window: 8 }
+models:
+  main:
+    hpc: google/siglip2-so400m-patch14-384   # used on cuda
+    mac: google/siglip2-base-patch16-224     # used on mps/cpu
+  motion:
+    enabled: false
+    id: microsoft/xclip-base-patch32
+    labels: [dancing, acting]                # must be activity labels
+    frames_per_window: 8                     # X-CLIP needs exactly its trained frame count
+    other_prompt: "people doing some other activity"
+  batch_windows: {cuda: 64, mps: 8, cpu: 4}
+idle:
+  prompts:
+    - "an empty room"
+    - "people setting up equipment before a show"
+    - "people waiting around with nothing happening"
+  score_threshold: 0.1           # SigLIP sigmoid scale; tune on dev split
+  change_threshold: 0.02         # mean |frame diff| on 64x64 grayscale in 0-1

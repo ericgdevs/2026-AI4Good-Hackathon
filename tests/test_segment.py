@@ -101,3 +101,11 @@ def test_rotated_phone_video_is_upright(clips, tmp_path):
     assert probe(rotated)["orientation"] == "portrait"
     with av.open(str(rotated)) as c:
         assert _to_rgb(next(c.decode(video=0))).shape[:2] == (160, 90)
+
+
+def test_without_audio_same_rows_and_frames(clip_videos):
+    a = run(clip_videos["t01"])
+    b = list(segment_video(clip_videos["t01"], DEFAULT, with_audio=False))
+    assert [w.row for w in a] == [w.row for w in b]
+    assert all(np.array_equal(x.frames, y.frames) for x, y in zip(a, b))
+    assert all(len(w.audio) == 0 and w.audio.dtype == np.float32 for w in b)

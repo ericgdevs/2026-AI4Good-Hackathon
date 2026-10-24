@@ -1,0 +1,5 @@
+# Run IDs that count for results, per stage. Fill in with `tpa-index runs`.
+# Run IDs only, never filenames or metadata.
+predict: []
+moments: []   # optional: rebuilt moments take precedence over predict's
+segment: []

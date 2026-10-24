@@ -19,7 +19,7 @@ VALID = {
                     primary_label="singing", secondary_labels=["music"], indicators=[], confidence=0.7,
                     needs_review=False, run_id="r1"),
     "runs": dict(run_id="r1", stage="segment", model=None, config_hash="abcdef012345", hardware="mock-hardware",
-                 n_segments=1, runtime_s=1.5, peak_mem_gb=None, started_at=NOW),
+                 n_segments=1, runtime_s=1.5, peak_mem_gb=None, started_at=NOW, git_commit=None),
     "reviews": dict(review_id="rv1", target_type="moment", target_id="mock01_0_singing", label="singing",
                     label_role="primary", action="accept", new_label=None, source="ai", mode="review",
                     guideline_version="0.1.0", reviewer="mock-staff-a", note=None, created_at=NOW),
@@ -137,3 +137,15 @@ def test_read_table_filters_by_run_ids():
     assert read_table("segments", run_ids=["r2"]).num_rows == 1
     assert read_table("runs", run_ids=["r2"])["run_id"].to_pylist() == ["r2"]
     assert read_table("segments", run_ids=[]).num_rows == 0
+
+
+def test_old_runs_files_without_git_commit_read_as_null():
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    write_table("segments", [row("segments")], "old1")
+    old_row = {k: v for k, v in row("runs", run_id="old1").items() if k != "git_commit"}
+    old_schema = pa.schema([f for f in schema.SCHEMAS["runs"] if f.name != "git_commit"])
+    pq.write_table(pa.Table.from_pylist([old_row], old_schema), schema.output_dir() / "runs/old1/runs.parquet")
+    runs = read_table("runs")
+    assert runs.schema == schema.SCHEMAS["runs"] and runs["git_commit"].to_pylist() == [None]

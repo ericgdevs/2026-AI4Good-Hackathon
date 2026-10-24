@@ -46,6 +46,8 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: needs locally cached model weights"]
+addopts = "-m 'not slow'"
 
 # Linux (UNF HPC, Blackwell): CUDA 13.0 torch wheels. macOS: default PyPI wheels (MPS).
 [[tool.uv.index]]

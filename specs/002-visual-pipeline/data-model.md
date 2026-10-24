@@ -69,5 +69,5 @@ Errors name the run ID, never a path.
 
 ```yaml
 label_thresholds:
-  google/siglip2-so400m-patch14-384: {singing: 0.14, dancing: 0.11}
+  siglip2-so400m-patch14-384: {singing: 0.14, dancing: 0.11}   # key = predictions.model
 ```

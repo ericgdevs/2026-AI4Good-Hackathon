@@ -1,5 +1,8 @@
 import json
+import os
 import subprocess
+
+import pytest
 
 import yaml
 
@@ -27,6 +30,8 @@ def test_no_media_or_outputs_tracked():
     assert not [f for f in tracked if f.lower().endswith(MEDIA)]
 
 
+@pytest.mark.skipif(os.environ.get("TPA_CHECK_LOCAL_NAMES") != "1",
+                    reason="reads the real local metadata; opt in with TPA_CHECK_LOCAL_NAMES=1")
 def test_no_tracked_file_mentions_local_filenames():
     local = repo_root() / "config/videos.local.yaml"
     if not local.exists():

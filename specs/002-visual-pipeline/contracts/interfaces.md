@@ -26,7 +26,7 @@ predict_video(video, pipeline, labels, embedder, run_id, motion=None) -> dict[st
 #   returns {"videos": [...], "segments": [...], "predictions": [...], "moments": [...]}; writes nothing
 
 # xclip.py  (only imported when models.motion.enabled)
-XClipScorer(model_id, device, labels, other_prompt)   # .name, .score(windows_frames) -> (windows, labels) softmax
+XClipScorer(model_id, device, labels, other_prompt, frames_per_window=8)   # .name, .labels, .score(windows_frames) -> (windows, labels) softmax
 
 # segment.py (changed)
 segment_video(video, settings, sample_rate=16000, with_audio=True) -> Iterator[Window]

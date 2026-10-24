@@ -1,5 +1,5 @@
 # Label vocabulary. Observable behaviour only (Constitution V); bump guideline_version on any change.
-guideline_version: "0.1.0"
+guideline_version: "0.2.0"
 labels:
   # activity
   - name: singing
@@ -111,16 +111,12 @@ labels:
     group: indicator
     prompts: ["kids performing their own original song", "a participant presenting work they wrote", "an original piece created by the group"]
     color: "#006d2c"
-  # status (staff review states)
-  - name: uncertain
+  # status (rule-derived, never scored by a model)
+  - name: uncertain_mixed
     group: status
-    prompts: ["an unclear scene", "a hard to interpret moment", "an ambiguous activity"]
+    source: rules          # per segment: no activity clears its threshold, or the top two are too close
     color: "#525252"
-  - name: mixed
-    group: status
-    prompts: ["several activities at once", "a mixed scene", "different things happening together"]
-    color: "#737373"
   - name: needs_review
     group: status
-    prompts: ["a moment that needs staff review", "a scene to check by hand", "an item flagged for review"]
+    source: rules          # per moment (moments.needs_review): low confidence or any uncertain_mixed segment
     color: "#bdbdbd"

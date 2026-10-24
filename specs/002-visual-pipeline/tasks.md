@@ -18,19 +18,19 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Commit `.env.example` with `git add .env.example && git commit -m "chore: add .env.example"`. It must hold placeholders only; check its contents first. In `pyproject.toml`, under `[tool.pytest.ini_options]`, add `markers = ["slow: needs locally cached model weights"]` and `addopts = "-m 'not slow'"`. Run `uv run pytest` to confirm everything passes.
-- [ ] T002 Create `config/official_runs.yaml` from `contracts/config.md`, with empty `predict`, `moments`, and `segment` lists and its header comment.
+- [X] T001 Commit `.env.example` with `git add .env.example && git commit -m "chore: add .env.example"`. It must hold placeholders only; check its contents first. In `pyproject.toml`, under `[tool.pytest.ini_options]`, add `markers = ["slow: needs locally cached model weights"]` and `addopts = "-m 'not slow'"`. Run `uv run pytest` to confirm everything passes.
+- [X] T002 Create `config/official_runs.yaml` from `contracts/config.md`, with empty `predict`, `moments`, and `segment` lists and its header comment.
 
 ---
 
 ## Phase 2: Foundational (config + 001 updates; blocks all stories)
 
-- [ ] T003 Edit `config/labels.yaml`:
+- [X] T003 Edit `config/labels.yaml`:
   - Set `guideline_version: "0.2.0"`.
   - Delete the `uncertain` and `mixed` labels.
   - Add `uncertain_mixed` (group `status`, `source: rules`, color `#525252`, no prompts).
   - Change `needs_review` to `source: rules` and remove its prompts. Keep its color.
-- [ ] T004 In `src/tpa_index/config.py`, update `_check_labels`:
+- [X] T004 In `src/tpa_index/config.py`, update `_check_labels`:
   - Accept an optional `source` with values in {`model`, `rules`}, defaulting to `model`.
   - Rules labels must have no `prompts`. Model labels still need 3–5.
   - Keep the other 001 rules.
@@ -39,7 +39,7 @@
   - a rules label with prompts fails;
   - a model label without prompts fails;
   - the shipped file loads with guideline `0.2.0`.
-- [ ] T005 Edit `config/pipeline.yaml` to match `contracts/config.md`:
+- [X] T005 Edit `config/pipeline.yaml` to match `contracts/config.md`:
   - Add `visual_groups`, `uncertain_margin`, `label_thresholds: {}`, `models` and `idle`.
   - Remove `moments.needs_review_below` and `moments.conflict_margin`.
 
@@ -49,7 +49,7 @@
   - a threshold above 1;
   - a threshold for an unknown label or a rules label;
   - `batch_windows` of 0.
-- [ ] T006 In `src/tpa_index/config.py`:
+- [X] T006 In `src/tpa_index/config.py`:
   - Add a `THRESHOLDS_LOCAL = Path(os.environ.get("TPA_THRESHOLDS_FILE", CONFIG_DIR / "thresholds.local.yaml"))` constant. The env override lets checkpoints and script tests avoid the real file.
   - Make `load_pipeline()` deep-merge its `label_thresholds` over the pipeline's. The local file wins, per model and per label.
   - Add `threshold(pipeline, model, label)`, which falls back to `label_threshold`.
@@ -59,12 +59,12 @@
   - per-model override;
   - local file wins;
   - a threshold for another model doesn't apply.
-- [ ] T007 Create `src/tpa_index/score.py` with pure rule functions:
+- [X] T007 Create `src/tpa_index/score.py` with pure rule functions:
   - `segment_labels(scores: dict[str, float], thresholds: dict[str, float], activity: list[str]) -> (primary | None, secondary: list[str])`. Primary is the highest-scoring activity that is ≥ its own threshold. Secondary is every other label ≥ its own threshold, sorted by score descending.
   - `uncertain_mixed(activity_scores, thresholds, margin) -> bool`, following research §7: no activity clears its threshold, or (top1 − next-highest activity) < margin.
 
   Write `tests/test_score.py`, covering a clear winner, nothing clearing, a close top two, and per-label thresholds changing the winner.
-- [ ] T008 Update `merge_moments(segments, predictions, pipeline, run_id, window_s=None, model=None)` in `src/tpa_index/moments.py`, following research §9 and §17:
+- [X] T008 Update `merge_moments(segments, predictions, pipeline, run_id, window_s=None, model=None)` in `src/tpa_index/moments.py`, following research §9 and §17:
   - `window_s` defaults to `pipeline["window_s"]`.
   - Use only rows where `model == model` (if given) or `model != "rules"`.
   - Primary candidates must clear `threshold(pipeline, model, label)`.
@@ -78,7 +78,7 @@
   - an idle segment breaks a moment;
   - an `uncertain_mixed` row sets `needs_review`;
   - a per-label threshold.
-- [ ] T009 Update `src/tpa_index/mock.py`:
+- [X] T009 Update `src/tpa_index/mock.py`:
   - `_predictions` skips `source: rules` labels.
   - After scoring, add one `uncertain_mixed` rules row per segment (model `"rules"`) using `score.uncertain_mixed` with mock thresholds.
   - `_videos_and_segments` uses `effective_settings(pipeline, v)` for windows.
@@ -101,12 +101,12 @@
 
 **Independent test**: With `FakeEmbedder` on synthetic clips, every segment gets exactly one row per model label in `visual_groups`. Every score is in [0, 1], the output is deterministic, and frames arrive whole and square.
 
-- [ ] T010 [US1] Create `src/tpa_index/embed.py` with the `Embedder` Protocol from `contracts/interfaces.md` (typing only, no torch import). Create `tests/fakes.py` with `FakeEmbedder(d=8, scale=10.0, bias=-5.0)`:
+- [X] T010 [US1] Create `src/tpa_index/embed.py` with the `Embedder` Protocol from `contracts/interfaces.md` (typing only, no torch import). Create `tests/fakes.py` with `FakeEmbedder(d=8, scale=10.0, bias=-5.0)`:
   - `embed_texts` maps each text to a unit vector seeded by `zlib.crc32(text)`.
   - `embed_images` uses each image's mean RGB plus fixed random projection columns, then L2-normalizes.
   - It records the image shapes it received in `self.seen_shapes`.
   - Add `steer(text, vec)` so a test can force a text's vector.
-- [ ] T011 [US1] In `src/tpa_index/score.py`, add:
+- [X] T011 [US1] In `src/tpa_index/score.py`, add:
   - `label_embeddings(embedder, labels)`: model labels only. Lowercase each prompt, embed all prompts in one call, average per label, then renormalize.
   - `window_embedding(frame_embeds)`: mean, then renormalize.
   - `sigmoid_scores(window_embeds, label_matrix, scale, bias)`: float32 `1/(1+exp(-(W·Lᵀ·scale + bias)))`.
@@ -116,15 +116,15 @@
   - scores are in (0, 1);
   - a steered match scores higher than a mismatch;
   - prompt order doesn't change the label vector (to within 1e-6).
-- [ ] T012 [US1] In `src/tpa_index/segment.py`, add `with_audio: bool = True` to `segment_video`. When `False`, skip `_load_audio` and yield an empty float32 array for audio. Add to `tests/test_segment.py`: `with_audio=False` yields identical rows and frames and an empty audio array.
-- [ ] T013 [US1] In `src/tpa_index/score.py`, implement `predict_video(video, pipeline, labels, embedder, run_id, device="cpu", motion=None)`, with model scoring only for now:
+- [X] T012 [US1] In `src/tpa_index/segment.py`, add `with_audio: bool = True` to `segment_video`. When `False`, skip `_load_audio` and yield an empty float32 array for audio. Add to `tests/test_segment.py`: `with_audio=False` yields identical rows and frames and an empty audio array.
+- [X] T013 [US1] In `src/tpa_index/score.py`, implement `predict_video(video, pipeline, labels, embedder, run_id, device="cpu", motion=None)`, with model scoring only for now:
   - Probe the video and build the videos row (same fields as the 001 segment CLI).
   - Iterate `segment_video(video, effective_settings(...), with_audio=False)` and buffer `pipeline["models"]["batch_windows"][device]` windows at a time.
   - For each batch, `embed_images` on the stacked frames (`B*N, S, S, 3`), reshape to `(B, N, d)`, then `window_embedding` per window.
   - Score against `label_embeddings` (computed once per call) and emit one prediction row per segment × model label in `visual_groups`, with `model=embedder.name` and `run_id`.
   - Return `{"videos", "segments", "predictions"}` (moments come in T016).
   - Write nothing to disk.
-- [ ] T014 [US1] Write `tests/test_predict.py`, using `FakeEmbedder` with the `clip_videos` fixture. Check that:
+- [X] T014 [US1] Write `tests/test_predict.py`, using `FakeEmbedder` with the `clip_videos` fixture. Check that:
   - row count = segments × model labels in category, actor, and activity;
   - there are no audio, expression, indicator, or status model rows;
   - all scores are in [0, 1];
@@ -133,13 +133,13 @@
   - `seen_shapes` are all square (S, S, 3), with S = max(w, h), for portrait `t02`;
   - with `batch_windows` of 1 and of 64 the results are the same;
   - rows pass `validate("predictions")` and `validate("segments")`.
-- [ ] T015 [US1] Implement `SiglipEmbedder(model_id, device, batch_images=256)` in `src/tpa_index/embed.py`, following research §1–§4:
+- [X] T015 [US1] Implement `SiglipEmbedder(model_id, device, batch_images=256)` in `src/tpa_index/embed.py`, following research §1–§4:
   - Load with `AutoModel` and `AutoProcessor`, `local_files_only=True`, and `dtype=torch.bfloat16` on CUDA (float32 otherwise), moved to `device` and put in eval mode.
   - `embed_texts`: lowercase, `padding="max_length", max_length=64`, `get_text_features`, then L2-normalize in float32.
   - `embed_images`: processor on uint8 arrays in chunks of `batch_images` under `torch.inference_mode()`, `get_image_features`, then L2-normalize in float32 and return numpy.
   - `logit_scale = float(model.logit_scale.exp())` and `logit_bias = float(model.logit_bias)`. `name` is the model ID's last path part (for example `siglip2-base-patch16-224`).
   - If the model is missing from the local cache, raise `ConfigError(f"model not found locally: {model_id}")`.
-- [ ] T016 [US1] Write `tests/test_siglip_slow.py` (marked `@pytest.mark.slow`). Skip it when `huggingface_hub.try_to_load_from_cache("google/siglip2-base-patch16-224", "config.json")` is not a path. Run `predict_video` on `t01` with the real `SiglipEmbedder` on CPU and check:
+- [X] T016 [US1] Write `tests/test_siglip_slow.py` (marked `@pytest.mark.slow`). Skip it when `huggingface_hub.try_to_load_from_cache("google/siglip2-base-patch16-224", "config.json")` is not a path. Run `predict_video` on `t01` with the real `SiglipEmbedder` on CPU and check:
   - the row count matches;
   - scores are in (0, 1);
   - a second run's scores are within 1e-3.
@@ -156,8 +156,8 @@
 
 **Independent test**: Steered fake scores give the expected primary label and flag, and a clip-kind video's moments use 4 s windows.
 
-- [ ] T017 [US2] In `predict_video` (`src/tpa_index/score.py`), after scoring each segment, add one rules row: `label="uncertain_mixed"`, `label_group="status"`, `score=1.0 or 0.0` from `uncertain_mixed(...)` using `threshold(pipeline, embedder.name, label)` per activity label, `model="rules"`, same `run_id`. Then call `merge_moments(segments, predictions, pipeline, run_id, window_s=effective["window_s"], model=embedder.name)` and return `"moments"` too.
-- [ ] T018 [US2] Add to `tests/test_predict.py`, steering `FakeEmbedder` so one activity's prompts align with the clip's frame vectors. Check that:
+- [X] T017 [US2] In `predict_video` (`src/tpa_index/score.py`), after scoring each segment, add one rules row: `label="uncertain_mixed"`, `label_group="status"`, `score=1.0 or 0.0` from `uncertain_mixed(...)` using `threshold(pipeline, embedder.name, label)` per activity label, `model="rules"`, same `run_id`. Then call `merge_moments(segments, predictions, pipeline, run_id, window_s=effective["window_s"], model=embedder.name)` and return `"moments"` too.
+- [X] T018 [US2] Add to `tests/test_predict.py`, steering `FakeEmbedder` so one activity's prompts align with the clip's frame vectors. Check that:
   - that activity is primary and `uncertain_mixed` = 0;
   - with two activities steered equally, `uncertain_mixed` = 1 and the moment's `needs_review` is True;
   - with `label_thresholds` above every score, nothing is primary, every segment has `uncertain_mixed` = 1, and there are no moments;
@@ -172,18 +172,18 @@
 
 **Independent test**: A static clip with the idle prompt steered high is idle. A moving clip with the same prompt score is not. A single-frame window is never idle.
 
-- [ ] T019 [US3] In `src/tpa_index/score.py`, add:
+- [X] T019 [US3] In `src/tpa_index/score.py`, add:
   - `visual_change(frames)`: `None` if there are fewer than 2 frames. Otherwise convert each frame to grayscale `(0.299R + 0.587G + 0.114B)`, downscale to 64×64 by block mean (`np.ndarray` reshape), and return the mean absolute difference between consecutive frames in 0–1.
   - `is_idle(idle_score, change, idle_cfg)`: `change is not None and idle_score >= idle_cfg["score_threshold"] and change < idle_cfg["change_threshold"]`.
 
   Add to `tests/test_score.py`: identical frames give 0, a black→white change gives 1, a single frame gives `None`, and the full AND truth table for `is_idle`.
-- [ ] T020 [US3] In `tests/clips.py`, add a `static=True` option to `make_clip` (one constant colour, no per-second change). In `tests/conftest.py`, add clip `t04`: static, 160×90, kind `live`. In `predict_video`:
+- [X] T020 [US3] In `tests/clips.py`, add a `static=True` option to `make_clip` (one constant colour, no per-second change). In `tests/conftest.py`, add clip `t04`: static, 160×90, kind `live`. In `predict_video`:
   - embed `pipeline["idle"]["prompts"]` once with ensembling, as an "idle" vector;
   - compute each window's idle score with `sigmoid_scores`;
   - set `row["is_idle"] = is_idle(score, visual_change(frames), idle_cfg)`.
 
   No prediction rows are written for idle.
-- [ ] T021 [US3] Add to `tests/test_predict.py`, steering the idle prompts' vectors to match each clip's frame vectors. Check that:
+- [X] T021 [US3] Add to `tests/test_predict.py`, steering the idle prompts' vectors to match each clip's frame vectors. Check that:
   - `t04` (static) segments are all `is_idle=True` and give no moments;
   - `t01` (colour changes every second) has `is_idle=False` even with a high idle score;
   - with `frames_per_window: 1` via a `by_video` override, no segment is idle.
@@ -196,7 +196,7 @@
 
 **Independent test**: Three clips, one broken, give two complete runs, list the failed ID, and exit 1. The sbatch file has the required directives and `HF_HOME`.
 
-- [ ] T022 [US4] In `src/tpa_index/cli.py`, add `predict [--videos PATH] [--video-id ID …] [--kind KIND …] [--model ID]`:
+- [X] T022 [US4] In `src/tpa_index/cli.py`, add `predict [--videos PATH] [--video-id ID …] [--kind KIND …] [--model ID]`:
   - Require `--videos` or `videos.local.yaml`, as `segment` does.
   - Filter by ID and kind. An unknown ID is a `ConfigError`.
   - `dev = runs.device()`. The model is `--model` or `models.main.hpc` if `dev == "cuda"`, else `models.main.mac`.
@@ -204,25 +204,25 @@
   - For each video, inside `track_run("predict", model=embedder.name)`: `predict_video(...)`, then `write_table` for videos, segments, predictions, and moments, and set `ctx.n_segments`.
   - Report failed IDs and exit 1 if any failed, using the same redacted pattern as `segment`.
   - Set `os.environ.setdefault("HF_HUB_OFFLINE", "1")` before loading.
-- [ ] T023 [US4] Add to `tests/test_cli.py`, running in-process with `cli._make_embedder` patched to return `FakeEmbedder` and `install_redaction` patched to a no-op:
+- [X] T023 [US4] Add to `tests/test_cli.py`, running in-process with `cli._make_embedder` patched to return `FakeEmbedder` and `install_redaction` patched to a no-op:
   - three clips plus one missing file give 3 complete predict runs, exit 1, and `failed videos: t09` with no filename shown;
   - every runs row has `stage == "predict"`, `model == "fake"`, a hardware name, and `n_segments > 0`;
   - `--kind clip` selects only `t02`;
   - a `_make_embedder` that raises `ConfigError` exits 3 with no runs written.
-- [ ] T024 [US4] Create `src/tpa_index/xclip.py` with `XClipScorer(model_id, device, labels, other_prompt)`:
+- [X] T024 [US4] Create `src/tpa_index/xclip.py` with `XClipScorer(model_id, device, labels, other_prompt)`:
   - Use `XCLIPModel` and `AutoProcessor`, with `local_files_only=True`.
   - `.name` is the last part of the model ID.
   - `.score(list_of_window_frames) -> np.ndarray (windows, len(labels))`: a softmax over `[label prompts (first prompt per label)…, other_prompt]`, keeping the label columns.
 
   In `predict_video`, when `motion` is given, run a second `segment_video` pass with `frames_per_window = models.motion.frames_per_window` and emit rows for the motion labels only, under `motion.name`. In `cli.py`, build it only when `models.motion.enabled`. Add to `tests/test_predict.py` a test with a fake motion scorer (`name="fake-motion"`, fixed scores): rows exist only for `dancing` and `acting` under `fake-motion`, and main-model rows are unchanged.
-- [ ] T025 [US4] Create `scripts/slurm/predict.sbatch`, following `contracts/interfaces.md`:
+- [X] T025 [US4] Create `scripts/slurm/predict.sbatch`, following `contracts/interfaces.md`:
   - same header style as `job.sbatch`, with `--mem=64G` and `--job-name=tpa-predict`;
   - `export HF_HOME="$HOME/hf-cache" HF_HUB_OFFLINE=1`;
   - `uv sync --frozen`, then `uv run tpa-index predict "$@"`;
   - usage comments, including `--kind promo` for a test run.
 
   Create `tests/test_scripts.py`: `bash -n` passes, every required `#SBATCH` directive is present, and both the `HF_HOME` and `HF_HUB_OFFLINE` exports are present.
-- [ ] T026 [US4] **Checkpoint 1 (Mac, real model)**:
+- [X] T026 [US4] **Checkpoint 1 (Mac, real model)**:
   1. `export DATA_DIR=<scratch>/data OUTPUT_DIR=<scratch>/out`, with the scratch folder outside the repo. Never touch `.env`.
   2. Run `uv run tpa-index mock --seed 0`.
   3. Make synthetic `t01` (landscape) and `t02` (portrait, kind `clip`) clips with `tests.clips.make_clip`, plus `<scratch>/videos.yaml`.

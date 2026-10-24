@@ -104,17 +104,17 @@ def _load_audio(path, rate: int) -> np.ndarray | None:
     return np.concatenate(chunks).astype(np.float32) if chunks else np.zeros(0, np.float32)
 
 
-def segment_video(video: dict, settings: dict, sample_rate: int = 16000) -> Iterator[Window]:
-    """Yield one Window per segment; frames and audio stay in memory."""
+def segment_video(video: dict, settings: dict, sample_rate: int = 16000, with_audio: bool = True) -> Iterator[Window]:
+    """Yield one Window per segment; frames and audio stay in memory. with_audio=False skips audio decoding."""
     path = data_dir() / video["filename"]
     info = probe(path)
-    audio = _load_audio(path, sample_rate)
-    if audio is None:
+    audio = _load_audio(path, sample_rate) if with_audio else None
+    if with_audio and audio is None:
         log.info("video %s has no audio track; using silence", video["video_id"])
     with av.open(str(path)) as c:
         stream = c.streams.video[0]
         for start, end in windows(info["duration_s"], settings["window_s"], settings["overlap_s"]):
-            n = int(round((end - start) * sample_rate))
+            n = int(round((end - start) * sample_rate)) if with_audio else 0
             clip = np.zeros(n, np.float32)
             if audio is not None:
                 part = audio[int(round(start * sample_rate)):][:n]

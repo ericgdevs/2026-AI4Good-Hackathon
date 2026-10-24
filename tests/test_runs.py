@@ -21,6 +21,7 @@ def test_successful_run_records_cost():
     assert row["peak_mem_gb"] is None or row["peak_mem_gb"] > 0.3
     assert row["hardware"]
     assert re.fullmatch(r"[0-9a-f]{12}", row["config_hash"])
+    assert re.fullmatch(r"([0-9a-f]{7}(\+dirty)?|nogit)", row["git_commit"])
 
 
 def test_config_hash_tracks_config(labels, pipeline):

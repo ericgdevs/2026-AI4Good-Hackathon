@@ -125,3 +125,63 @@ def test_slurm_template():
                       "--output=slurm-%x-%j.out"):
         assert f"#SBATCH {directive}" in text, directive
     assert 'uv sync --frozen' in text and 'uv run "$@"' in text
+
+
+def _predict_yaml(tmp_path, extra=""):
+    path = tmp_path / "predict.yaml"
+    rows = "".join(
+        f"  - {{video_id: {vid}, filename: {vid}.mp4, orientation: landscape, kind: {kind}, phase: early, split: dev}}\n"
+        for vid, kind in (("t01", "live"), ("t02", "clip"), ("t03", "live")))
+    path.write_text("videos:\n" + rows + extra)
+    return path
+
+
+def _patched_cli(monkeypatch):
+    from tests.fakes import FakeEmbedder
+    from tpa_index import cli
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+    monkeypatch.setattr(cli, "_make_embedder", lambda model_id, dev: FakeEmbedder())
+    return cli
+
+
+def test_predict_one_run_per_video_and_failures(tmp_path, clip_videos, monkeypatch, capsys):
+    import re
+
+    from tpa_index.schema import read_table
+
+    cli = _patched_cli(monkeypatch)
+    bad = "  - {video_id: t09, filename: missing clip.mp4, orientation: landscape, kind: live, phase: early, split: dev}\n"
+    assert cli.main(["predict", "--videos", str(_predict_yaml(tmp_path, bad))]) == 1
+    err = capsys.readouterr().err
+    assert "failed videos: t09" in err and "missing clip" not in err
+    runs = read_table("runs").to_pylist()
+    assert len(runs) == 3 and {r["stage"] for r in runs} == {"predict"} and {r["model"] for r in runs} == {"fake"}
+    assert all(r["hardware"] and r["n_segments"] > 0 and r["runtime_s"] > 0 for r in runs)
+    assert all(re.fullmatch(r"([0-9a-f]{7}(\+dirty)?|nogit)", r["git_commit"]) for r in runs)
+    assert set(read_table("moments")["video_id"].to_pylist()) <= {"t01", "t02", "t03"}
+    assert read_table("predictions").num_rows > 0
+
+
+def test_predict_kind_filter(tmp_path, clip_videos, monkeypatch):
+    from tpa_index.schema import read_table
+
+    cli = _patched_cli(monkeypatch)
+    assert cli.main(["predict", "--videos", str(_predict_yaml(tmp_path)), "--kind", "clip"]) == 0
+    assert set(read_table("videos")["video_id"].to_pylist()) == {"t02"}
+
+
+def test_predict_missing_model_exits_3_before_any_video(tmp_path, clip_videos, monkeypatch, capsys):
+    from tpa_index import cli
+    from tpa_index.config import ConfigError
+    from tpa_index.schema import read_table
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+
+    def missing(model_id, dev):
+        raise ConfigError(f"model not found locally: {model_id}")
+
+    monkeypatch.setattr(cli, "_make_embedder", missing)
+    assert cli.main(["predict", "--videos", str(_predict_yaml(tmp_path)), "--model", "google/nope"]) == 3
+    assert "model not found locally: google/nope" in capsys.readouterr().err
+    assert read_table("runs").num_rows == 0

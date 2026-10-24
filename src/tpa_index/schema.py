@@ -45,7 +45,7 @@ SCHEMAS: dict[str, pa.Schema] = {
     "runs": _schema(
         ("run_id", _s, False), ("stage", _s, False), ("model", _s, True), ("config_hash", _s, False),
         ("hardware", _s, False), ("n_segments", _i32, False), ("runtime_s", _f64, False),
-        ("peak_mem_gb", _f64, True), ("started_at", _ts, False),
+        ("peak_mem_gb", _f64, True), ("started_at", _ts, False), ("git_commit", _s, True),
     ),
     "reviews": _schema(
         ("review_id", _s, False), ("target_type", _s, False), ("target_id", _s, False), ("label", _s, False),
@@ -196,7 +196,15 @@ def read_table(table: str, root=None, run_ids=None) -> pa.Table:
              and (d / "runs.parquet").exists() and (d / f"{table}.parquet").exists()] if runs.exists() else []
     if not files:
         return SCHEMAS[table].empty_table()
-    return pa.concat_tables([pq.read_table(f).cast(SCHEMAS[table]) for f in files])
+    return pa.concat_tables([_conform(pq.read_table(f), SCHEMAS[table]) for f in files])
+
+
+def _conform(tbl: pa.Table, schema: pa.Schema) -> pa.Table:
+    """Cast to the current schema; nullable columns added after a file was written read back as null."""
+    for field in schema:
+        if field.name not in tbl.column_names and field.nullable:
+            tbl = tbl.append_column(field.name, pa.nulls(tbl.num_rows, field.type))
+    return tbl.select(schema.names).cast(schema)
 
 
 _reviews_lock = threading.Lock()

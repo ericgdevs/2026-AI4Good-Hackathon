@@ -61,6 +61,23 @@ def _peak_mem_gb(dev: str) -> float | None:
         return None
 
 
+def git_commit() -> str:
+    """Short commit of the code that ran, '+dirty' if tracked files have uncommitted changes, 'nogit' if unknown."""
+    from tpa_index.paths import repo_root
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repo_root()), *args], capture_output=True, text=True, timeout=10)
+
+    try:
+        head = git("rev-parse", "--short=7", "HEAD")
+        if head.returncode != 0 or not head.stdout.strip():
+            return "nogit"
+        dirty = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
+        return head.stdout.strip() + ("+dirty" if dirty else "")
+    except (OSError, subprocess.SubprocessError):
+        return "nogit"
+
+
 @dataclass
 class RunContext:
     stage: str
@@ -89,4 +106,5 @@ def track_run(stage: str, model: str | None = None, cfg_hash: str | None = None,
         "config_hash": cfg_hash or config_hash(load_labels(), load_pipeline()),
         "hardware": hardware_name(dev), "n_segments": ctx.n_segments,
         "runtime_s": max(time.perf_counter() - t0, 1e-6), "peak_mem_gb": _peak_mem_gb(dev), "started_at": started,
+        "git_commit": git_commit(),
     }], ctx.run_id, root)

@@ -3,9 +3,11 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
-from tpa_index.config import EXAMPLE_VIDEOS, config_hash, load_labels, load_pipeline, load_videos
+from tpa_index.config import (EXAMPLE_VIDEOS, config_hash, effective_settings, load_labels, load_pipeline,
+                              load_videos, model_labels, threshold)
 from tpa_index.moments import merge_moments
 from tpa_index.schema import append_reviews, write_table
+from tpa_index.score import uncertain_mixed
 from tpa_index.segment import windows
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -22,8 +24,8 @@ def _videos_and_segments(rng, videos_cfg, pipeline):
         duration = float(rng.uniform(300, 1500))
         videos.append({**{k: v.get(k) for k in ("video_id", "filename", "orientation", "kind", "phase", "cohort",
                                                   "split")}, "duration_s": duration, "fps": 30.0})
-        # shortcut: mock uses default windows for every kind; use effective_settings if per-kind mock data matters
-        for start, end in windows(duration, pipeline["window_s"], pipeline["overlap_s"]):
+        settings = effective_settings(pipeline, v)
+        for start, end in windows(duration, settings["window_s"], settings["overlap_s"]):
             people = int(rng.integers(0, 16))
             speech = bool(rng.random() < 0.5)
             segments.append({
@@ -40,7 +42,7 @@ def _videos_and_segments(rng, videos_cfg, pipeline):
 
 def _predictions(rng, segments, labels, run_id):
     by_group: dict[str, list[str]] = {}
-    for lab in labels["labels"]:
+    for lab in model_labels(labels):  # rules labels are never model-scored
         by_group.setdefault(lab["group"], []).append(lab["name"])
     rows = []
     latent: dict[str, tuple[str, int]] = {}  # group -> (true label, segments left)
@@ -61,8 +63,21 @@ def _predictions(rng, segments, labels, run_id):
     return rows
 
 
+def _rules_rows(segments, predictions, labels, pipeline, model, run_id):
+    """One uncertain_mixed row per segment, as predict writes them."""
+    activity = [lab["name"] for lab in model_labels(labels, {"activity"})]
+    thresholds = {lab: threshold(pipeline, model, lab) for lab in activity}
+    scores: dict[str, dict[str, float]] = {}
+    for p in predictions:
+        if p["label"] in thresholds:
+            scores.setdefault(p["segment_id"], {})[p["label"]] = p["score"]
+    return [{"segment_id": s["segment_id"], "label": "uncertain_mixed", "label_group": "status",
+             "score": 1.0 if uncertain_mixed(scores[s["segment_id"]], thresholds, pipeline["uncertain_margin"]) else 0.0,
+             "model": "rules", "run_id": run_id} for s in segments]
+
+
 def _reviews(rng, moments, segments, labels):
-    names = [lab["name"] for lab in labels["labels"]]
+    names = [lab["name"] for lab in model_labels(labels)]
     group_of = {lab["name"]: lab["group"] for lab in labels["labels"]}
     targets = [("moment", m["moment_id"], m["primary_label"], "primary") for m in moments if rng.random() < 0.2]
     for s in segments:
@@ -100,12 +115,17 @@ def generate(out_root=None, seed: int = 0, n_videos: int = 4) -> str:
     predict_run = f"{run_id}-predict"
     videos, segments = _videos_and_segments(rng, load_videos(EXAMPLE_VIDEOS)[:n_videos], pipeline)
     predictions = _predictions(rng, segments, labels, predict_run)
-    moments = merge_moments(segments, predictions, pipeline, predict_run)
+    predictions += _rules_rows(segments, predictions, labels, pipeline, "mock-model", predict_run)
+    moments = []
+    for v in videos:
+        v_segments = [s for s in segments if s["video_id"] == v["video_id"]]
+        moments += merge_moments(v_segments, predictions, pipeline, predict_run,
+                                 window_s=effective_settings(pipeline, v)["window_s"], model="mock-model")
     cfg = config_hash(labels, pipeline)
     runs = [
         {"run_id": rid, "stage": stage, "model": model, "config_hash": cfg, "hardware": "mock-hardware",
          "n_segments": len(segments), "runtime_s": float(rng.uniform(5, 600)),
-         "peak_mem_gb": float(rng.uniform(0.5, 12)), "started_at": BASE_TIME}
+         "peak_mem_gb": float(rng.uniform(0.5, 12)), "started_at": BASE_TIME, "git_commit": None}
         for rid, stage, model in ((run_id, "mock-segment", None), (predict_run, "mock-predict", "mock-model"))
     ]
     for table, rows in (("videos", videos), ("segments", segments), ("predictions", predictions),

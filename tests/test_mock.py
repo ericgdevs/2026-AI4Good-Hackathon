@@ -49,3 +49,27 @@ def test_reproducible_by_seed(mock_root, tmp_path):
         assert read_table(table, mock_root).equals(read_table(table, tmp_path / "mock-b")), table
     assert read_reviews(mock_root).equals(read_reviews(tmp_path / "mock-b"))
     assert not read_table("segments", mock_root).equals(read_table("segments", tmp_path / "mock-c"))
+
+
+def test_rules_rows_for_every_segment(mock_root):
+    import pyarrow.compute as pc
+
+    preds = read_table("predictions", mock_root)
+    rules = preds.filter(pc.equal(preds["model"], "rules"))
+    assert set(rules["label"].to_pylist()) == {"uncertain_mixed"}
+    assert sorted(rules["segment_id"].to_pylist()) == sorted(read_table("segments", mock_root)["segment_id"].to_pylist())
+    scored = set(preds.filter(pc.equal(preds["model"], "mock-model"))["label"].to_pylist())
+    assert not {"uncertain_mixed", "needs_review"} & scored
+
+
+def test_reviews_use_guideline_0_2_0(mock_root):
+    assert set(read_reviews(mock_root)["guideline_version"].to_pylist()) == {"0.2.0"}
+
+
+def test_clip_kind_uses_its_own_window(mock_root):
+    import pyarrow.compute as pc
+
+    segs = read_table("segments", mock_root)
+    clip = segs.filter(pc.equal(segs["video_id"], "mock03"))  # kind clip: 4 s window, 3 s stride
+    starts = sorted(clip["start_s"].to_pylist())
+    assert starts[1] - starts[0] == 3 and clip["end_s"][0].as_py() - clip["start_s"][0].as_py() == 4

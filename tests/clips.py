@@ -7,14 +7,15 @@ import numpy as np
 COLORS = [(200, 30, 30), (30, 200, 30), (30, 30, 200), (200, 200, 30), (30, 200, 200)]
 
 
-def make_clip(path, w, h, seconds=20, fps=10, audio=True, rate=16000):
-    """Solid colour that changes every second, 4 px white border, optional 440 Hz mono AAC track."""
+def make_clip(path, w, h, seconds=20, fps=10, audio=True, rate=16000, static=False):
+    """Solid colour that changes every second (one constant colour if static), 4 px white border,
+    optional 440 Hz mono AAC track."""
     with av.open(str(path), "w") as out:
         video = out.add_stream("mpeg4", rate=fps)
         video.width, video.height, video.pix_fmt = w, h, "yuv420p"
         sound = out.add_stream("aac", rate=rate, layout="mono") if audio else None
         for i in range(seconds * fps):
-            img = np.full((h, w, 3), COLORS[(i // fps) % len(COLORS)], np.uint8)
+            img = np.full((h, w, 3), COLORS[0 if static else (i // fps) % len(COLORS)], np.uint8)
             img[:4], img[-4:], img[:, :4], img[:, -4:] = 255, 255, 255, 255
             for packet in video.encode(av.VideoFrame.from_ndarray(img, format="rgb24")):
                 out.mux(packet)

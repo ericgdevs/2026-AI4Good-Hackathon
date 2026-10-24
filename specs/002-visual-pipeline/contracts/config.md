@@ -25,7 +25,7 @@
 ```yaml
 visual_groups: [category, actor, activity]
 uncertain_margin: 0.1            # top1 - top2 activity gap below this => uncertain_mixed
-label_thresholds: {}             # optional {model_id: {label: t}}; fallback label_threshold
+label_thresholds: {}             # optional {model name as in predictions.model: {label: t}}; fallback label_threshold
 models:
   main:
     hpc: google/siglip2-so400m-patch14-384   # used on cuda

@@ -205,6 +205,7 @@ class InsightsController:
         ev = latest_result("evaluate", self.root)
         self.state = {
             "status": "available", "created_at": manifest["created_at"], "limitations": manifest["limitations"],
+            "folder": folder.name, "guideline_versions": manifest.get("guideline_versions", []),
             "headline": head, "model_tag": extra.get("model_tag", UNVALIDATED),
             "time": next((r for r in _read_csv(folder / "time_breakdown.csv") if r["scope_type"] == "all"), None),
             "index": [r for r in index if r["scope_type"] == "phase" and r["component"] == "expression_index"],

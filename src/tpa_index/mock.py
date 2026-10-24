@@ -95,13 +95,28 @@ def _reviews(rng, moments, segments, labels):
             "review_id": rng.bytes(16).hex(), "target_type": target_type, "target_id": target_id,
             "label": label, "label_role": role, "action": action, "new_label": new_label,
             "source": "staff" if action == "add" or rng.random() < 0.1 else "ai",
-            "mode": "blind" if i % 2 else "review",
+            "mode": "review",  # never blind: blind rows are real staff ground truth, and mock ones would skew progress
             "guideline_version": labels["guideline_version"],
             "reviewer": "mock-staff-a" if rng.random() < 0.5 else "mock-staff-b",
             "note": "mock note" if rng.random() < 0.2 else None,
             "created_at": BASE_TIME + timedelta(minutes=i),
         })
     return rows
+
+
+def write_clips(videos) -> int:
+    """Synthetic videos (no real footage) for the mock videos, so the review app can play them."""
+    import math
+
+    from tpa_index.paths import data_dir
+    from tpa_index.synthetic import make_clip
+
+    rows = videos.to_pylist() if hasattr(videos, "to_pylist") else list(videos)
+    for v in rows:
+        path = data_dir() / v["filename"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        make_clip(path, 160, 90, seconds=math.ceil(v["duration_s"]), fps=4)
+    return len(rows)
 
 
 def generate(out_root=None, seed: int = 0, n_videos: int = 4) -> str:

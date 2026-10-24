@@ -83,7 +83,7 @@ specs/003-review-app/
 ### Source Code
 
 ```text
-config/labels.yaml           # + observation_types; guideline_version 0.3.0
+config/labels.yaml           # + observation_types; guideline_version 0.4.0
 config/pipeline.yaml         # + app: section
 src/tpa_index/
 ├── schema.py                # label_role += observation; blind_queue schema + append/read helpers

@@ -13,7 +13,10 @@ topup_available(root=None) -> tuple[bool, str]                    # (ok, reason 
 build_topup_queue(app_cfg, labels, pipeline, root=None) -> int    # appends a 'topup' queue once; returns count
 next_position(queue, reviewer, root=None) -> int | None           # resume point; None when finished
 progress(queue, reviewer, root=None) -> tuple[int, int]           # (done, total)
-blind_rows(segment, chosen: dict[str, str], reviewer, labels, previous=None) -> list[dict]
+checklist(labels, pipeline) -> dict                              # primary / groups / uncertain, from config (model + staff labels)
+key_map(checklist) -> tuple[dict[str, str], list[str]]          # (key -> label, unkeyed); keys 1-9, 0, a-z without u
+role_of(label, labels, pipeline, chosen_primary=None) -> str
+blind_rows(segment, primary, chosen, uncertain, reviewer, labels, pipeline, previous=None) -> list[dict]
 #   chosen: label -> role; adds reject rows for labels in `previous` that are no longer chosen
 latest_state(rows, mode) -> dict[tuple[str, str], dict]          # (target_id, label) -> latest row
 moment_status(moment, state) -> str                               # unreviewed | partly | done | deferred

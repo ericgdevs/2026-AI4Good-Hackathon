@@ -33,6 +33,10 @@ def _mock(args) -> int:
 
     run_id = generate(seed=args.seed, n_videos=args.n_videos)
     validate_dataset()
+    if args.clips:
+        from tpa_index.mock import write_clips
+
+        print(f"synthetic clips: {write_clips(read_table('videos', run_ids=[run_id]))} written under DATA_DIR")
     print(f"mock run: {run_id}")
     for table in ("videos", "segments", "predictions", "moments", "runs"):
         print(f"  {table}: {read_table(table).num_rows}")
@@ -278,6 +282,20 @@ def _runs(args) -> int:
     return 0
 
 
+def _app(args) -> int:
+    import socket
+
+    from tpa_index import app
+
+    port = args.port or load_pipeline()["app"]["port"]
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        if s.connect_ex(("127.0.0.1", port)) == 0:
+            raise ConfigError(f"the review app is already running on port {port} (or the port is taken)")
+    app.launch(port)
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="tpa-index")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -291,12 +309,16 @@ def main(argv=None) -> int:
     cal.add_argument("--model", help="model to calibrate (required when official runs mix models)")
     cal.add_argument("--dry-run", action="store_true")
     cal.set_defaults(func=_calibrate)
+    app_cmd = sub.add_parser("app", help="local review app on 127.0.0.1 (this machine only)")
+    app_cmd.add_argument("--port", type=int)
+    app_cmd.set_defaults(func=_app)
     mom = sub.add_parser("moments", help="rebuild idle flags and moments from official predict runs")
     mom.add_argument("--video-id", action="append")
     mom.set_defaults(func=_moments)
     mock = sub.add_parser("mock")
     mock.add_argument("--seed", type=int, default=0)
     mock.add_argument("--n-videos", type=int, default=4)
+    mock.add_argument("--clips", action="store_true", help="also write synthetic videos for the mock videos")
     mock.set_defaults(func=_mock)
     for name, func in (("segment", _segment), ("predict", _predict)):
         cmd = sub.add_parser(name)

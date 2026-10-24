@@ -68,7 +68,22 @@ def _check_labels(d: dict) -> dict:
     expressions = {lab["name"] for lab in labels if lab["group"] == "expression"}
     if expressions != EXPRESSIONS:
         raise ConfigError(f"labels: expression labels must be exactly {sorted(EXPRESSIONS)}")
+    obs = d.get("observation_types") or []
+    names = [o.get("name") if isinstance(o, dict) else None for o in obs]
+    for o, name in zip(obs, names):
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+            raise ConfigError(f"observation type {name!r}: name must be lowercase letters, digits and _")
+        if names.count(name) > 1:
+            raise ConfigError(f"observation type {name}: duplicate name")
+        if name in seen:
+            raise ConfigError(f"observation type {name}: clashes with a label name")
+        if not isinstance(o.get("description"), str) or not o["description"].strip():
+            raise ConfigError(f"observation type {name}: description required")
     return d
+
+
+def observation_types(labels: dict) -> list[str]:
+    return [o["name"] for o in labels.get("observation_types") or []]
 
 
 def rules_labels(labels: dict) -> list[dict]:
@@ -226,7 +241,46 @@ def _check_pipeline_labels(d: dict, labels: dict) -> dict:
     for label in (d["models"].get("motion") or {}).get("labels") or []:
         if label not in activity:
             raise ConfigError(f"pipeline.models.motion: {label} is not an activity label")
+    if "app" in d:
+        _check_app(d["app"], d, labels)
     return d
+
+
+def _check_app(app: dict, pipeline: dict, labels: dict) -> None:
+    where = "pipeline.app"
+    for key in ("port", "seed", "sample_size", "overlap_size", "rare_min_positives", "topup_per_label",
+                "clip_height"):
+        if not isinstance(app.get(key), int) or isinstance(app.get(key), bool) or app[key] < 1:
+            raise ConfigError(f"{where}: {key} must be an integer >= 1")
+    if app["overlap_size"] > app["sample_size"]:
+        raise ConfigError(f"{where}: overlap_size must not exceed sample_size")
+    _number(app, "padding_s", where)
+    if not 0 <= app["padding_s"] <= 30:
+        raise ConfigError(f"{where}: padding_s must be within 0-30")
+    if not 240 <= app["clip_height"] <= 1080:
+        raise ConfigError(f"{where}: clip_height must be within 240-1080")
+    if not 1024 <= app["port"] <= 65535:
+        raise ConfigError(f"{where}: port must be within 1024-65535")
+    groups = {lab["group"] for lab in labels["labels"]}
+    selectable = {lab["group"] for lab in labels["labels"] if lab.get("source", "model") != "rules"}
+    for key in ("blind_groups", "indicator_groups"):
+        if not isinstance(app.get(key), list) or not app[key]:
+            raise ConfigError(f"{where}: {key} must be a non-empty list")
+        for g in app[key]:
+            if g not in groups:
+                raise ConfigError(f"{where}: {key} has unknown group {g!r}")
+    primary = pipeline["moments"]["primary_group"]
+    if primary not in app["blind_groups"]:
+        raise ConfigError(f"{where}: blind_groups must include the primary group {primary}")
+    for g in app["blind_groups"]:
+        if g == pipeline["calibrate"]["null_group"]:
+            raise ConfigError(f"{where}: blind_groups must not include the null group")
+        if g not in selectable:
+            raise ConfigError(f"{where}: blind_groups group {g} has no model or staff labels")
+    if app.get("uncertain_label") not in {lab["name"] for lab in rules_labels(labels)}:
+        raise ConfigError(f"{where}: uncertain_label must be a rules label")
+    if app.get("skip_observation") not in observation_types(labels):
+        raise ConfigError(f"{where}: skip_observation must be one of the observation types")
 
 
 def load_pipeline(path=None, labels=None) -> dict:

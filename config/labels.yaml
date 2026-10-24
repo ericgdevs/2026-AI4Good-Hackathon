@@ -1,7 +1,15 @@
 # Label vocabulary. Observable behaviour only (Constitution V); bump guideline_version on any change.
 # Prompts describe what a camera sees: no feelings, no judgments about people.
 # source: model (default, scored by a model) | rules (computed flags) | staff (set by staff only, no prompts).
-guideline_version: "0.3.0"
+guideline_version: "0.4.0"
+# Adding an observation type (or any label) requires bumping guideline_version.
+observation_types:
+  - {name: staging_issue,    description: "lighting, set or staging problem"}
+  - {name: audio_problem,    description: "sound missing, clipped or noisy"}
+  - {name: camera_problem,   description: "framing, focus or shake makes the moment hard to see"}
+  - {name: off_task,         description: "activity unrelated to the session plan"}
+  - {name: worth_showcasing, description: "a strong program moment for funders (no individual judgment)"}
+  - {name: clip_unavailable, description: "footage could not be played (logged by Skip)"}
 labels:
   # category
   - name: performance

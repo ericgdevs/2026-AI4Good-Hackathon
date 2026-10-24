@@ -5,10 +5,10 @@
 | Where | Change |
 |---|---|
 | 001 `reviews.label_role` | adds `observation` (allowed set: primary, secondary, indicator, observation) |
-| `config/labels.yaml` | adds `observation_types: [{name, description}]`; `guideline_version` moves to `0.3.0` |
+| `config/labels.yaml` | adds `observation_types: [{name, description}]`; `guideline_version` moves to `0.4.0` |
 | `config/pipeline.yaml` | adds the `app:` section (see contracts/config.md) |
 
-No pipeline table changes.
+No pipeline table changes. The guideline moves 0.3.0 → 0.4.0, because the 0.3.0 approved vocabulary already shipped on `main` and adding the observation types is the next change.
 
 ## New table: `blind_queue` (in the local `reviews.duckdb`, never synced)
 

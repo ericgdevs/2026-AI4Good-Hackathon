@@ -96,10 +96,10 @@ def test_vocabulary_has_no_banned_terms(labels):
     assert not words.findall(text)
 
 
-def test_shipped_labels_are_guideline_0_3_0(labels):
+def test_shipped_labels_are_guideline_0_4_0(labels):
     from tpa_index.config import model_labels, rules_labels
 
-    assert labels["guideline_version"] == "0.3.0"
+    assert labels["guideline_version"] == "0.4.0"
     assert {lab["name"] for lab in rules_labels(labels)} == {"uncertain_mixed", "needs_review"}
     assert not {"uncertain", "mixed"} & {lab["name"] for lab in labels["labels"]}
     assert all(lab["group"] != "status" for lab in model_labels(labels))
@@ -233,3 +233,54 @@ def test_bad_null_settings(pipeline, change, match):
     change(bad)
     with pytest.raises(ConfigError, match=match):
         _check_pipeline(bad)
+
+
+
+@pytest.mark.parametrize("change,match", [
+    (lambda a, p: a.update(overlap_size=a["sample_size"] + 1), "overlap_size"),
+    (lambda a, p: a.update(blind_groups=a["blind_groups"] + ["nope"]), "unknown group"),
+    (lambda a, p: a.update(blind_groups=[g for g in a["blind_groups"] if g != p["moments"]["primary_group"]]),
+     "primary group"),
+    (lambda a, p: a.update(blind_groups=a["blind_groups"] + [p["calibrate"]["null_group"]]), "null group"),
+    (lambda a, p: a.update(uncertain_label="no_such_rule"), "uncertain_label"),
+    (lambda a, p: a.update(skip_observation="no_such_type"), "skip_observation"),
+    (lambda a, p: a.update(padding_s=31), "padding_s"),
+    (lambda a, p: a.update(port=80), "port"),
+])
+def test_bad_app_settings(pipeline, labels, change, match):
+    from tpa_index.config import _check_app
+
+    bad = copy.deepcopy(pipeline)
+    change(bad["app"], bad)
+    with pytest.raises(ConfigError, match=match):
+        _check_app(bad["app"], bad, labels)
+
+
+def test_rules_only_group_cannot_be_blind_labeled(pipeline, labels):
+    from tpa_index.config import _check_app
+
+    rules_group = next(lab["group"] for lab in labels["labels"] if lab.get("source") == "rules")
+    bad = copy.deepcopy(pipeline)
+    bad["app"]["blind_groups"].append(rules_group)
+    with pytest.raises(ConfigError, match="no model or staff labels"):
+        _check_app(bad["app"], bad, labels)
+
+
+@pytest.mark.parametrize("change,match", [
+    (lambda o, names: o.append(dict(o[0])), "duplicate"),
+    (lambda o, names: o.append({"name": names[0], "description": "x"}), "clashes with a label"),
+    (lambda o, names: o.append({"name": "Bad-Name", "description": "x"}), "lowercase"),
+    (lambda o, names: o.append({"name": "fine_name", "description": " "}), "description"),
+])
+def test_bad_observation_types(labels, change, match):
+    bad = copy.deepcopy(labels)
+    change(bad["observation_types"], [lab["name"] for lab in bad["labels"]])
+    with pytest.raises(ConfigError, match=match):
+        _check_labels(bad)
+
+
+def test_observation_types_listed(labels, pipeline):
+    from tpa_index.config import observation_types
+
+    assert pipeline["app"]["skip_observation"] in observation_types(labels)
+    assert len(observation_types(labels)) == len(set(observation_types(labels)))

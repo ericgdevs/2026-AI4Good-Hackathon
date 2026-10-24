@@ -352,3 +352,20 @@ def test_moments_unknown_video_id_exits_3(tmp_path, monkeypatch, capsys):
     cli = _official_mock(tmp_path, monkeypatch)
     assert cli.main(["moments", "--video-id", "typo1"]) == 3
     assert "no official predict run covers typo1" in capsys.readouterr().err
+
+
+def test_mock_clips_cover_every_segment(tmp_path):
+    import av
+
+    from tpa_index.paths import data_dir
+    from tpa_index.schema import read_table
+
+    result = run_cli("mock", "--n-videos", "1", "--clips")
+    assert result.returncode == 0, result.stderr
+    (video,) = read_table("videos").to_pylist()
+    last_end = max(read_table("segments")["end_s"].to_pylist())
+    path = data_dir() / video["filename"]
+    assert path.exists()
+    with av.open(str(path)) as c:
+        assert c.duration / 1e6 >= last_end - 0.5
+    assert str(data_dir()) not in result.stdout

@@ -168,3 +168,35 @@ def test_old_segments_files_without_idle_columns_read_as_null():
 
 def test_idle_score_out_of_range_rejected():
     _bad("segments", [row("segments", idle_score=1.5)], "idle_score")
+
+
+
+def _queue_rows(queue, ids):
+    return [dict(queue=queue, position=i, segment_id=sid, video_id="mock04", start_s=6.0 * i, end_s=6.0 * i + 8,
+                 target_label=None, seed=1, created_at=NOW) for i, sid in enumerate(ids)]
+
+
+def test_observation_review_row_validates():
+    assert validate("reviews", [row("reviews", label_role="observation", label="staging_issue", action="add",
+                                    new_label="staging_issue", source="staff")]).num_rows == 1
+
+
+def test_blind_queue_written_once_and_read_in_order():
+    from tpa_index.schema import append_blind_queue, read_blind_queue
+
+    assert read_blind_queue().num_rows == 0
+    append_blind_queue(list(reversed(_queue_rows("main", ["mock04_0", "mock04_6000", "mock04_12000"]))))
+    assert read_blind_queue("main")["position"].to_pylist() == [0, 1, 2]
+    with pytest.raises(SchemaError, match="already exists"):
+        append_blind_queue(_queue_rows("main", ["mock04_18000"]))
+    append_blind_queue(_queue_rows("overlap", ["mock04_0"]))
+    assert read_blind_queue()["queue"].to_pylist() == ["main", "main", "main", "overlap"]
+
+
+def test_blind_queue_rejects_duplicate_segments_and_mixed_queues():
+    from tpa_index.schema import append_blind_queue
+
+    with pytest.raises(SchemaError, match="duplicate segment"):
+        append_blind_queue(_queue_rows("main", ["mock04_0", "mock04_0"]))
+    with pytest.raises(SchemaError, match="one queue"):
+        append_blind_queue(_queue_rows("main", ["a"]) + [dict(_queue_rows("overlap", ["b"])[0], position=1)])

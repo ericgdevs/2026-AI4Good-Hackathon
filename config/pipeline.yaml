@@ -43,3 +43,17 @@ calibrate:
   null_group: "null"             # quoted: bare null is YAML for nothing. Scored by predict, never a result
   null_percentile: 99            # null floor = this percentile of each dev segment's max null score
   min_segments: 20               # fewer dev segments than this: keep the fallback
+app:
+  port: 7860                 # 127.0.0.1 only; tpa-index app refuses to start if the port is taken
+  seed: 2026                 # blind sample seed; changing it never reshuffles an existing queue
+  sample_size: 300           # main blind sample (all eval segments if fewer)
+  overlap_size: 60           # first N of the main sample, for the second labeler
+  rare_min_positives: 10     # a label is rare with fewer blind positives than this in the main sample
+  topup_per_label: 20        # top-up cap per rare label
+  padding_s: 3               # review playback context before and after a moment
+  clip_height: 480           # clip resolution for playback (speed over detail)
+  # label roles come from config, never from code (the vocabulary may change):
+  blind_groups: [activity, category, actor, indicator]   # checklist groups, in this order
+  indicator_groups: [indicator]    # labels in these groups are stored with role indicator
+  uncertain_label: uncertain_mixed # the rules label offered as the uncertain/mixed option
+  skip_observation: clip_unavailable   # observation type logged by Skip

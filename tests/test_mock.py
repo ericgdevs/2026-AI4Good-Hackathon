@@ -29,7 +29,7 @@ def test_reviews_cover_every_value(mock_root):
     reviews = read_reviews(mock_root)
     assert set(reviews["action"].to_pylist()) == {"accept", "edit", "reject", "defer", "add"}
     assert set(reviews["source"].to_pylist()) == {"ai", "staff"}
-    assert set(reviews["mode"].to_pylist()) == {"blind", "review"}
+    assert set(reviews["mode"].to_pylist()) == {"review"}  # mock data never writes blind ground truth
 
 
 def test_moments_mix_review_flags(mock_root):
@@ -62,8 +62,8 @@ def test_rules_rows_for_every_segment(mock_root):
     assert not {"uncertain_mixed", "needs_review"} & scored
 
 
-def test_reviews_use_guideline_0_3_0(mock_root):
-    assert set(read_reviews(mock_root)["guideline_version"].to_pylist()) == {"0.3.0"}
+def test_reviews_use_guideline_0_4_0(mock_root):
+    assert set(read_reviews(mock_root)["guideline_version"].to_pylist()) == {"0.4.0"}
 
 
 def test_clip_kind_uses_its_own_window(mock_root):

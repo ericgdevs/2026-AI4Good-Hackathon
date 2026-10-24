@@ -81,7 +81,7 @@ Source of truth is `src/tpa_index/schema.py`. This document must match it. Nulla
 | target_type | string | no | segment \| moment |
 | target_id | string | no | |
 | label | string | no | label being reviewed |
-| label_role | string | no | primary \| secondary \| indicator |
+| label_role | string | no | primary \| secondary \| indicator \| observation (003) |
 | action | string | no | accept \| edit \| reject \| defer \| add |
 | new_label | string | yes | required iff action ∈ {edit, add} |
 | source | string | no | ai \| staff |

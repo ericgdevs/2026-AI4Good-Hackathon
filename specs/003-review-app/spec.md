@@ -124,7 +124,7 @@ Staff run the app on the Mac that holds the footage. Clips play from short tempo
 - **FR-001**: The app MUST read videos, segments and moments only through the official-run readers from 001/002, never from all runs.
 - **FR-002**: Every staff action MUST be stored as a new row in the reviews log, following the 001 contract. Rows are never edited or deleted. The current state of a (target, label) pair is its latest row.
 - **FR-003**: The reviews contract MUST gain `observation` as an allowed `label_role` (a 001 contract change). Rows stored before this change stay valid.
-- **FR-004**: The label checklist and the label groups shown MUST come from the label config at runtime. New groups appear without code changes.
+- **FR-004**: The label checklist and the label groups shown MUST come from the label config at runtime. New groups appear without code changes. The blind checklist offers model and staff labels (the staff-only indicators included), never rules labels or the null group.
 - **FR-005**: The app MUST ask for a reviewer (a staff first name or role) before any labeling, remember it for the session, and store it on every row.
 
 **Blind labeling**

@@ -4,7 +4,7 @@
 
 ```yaml
 app:
-  port: 7860                 # 127.0.0.1 only; next free port if taken
+  port: 7860                 # 127.0.0.1 only; `tpa-index app` refuses to start if the port is taken
   seed: 2026                 # blind sample seed; changing it never reshuffles an existing queue
   sample_size: 300           # main blind sample (all eval segments if fewer)
   overlap_size: 60           # first N of the main sample, for the second labeler
@@ -28,6 +28,7 @@ Validation:
 - `clip_height` between 240 and 1080;
 - `port` between 1024 and 65535;
 - every `blind_groups` and `indicator_groups` entry is a group that exists in `labels.yaml`, and the primary group is in `blind_groups`;
+- `blind_groups` must not contain the null group (`calibrate.null_group`), and every entry must have at least one model or staff label (rules-only groups can't be blind-labeled);
 - `uncertain_label` is a rules label in `labels.yaml`;
 - `skip_observation` is one of `observation_types`.
 
@@ -36,7 +37,7 @@ There is deliberately no key for host, sharing or analytics: those are fixed in 
 ## config/labels.yaml
 
 ```yaml
-guideline_version: "0.3.0"
+guideline_version: "0.4.0"
 # Adding an observation type (or any label) requires bumping guideline_version.
 observation_types:
   - {name: staging_issue,    description: "lighting, set or staging problem"}

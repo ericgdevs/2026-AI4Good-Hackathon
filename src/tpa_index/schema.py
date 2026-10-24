@@ -54,7 +54,15 @@ SCHEMAS: dict[str, pa.Schema] = {
         ("mode", _s, False), ("guideline_version", _s, False), ("reviewer", _s, False), ("note", _s, True),
         ("created_at", _ts, False),
     ),
+    "blind_queue": _schema(
+        ("queue", _s, False), ("position", _i32, False), ("segment_id", _s, False), ("video_id", _s, False),
+        ("start_s", _f64, False), ("end_s", _f64, False), ("target_label", _s, True), ("seed", pa.int64(), False),
+        ("created_at", _ts, False),
+    ),
 }
+
+# review-row roles (a 001 contract enum; "observation" added in 003)
+LABEL_ROLES = ("primary", "secondary", "indicator", "observation")
 
 RULES: dict[str, dict] = {
     "videos": {
@@ -76,9 +84,11 @@ RULES: dict[str, dict] = {
     },
     "moments": {"pk": ("moment_id",), "unit": ("confidence",), "nonneg": ("start_s",), "times": True},
     "runs": {"pk": ("run_id",), "positive": ("runtime_s",), "nonneg": ("n_segments", "peak_mem_gb")},
+    "blind_queue": {"pk": ("queue", "position"), "enums": {"queue": {"main", "overlap", "topup"}},
+                    "nonneg": ("position", "start_s"), "times": True},
     "reviews": {
         "pk": ("review_id",),
-        "enums": {"target_type": {"segment", "moment"}, "label_role": {"primary", "secondary", "indicator"},
+        "enums": {"target_type": {"segment", "moment"}, "label_role": set(LABEL_ROLES),
                   "action": {"accept", "edit", "reject", "defer", "add"}, "source": {"ai", "staff"},
                   "mode": {"blind", "review"}},
     },
@@ -234,6 +244,49 @@ def append_reviews(rows, root=None) -> int:
         finally:
             con.close()
     return tbl.num_rows
+
+
+def append_blind_queue(rows, root=None) -> int:
+    """Write one blind queue, once. Queues are never modified, so a stable sample survives later runs."""
+    tbl = validate("blind_queue", list(rows))
+    queues = set(tbl["queue"].to_pylist())
+    if len(queues) != 1:
+        raise SchemaError("blind_queue", "queue", "write exactly one queue at a time")
+    ids = tbl["segment_id"].to_pylist()
+    if len(set(ids)) != len(ids):
+        raise SchemaError("blind_queue", "segment_id", "duplicate segment in queue")
+    (queue,) = queues
+    path = _reviews_db(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _reviews_lock:
+        con = duckdb.connect(str(path))
+        try:
+            con.register("incoming", tbl)
+            con.execute("CREATE TABLE IF NOT EXISTS blind_queue AS SELECT * FROM incoming LIMIT 0")
+            if con.execute("SELECT count(*) FROM blind_queue WHERE queue = ?", [queue]).fetchall()[0][0]:
+                raise SchemaError("blind_queue", "queue", f"queue {queue} already exists (queues are written once)")
+            con.execute("INSERT INTO blind_queue SELECT * FROM incoming")
+        finally:
+            con.close()
+    return tbl.num_rows
+
+
+def read_blind_queue(queue=None, root=None) -> pa.Table:
+    path = _reviews_db(root)
+    if not path.exists():
+        return SCHEMAS["blind_queue"].empty_table()
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'blind_queue'").fetchall()[0][0]:
+            return SCHEMAS["blind_queue"].empty_table()
+        tbl = con.sql("SELECT * FROM blind_queue ORDER BY queue, position").to_arrow_table().cast(SCHEMAS["blind_queue"])
+    finally:
+        con.close()
+    if queue:
+        import pyarrow.compute as pc
+
+        tbl = tbl.filter(pc.equal(tbl["queue"], queue))
+    return tbl
 
 
 def read_reviews(root=None) -> pa.Table:

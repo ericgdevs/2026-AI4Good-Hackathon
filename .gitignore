@@ -254,3 +254,6 @@ config/videos.local.yaml
 *.local.yaml
 .DS_Store
 slurm-*.out
+
+# Playwright MCP browser snapshots and screenshots
+.playwright-mcp/

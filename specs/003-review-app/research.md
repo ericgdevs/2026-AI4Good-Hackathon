@@ -52,8 +52,7 @@ Checked on 2026-10-24 against the locked environment: Gradio 6.30.0 and Homebrew
 ## 6. Keyboard shortcuts (FR-009)
 
 - **Decision**: `launch(js=...)` installs one `keydown` handler, ignored while typing in a text field. The key map is generated from `labels.yaml` at startup, so new labels get keys automatically:
-  - `1`–`9`: the primary group's labels (from `pipeline.moments.primary_group`), in config order.
-  - Letters: every other checklist item in config order, skipping the reserved keys.
+  - One key sequence, `1`–`9`, `0`, then `a`–`z` without `u`, assigned to the primary group's labels first (from `pipeline.moments.primary_group`), then every other checklist label, in config order. The approved vocabulary has 13 activities, more than 9 digits.
   - Reserved: `U` for `app.uncertain_label`, `Enter` for save-and-next, `Backspace` for back, `Space` for replay.
 
   Each label's key is shown next to it. A handler "presses" the matching component through its `elem_id`.
@@ -107,7 +106,7 @@ Checked on 2026-10-24 against the locked environment: Gradio 6.30.0 and Homebrew
 ## 10. Observations (FR-017, FR-017a)
 
 - `labels.yaml` gets `observation_types: [{name, description}]`, validated as unique names in snake_case. It ships with `staging_issue`, `audio_problem`, `camera_problem`, `off_task`, `worth_showcasing` and `clip_unavailable`.
-- Adding the list bumps the guideline version to `0.3.0`. The rule that adding a type bumps the version is documented in the file header, because it can't be enforced in code without a history.
+- Adding the list bumps the guideline version to `0.4.0`. The rule that adding a type bumps the version is documented in the file header, because it can't be enforced in code without a history.
 - `label_role` gains `observation` in the 001 `reviews` schema (`RULES`). Older rows stay valid.
 
 ## 11. Concurrency

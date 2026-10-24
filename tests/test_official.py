@@ -88,3 +88,44 @@ def test_stage_value_must_be_a_list(tmp_path, monkeypatch):
     _official(tmp_path, monkeypatch, "predict: predict-20261024T000000-abcd\n")
     with pytest.raises(SchemaError, match="must be a list of run IDs"):
         read_official("moments")
+
+
+def _stage_run(run_id, video_id, stage="people", model="yolo11n", cfg="aaaaaaaaaaaa", complete=True, started=None):
+    from datetime import datetime, timezone
+
+    write_table("videos", [row("videos", video_id=video_id, filename=f"mock/{video_id}.mp4")], run_id)
+    if complete:
+        write_table("runs", [row("runs", run_id=run_id, stage=stage, model=model, config_hash=cfg,
+                                 started_at=started or datetime.now(timezone.utc))], run_id)
+
+
+def test_find_complete_run_matches_stage_model_hash_and_video():
+    from datetime import datetime, timezone
+
+    from tpa_index.schema import find_complete_run
+
+    _stage_run("people-20261024T000000-0001", "v01", started=datetime(2026, 10, 24, tzinfo=timezone.utc))
+    _stage_run("people-20261024T010000-0002", "v01", started=datetime(2026, 10, 24, 1, tzinfo=timezone.utc))
+    _stage_run("people-20261024T020000-0003", "v02", complete=False)
+    assert find_complete_run("people", "v01", "yolo11n", "aaaaaaaaaaaa") == "people-20261024T010000-0002"
+    assert find_complete_run("people", "v01", "yolo11n", "bbbbbbbbbbbb") is None  # other config
+    assert find_complete_run("people", "v01", "yolo11m", "aaaaaaaaaaaa") is None  # other model
+    assert find_complete_run("people", "v02", "yolo11n", "aaaaaaaaaaaa") is None  # incomplete folder
+    assert find_complete_run("people", "v03", "yolo11n", "aaaaaaaaaaaa") is None  # other video
+    assert find_complete_run("audio", "v01", "yolo11n", "aaaaaaaaaaaa") is None  # other stage
+
+
+def test_moments_and_calibrate_rebuild_runs_with_old_config_hash(tmp_path, monkeypatch):
+    """004: official 002 runs written under another config (0.4.0 labels) still rebuild; nothing compares hashes."""
+    from tpa_index import cli, mock
+    from tpa_index.schema import read_table
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+    monkeypatch.setattr(mock, "config_hash", lambda labels, pipeline: "000000000000")
+    mock.generate(seed=0)
+    assert {r["config_hash"] for r in read_table("runs").to_pylist()} == {"000000000000"}
+    _official(tmp_path, monkeypatch, "predict: [mock-seed0]\n")
+    assert cli.main(["moments"]) == 0
+    assert cli.main(["calibrate", "--stage", "predict", "--split", "dev", "--dry-run"]) == 0
+    rebuilt = [r["run_id"] for r in read_table("runs").to_pylist() if r["stage"] == "moments"]
+    assert rebuilt and read_table("moments", run_ids=rebuilt).num_rows > 0

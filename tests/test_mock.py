@@ -62,8 +62,8 @@ def test_rules_rows_for_every_segment(mock_root):
     assert not {"uncertain_mixed", "needs_review"} & scored
 
 
-def test_reviews_use_guideline_0_4_0(mock_root):
-    assert set(read_reviews(mock_root)["guideline_version"].to_pylist()) == {"0.4.0"}
+def test_reviews_use_guideline_0_5_0(mock_root):
+    assert set(read_reviews(mock_root)["guideline_version"].to_pylist()) == {"0.5.0"}
 
 
 def test_clip_kind_uses_its_own_window(mock_root):

@@ -401,3 +401,17 @@ def list_runs(root=None) -> list[dict]:
                         "n_predictions": pq.ParquetFile(preds).metadata.num_rows if preds.exists() else 0,
                         "runtime_s": r["runtime_s"], "peak_mem_gb": r["peak_mem_gb"]})
     return out
+
+
+def find_complete_run(stage: str, video_id: str, model: str, cfg_hash: str, root=None) -> str | None:
+    """Newest complete run of `stage` covering `video_id` with this model and config hash (resume key), or None."""
+    runs = _runs_root(root)
+    found = []
+    for d in runs.glob(f"{stage}-*") if runs.exists() else []:
+        if not (d / "runs.parquet").exists():
+            continue
+        for r in pq.read_table(d / "runs.parquet").to_pylist():
+            if (r["stage"], r["model"], r["config_hash"]) == (stage, model, cfg_hash) \
+                    and video_id in _run_videos(d.name, root):
+                found.append((r["started_at"], r["run_id"]))
+    return max(found)[1] if found else None

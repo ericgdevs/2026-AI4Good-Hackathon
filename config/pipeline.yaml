@@ -29,6 +29,38 @@ models:
     frames_per_window: 8                     # X-CLIP needs exactly its trained frame count
     other_prompt: "people doing some other activity"
   batch_windows: {cuda: 64, mps: 8, cpu: 4}
+  # 004 signal stages: weights load from local files only (HF_HOME, or weights_dir() for GitHub assets)
+  transcript:
+    hpc: large-v3                # faster-whisper size; Systran/faster-whisper-<size> in HF_HOME
+    mac: base
+    hpc_device: cuda             # cpu = int8 on CPU; a cuda load failure stops with the missing library named
+    compute_type: {cuda: float16, cpu: int8}
+  audio:
+    hpc: MIT/ast-finetuned-audioset-10-10-0.4593
+    mac: MIT/ast-finetuned-audioset-10-10-0.4593
+  people:                        # ultralytics/assets GitHub release; sha256 from scripts/download_weights.sh
+    hpc: {file: yolo11m.pt, sha256: null}
+    mac: {file: yolo11n.pt, sha256: null}
+  expression:
+    face_detector: {repo: opencv/face_detection_yunet, file: face_detection_yunet_2023mar.onnx}
+    model: {name: enet_b0_8_va_mtl, file: enet_b0_8_va_mtl.onnx, sha256: null}   # EmotiEffLib GitHub, ONNX, CPU
+signals:                         # 004: per-segment signals (observable cues only; no identity)
+  people:
+    person_conf: 0.4
+  expression:
+    face_score: 0.8              # YuNet score; minimum face size is min_face_px
+    mapping:                     # model class -> label; unlisted classes are dropped (Fear, Surprise)
+      positive: [Happiness]
+      neutral: [Neutral]
+      negative: [Anger, Contempt, Disgust]
+      upset: [Sadness]
+  audio:
+    mapping:                     # exact AudioSet display names; label score = max sigmoid over its classes
+      singing_voice: [Singing, Choir, Male singing, Female singing, Child singing, Rapping, Humming, Chant]
+      music: [Music]
+      speech: [Speech, "Male speech, man speaking", "Female speech, woman speaking", "Child speech, kid speaking", Conversation, "Narration, monologue"]
+      applause: [Applause, Clapping, Cheering]
+      silence: [Silence]
 idle:
   prompts:
     - "an empty room"

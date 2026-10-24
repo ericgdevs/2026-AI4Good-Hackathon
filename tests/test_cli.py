@@ -421,3 +421,57 @@ def test_missing_official_run_exits_with_message_not_traceback(tmp_path, monkeyp
     assert cli.main(["app", "--port", str(port)]) == 3
     err = capsys.readouterr().err
     assert "run not-on-disk not found or incomplete" in err and "Traceback" not in err
+
+
+# ---- signals (004): fakes only ---------------------------------------------------------------------------------
+def signals_cli(monkeypatch, models, clip_videos, pipeline, tmp_path, ids=("t01", "t03")):
+    """In-process cli with official segment runs for the clips and `models` in place of real weights."""
+    from tests.test_signals import official_clip_runs
+    from tpa_index import cli
+
+    monkeypatch.setattr(cli, "install_redaction", lambda: None)
+    monkeypatch.setattr(cli, "_make_signal_models", lambda stages, pipeline, dev: {s: models[s] for s in stages})
+    monkeypatch.setenv("TPA_SCRATCH_DIR", str(tmp_path / "scratch"))
+    official_clip_runs([clip_videos[i] for i in ids], pipeline, tmp_path, monkeypatch)
+    return cli, ["--videos", str(_predict_yaml(tmp_path)), *[x for i in ids for x in ("--video-id", i)]]
+
+
+def _job_a_models(**kw):
+    from tests.fakes import FakeAudioTagger, FakeTranscriber
+
+    return {"transcript": FakeTranscriber(**kw), "audio": FakeAudioTagger(
+        ["singing_voice", "music", "speech", "applause", "silence"])}
+
+
+def test_signals_unknown_stage_exits_3(monkeypatch, clip_videos, pipeline, tmp_path, capsys):
+    cli, sel = signals_cli(monkeypatch, _job_a_models(), clip_videos, pipeline, tmp_path)
+    assert cli.main(["signals", "--stages", "bogus", *sel]) == 3
+    assert "unknown stage bogus" in capsys.readouterr().err
+
+
+def test_signals_model_load_failure_exits_3_before_any_video(monkeypatch, clip_videos, pipeline, tmp_path, capsys):
+    from tpa_index import config, schema
+
+    cli, sel = signals_cli(monkeypatch, _job_a_models(), clip_videos, pipeline, tmp_path)
+
+    def broken(stages, pipeline, dev):
+        raise config.ConfigError("model not found locally: faster-whisper-base")
+
+    monkeypatch.setattr(cli, "_make_signal_models", broken)
+    assert cli.main(["signals", "--stages", "transcript,audio", *sel]) == 3
+    assert "model not found locally" in capsys.readouterr().err
+    assert {r["stage"] for r in schema.read_table("runs").to_pylist()} == {"segment"}
+
+
+def test_signals_done_skipped_and_failed_lines(monkeypatch, clip_videos, pipeline, tmp_path, capsys):
+    models = _job_a_models(fail_for={"t03"})
+    cli, sel = signals_cli(monkeypatch, models, clip_videos, pipeline, tmp_path)
+    assert cli.main(["signals", "--stages", "transcript,audio", *sel]) == 1
+    out, err = capsys.readouterr()
+    assert "transcript t01: done transcript-" in out and "audio t03: done audio-" in out
+    assert "transcript t03: failed TranscriptError(RuntimeError)" in out
+    assert err.strip().splitlines()[-1] == "failed: transcript t03"
+    models["transcript"].fail_for = set()
+    assert cli.main(["signals", "--stages", "transcript,audio", *sel]) == 0
+    out = capsys.readouterr().out
+    assert "transcript t03: done" in out and "audio t01: skipped (done: audio-" in out

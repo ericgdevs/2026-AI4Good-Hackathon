@@ -1,0 +1,50 @@
+{
+  "guideline_version": "0.4.0",
+  "checklist": {
+    "primary": [
+      "singing",
+      "songwriting",
+      "lyricism_spoken_word",
+      "dance",
+      "acting_theater",
+      "visual_arts",
+      "recording_arts",
+      "instrument",
+      "film_production",
+      "podcast_interview",
+      "modeling_runway",
+      "fashion_design",
+      "audience_watching"
+    ],
+    "groups": [
+      [
+        "category",
+        [
+          "performance",
+          "creative_practice",
+          "participation",
+          "instruction"
+        ]
+      ],
+      [
+        "actor",
+        [
+          "actor_participant",
+          "actor_staff_facilitation"
+        ]
+      ],
+      [
+        "indicator",
+        [
+          "solo_on_stage",
+          "group_performance",
+          "voice_projection",
+          "sustained_participation",
+          "presenting_to_peers",
+          "original_work"
+        ]
+      ]
+    ],
+    "uncertain": "uncertain_mixed"
+  }
+}

@@ -177,3 +177,11 @@ def test_null_labels_never_become_results(clip_videos, pipeline, labels):
     assert out["moments"] == []  # null prompts can't create a primary label
     rules = [p for p in out["predictions"] if p["model"] == "rules"]
     assert {p["score"] for p in rules} == {1.0}  # no activity cleared: uncertain; null scores ignored
+
+
+def test_siglip_predict_scores_no_audio_or_expression_labels(clip_videos, pipeline, labels):
+    """004: the 0.5.0 labels (with audio singing_voice) never reach SigLIP predict."""
+    assert labels["guideline_version"] == "0.5.0"
+    out = run(clip_videos["t01"], pipeline, labels)
+    assert not {p["label_group"] for p in out["predictions"]} & {"audio", "expression"}
+    assert "singing_voice" not in {p["label"] for p in out["predictions"]}

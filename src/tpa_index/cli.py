@@ -145,6 +145,53 @@ def _predict(args) -> int:
     return _per_video("predict", videos, embedder.name, work)
 
 
+def _make_signal_models(stages: list[str], pipeline: dict, dev: str) -> dict:
+    """Each selected stage's model, loaded once before any video (tests replace this function)."""
+    from tpa_index.signal_models import AstTagger, WhisperTranscriber
+
+    hpc, models, cfg = dev == "cuda", {}, pipeline["models"]
+    for stage in stages:
+        if stage == "transcript":
+            t = cfg["transcript"]
+            wdev = t["hpc_device"] if hpc else "cpu"
+            models[stage] = WhisperTranscriber(t["hpc" if hpc else "mac"], wdev, t["compute_type"][wdev])
+        elif stage == "audio":
+            models[stage] = AstTagger(cfg["audio"]["hpc" if hpc else "mac"], dev, pipeline["signals"]["audio"]["mapping"])
+        else:
+            raise ConfigError(f"stage {stage} is not available yet")
+    return models
+
+
+def _signals(args) -> int:
+    import os
+
+    from tpa_index.config import SIGNAL_STAGES
+    from tpa_index.runs import device
+    from tpa_index.signals import run_signals
+
+    stages = [s.strip() for s in args.stages.split(",") if s.strip()]
+    unknown = sorted(set(stages) - set(SIGNAL_STAGES))
+    if unknown or not stages:
+        raise ConfigError(f"--stages: unknown stage {unknown[0] if unknown else '(none)'}; "
+                          f"choose from {', '.join(SIGNAL_STAGES)}")
+    videos = _select_videos(args)
+    pipeline, labels = load_pipeline(), load_labels()
+    dev = device()
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")  # weights come from the local cache only
+    os.environ["YOLO_OFFLINE"] = "1"
+    models = _make_signal_models(stages, pipeline, dev)  # once, before any video; failures exit 3
+    results = run_signals(videos, stages, models, pipeline, labels, force=args.force, device=dev)
+    for (vid, stage), status in sorted(results.items()):
+        kind, _, detail = status.partition(":")
+        shown = {"done": f"done {detail}", "skipped": f"skipped (done: {detail})"}.get(kind, f"failed {detail}")
+        print(f"{stage} {vid}: {shown}")
+    failed = [f"{stage} {vid}" for (vid, stage), status in sorted(results.items()) if status.startswith("failed:")]
+    if failed:
+        print(f"failed: {', '.join(failed)}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _main_model(predictions) -> str | None:
     """Most common non-rules model in a predictions table."""
     from collections import Counter
@@ -329,6 +376,13 @@ def main(argv=None) -> int:
         cmd.add_argument("--videos", help="videos YAML (default: config/videos.local.yaml)")
         cmd.add_argument("--video-id", action="append", help="only these video_ids (repeatable)")
         cmd.set_defaults(func=func)
+    sig = sub.add_parser("signals", help="004 per-segment signals: transcript, audio, people, expression")
+    sig.add_argument("--stages", default="transcript,audio,people,expression", help="comma-separated stages")
+    sig.add_argument("--videos", help="videos YAML (default: config/videos.local.yaml)")
+    sig.add_argument("--video-id", action="append", help="only these video_ids (repeatable)")
+    sig.add_argument("--kind", action="append", help="only videos of this kind (repeatable)")
+    sig.add_argument("--force", action="store_true", help="rerun pairs that already have a finished run")
+    sig.set_defaults(func=_signals)
     pred = sub.choices["predict"]
     pred.add_argument("--kind", action="append", help="only videos of this kind (repeatable), e.g. promo")
     pred.add_argument("--model", help="model id (default: models.main.hpc on cuda, models.main.mac otherwise)")

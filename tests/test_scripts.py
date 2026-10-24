@@ -172,3 +172,24 @@ def test_output_sync_real_rsync_from_local_folder(tmp_path):
     data = yaml.safe_load(target.read_text())
     assert data["label_thresholds"] == {"mac-model": {"singing": 0.2}, "hpc-model": {"singing": 0.12}}
     assert data["idle_thresholds"] == {"mac-model": 0.3}
+
+
+def test_output_sync_skips_transcript_json(tmp_path):
+    """SC-011: transcripts stay on HPC; the output sync copies Parquet only (local folders, no real host)."""
+    hpc_out, hpc_repo, local = tmp_path / "hpc-out", tmp_path / "hpc-repo", tmp_path / "local-out"
+    run = hpc_out / "runs/transcript-20261024T000000-0001"
+    run.mkdir(parents=True)
+    (run / "segments.parquet").write_text("hpc")
+    (run / "runs.parquet").write_text("hpc")
+    (run / "transcript.json").write_text('{"segments": []}')
+    local.mkdir()
+    (hpc_repo / "config").mkdir(parents=True)
+    env_path = tmp_path / "local.env"
+    env_path.write_text(f"HPC_USER=mockuser\nHPC_HOST=hpc.invalid\nHPC_OUTPUT_DIR={hpc_out}\nHPC_REPO_DIR={hpc_repo}\n")
+    env = {**os.environ, "TPA_ENV_FILE": str(env_path), "TPA_SYNC_REMOTE": "", "OUTPUT_DIR": str(local),
+           "TPA_THRESHOLDS_FILE": str(tmp_path / "thresholds.local.yaml")}
+    result = _run(OUT_SYNC, env)
+    assert result.returncode == 0, result.stderr
+    copied = local / "runs/transcript-20261024T000000-0001"
+    assert (copied / "segments.parquet").exists() and (copied / "runs.parquet").exists()
+    assert not list(local.rglob("transcript*.json"))

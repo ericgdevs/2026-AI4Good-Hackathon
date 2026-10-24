@@ -96,10 +96,10 @@ def test_vocabulary_has_no_banned_terms(labels):
     assert not words.findall(text)
 
 
-def test_shipped_labels_are_guideline_0_4_0(labels):
+def test_shipped_labels_are_guideline_0_5_0(labels):
     from tpa_index.config import model_labels, rules_labels
 
-    assert labels["guideline_version"] == "0.4.0"
+    assert labels["guideline_version"] == "0.5.0"
     assert {lab["name"] for lab in rules_labels(labels)} == {"uncertain_mixed", "needs_review"}
     assert not {"uncertain", "mixed"} & {lab["name"] for lab in labels["labels"]}
     assert all(lab["group"] != "status" for lab in model_labels(labels))
@@ -286,3 +286,105 @@ def test_observation_types_listed(labels, pipeline):
 
     assert pipeline["app"]["skip_observation"] in observation_types(labels)
     assert len(observation_types(labels)) == len(set(observation_types(labels)))
+
+
+# ---- 004 signals -------------------------------------------------------------------------------------------------
+def test_singing_voice_is_an_audio_label(labels):
+    by_name = {lab["name"]: lab for lab in labels["labels"]}
+    assert by_name["singing_voice"]["group"] == "audio"
+    assert by_name["singing"]["group"] == "activity"
+    assert [lab["name"] for lab in labels["labels"] if lab["group"] == "audio"] == \
+        ["music", "speech", "applause", "silence", "singing_voice"]
+
+
+@pytest.mark.parametrize("change,match", [
+    (lambda p: p["signals"]["audio"]["mapping"].update(nope=["Music"]), "mapping.nope: not an allowed label"),
+    (lambda p: p["signals"]["audio"]["mapping"].pop("silence"), "audio label silence has no classes"),
+    (lambda p: p["signals"]["expression"]["mapping"].update(confident=["Happiness"]), "confident: not an allowed"),
+    (lambda p: p["signals"]["expression"]["mapping"].update(upset=["Sadness", "Neutral"]), "'Neutral' is mapped to more"),
+    (lambda p: p["signals"]["audio"]["mapping"].update(music=[]), "music: must be a non-empty list"),
+    (lambda p: p["models"]["people"]["hpc"].update(sha256="xyz"), "people.hpc.sha256"),
+    (lambda p: p["models"]["people"]["mac"].update(file="../yolo11n.pt"), "people.mac.file: must be a bare"),
+    (lambda p: p["models"]["expression"]["model"].update(file="a/b.onnx"), "expression.model.file"),
+    (lambda p: p["signals"]["expression"].update(face_score=1.5), "face_score must be within"),
+    (lambda p: p["signals"]["people"].update(person_conf=0), "person_conf must be within"),
+    (lambda p: p["models"]["transcript"].update(hpc_device="tpu"), "hpc_device: must be cuda or cpu"),
+    (lambda p: p["models"].pop("audio"), "models.audio"),
+    (lambda p: p.pop("signals"), "signals section missing"),
+])
+def test_bad_signal_settings(pipeline, labels, change, match):
+    from tpa_index.config import _check_pipeline_labels
+
+    bad = copy.deepcopy(pipeline)
+    change(bad)
+    with pytest.raises(ConfigError, match=match):
+        _check_pipeline_labels(_check_pipeline(bad), labels)
+
+
+def test_pinned_weight(tmp_path, monkeypatch):
+    import hashlib
+
+    from tpa_index.config import pinned_weight, weights_dir
+
+    monkeypatch.setenv("TPA_WEIGHTS_DIR", str(tmp_path))
+    assert weights_dir() == tmp_path
+    with pytest.raises(ConfigError, match="weights not found: w.pt"):
+        pinned_weight({"file": "w.pt", "sha256": "0" * 64})
+    (tmp_path / "w.pt").write_bytes(b"weights")
+    with pytest.raises(ConfigError, match="weights not pinned: set sha256 for w.pt"):
+        pinned_weight({"file": "w.pt", "sha256": None})
+    with pytest.raises(ConfigError, match="checksum mismatch: w.pt"):
+        pinned_weight({"file": "w.pt", "sha256": "0" * 64})
+    good = hashlib.sha256(b"weights").hexdigest()
+    assert pinned_weight({"file": "w.pt", "sha256": good}) == tmp_path / "w.pt"
+
+
+def test_weights_dir_defaults_to_hf_home(tmp_path, monkeypatch):
+    from tpa_index.config import weights_dir
+
+    monkeypatch.delenv("TPA_WEIGHTS_DIR", raising=False)
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    assert weights_dir() == tmp_path / "tpa-weights"
+
+
+def test_stage_config_hash_is_scoped(pipeline, labels):
+    from tpa_index.config import stage_config_hash
+
+    video = {"video_id": "v01", "kind": "live"}
+    base = {s: stage_config_hash(s, labels, pipeline, video) for s in ("transcript", "audio", "people", "expression")}
+    assert all(re.fullmatch(r"[0-9a-f]{12}", h) for h in base.values())
+    assert len(set(base.values())) == 4
+
+    prompts = copy.deepcopy(labels)
+    for lab in prompts["labels"]:
+        if lab.get("prompts"):
+            lab["prompts"] = ["x", "y", "z"]
+    assert {s: stage_config_hash(s, prompts, pipeline, video) for s in base} == base
+
+    other = copy.deepcopy(pipeline)
+    other["signals"]["people"]["person_conf"] = 0.5
+    other["moments"]["close_ratio"] = 0.5
+    other["models"]["main"]["hpc"] = "other"
+    changed = {s: stage_config_hash(s, labels, other, video) for s in base}
+    assert changed["people"] != base["people"]
+    assert {s: changed[s] for s in ("transcript", "audio", "expression")} == \
+        {s: base[s] for s in ("transcript", "audio", "expression")}
+
+    mapped = copy.deepcopy(pipeline)
+    mapped["signals"]["audio"]["mapping"]["music"] = ["Music", "Song"]
+    assert stage_config_hash("audio", labels, mapped, video) != base["audio"]
+    sized = copy.deepcopy(pipeline)
+    sized["models"]["transcript"]["hpc"] = "medium"
+    assert stage_config_hash("transcript", labels, sized, video) != base["transcript"]
+
+
+def test_stage_config_hash_by_video_override_only_that_video(pipeline, labels):
+    from tpa_index.config import stage_config_hash
+
+    v1, v2 = {"video_id": "v01", "kind": "live"}, {"video_id": "v02", "kind": "live"}
+    over = copy.deepcopy(pipeline)
+    over.setdefault("overrides", {}).setdefault("by_video", {})["v01"] = {"frames_per_window": 8}
+    assert stage_config_hash("people", labels, over, v1) != stage_config_hash("people", labels, pipeline, v1)
+    assert stage_config_hash("people", labels, over, v2) == stage_config_hash("people", labels, pipeline, v2)
+    with pytest.raises(ConfigError, match="unknown signal stage"):
+        stage_config_hash("predict", labels, pipeline, v1)

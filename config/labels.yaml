@@ -1,7 +1,7 @@
 # Label vocabulary. Observable behaviour only (Constitution V); bump guideline_version on any change.
 # Prompts describe what a camera sees: no feelings, no judgments about people.
 # source: model (default, scored by a model) | rules (computed flags) | staff (set by staff only, no prompts).
-guideline_version: "0.4.0"
+guideline_version: "0.5.0"
 # Adding an observation type (or any label) requires bumping guideline_version.
 observation_types:
   - {name: staging_issue,    description: "lighting, set or staging problem"}
@@ -107,6 +107,10 @@ labels:
     group: audio
     prompts: ["silence", "a quiet room", "no sound"]
     color: "#969696"
+  - name: singing_voice          # audio cue; not the activity label "singing"
+    group: audio
+    prompts: ["a person singing", "people singing together", "a person rapping into a microphone", "a choir singing"]
+    color: "#c51b8a"
   # expression (observable, staff-verified proposals only)
   - name: confident
     group: expression

@@ -409,3 +409,16 @@ def test_review_rows_validate_and_latest_state(labels, pipeline):
         observation_row(m, "not_an_observation", "staff-a", labels)
     st = _state(m, [(lab, "accept"), (lab, "defer"), (lab, "edit")], labels)
     assert st[(m["moment_id"], lab)]["action"] == "edit"
+
+
+def test_blind_checklist_identical_to_0_4_0(labels, pipeline):
+    """SC-012: the 0.5.0 labels (audio label singing_voice added) give the 0.4.0 blind checklist,
+    so 0.4.0 and 0.5.0 blind reviews form one eval set."""
+    import json
+
+    from tpa_index.paths import repo_root
+
+    snapshot = json.loads((repo_root() / "tests/data/blind_checklist_0.4.0.json").read_text())
+    assert snapshot["guideline_version"] == "0.4.0"
+    assert labels["guideline_version"] == "0.5.0"
+    assert json.loads(json.dumps(checklist(labels, pipeline))) == snapshot["checklist"]

@@ -224,6 +224,7 @@ reply.md
 reply_history.md
 
 # Data (never commit footage of kids)
+transcript*.json
 data/
 videos/
 frames/

@@ -39,3 +39,18 @@ def test_failed_run_reraises_and_is_ignored():
             raise ValueError("boom")
     assert read_table("runs").num_rows == 0
     assert read_table("segments").num_rows == 0  # written but not complete: skipped by readers
+
+
+def test_context_overrides_runtime_and_peak():
+    with track_run("dummy", cfg_hash="abcdef012345") as ctx:
+        ctx.runtime_s, ctx.peak_mem_gb = 12.5, 3.25
+    (row,) = read_table("runs").to_pylist()
+    assert (row["runtime_s"], row["peak_mem_gb"], row["config_hash"]) == (12.5, 3.25, "abcdef012345")
+
+
+def test_measured_values_when_no_override():
+    with track_run("dummy") as ctx:
+        time.sleep(0.05)
+    assert ctx.runtime_s is None and ctx.peak_mem_gb is None
+    (row,) = read_table("runs").to_pylist()
+    assert 0.05 <= row["runtime_s"] < 10

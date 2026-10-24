@@ -45,3 +45,67 @@ class FakeMotion:
 
     def score(self, windows_frames):
         return np.full((len(windows_frames), len(self.labels)), self.score_value, np.float32)
+
+
+# ---- 004 signal stages: same Protocols as tpa_index.signal_models, no weights ----------------------------------
+class FakeTranscriber:
+    """Words every 2 s (text = `sentinel` if given). Fails for videos in `fail_for` (matched on the WAV name)."""
+
+    def __init__(self, words=None, sentinel=None, fail_for=(), raise_with="transcriber broke", name="fake-whisper"):
+        self.name, self.calls = name, []
+        self.words = words if words is not None else [(t, t + 0.4, sentinel or "la") for t in (1.0, 3.0, 9.0)]
+        self.fail_for, self.raise_with = set(fail_for), raise_with
+
+    def transcribe(self, wav_path):
+        self.calls.append(str(wav_path))
+        if any(f"-{v}.wav" in str(wav_path) for v in self.fail_for):
+            raise RuntimeError(self.raise_with)
+        ws = [{"start": a, "end": b, "word": f" {w}"} for a, b, w in self.words]
+        return [{"start": ws[0]["start"], "end": ws[-1]["end"], "text": "".join(w["word"] for w in ws),
+                 "words": ws}] if ws else []
+
+
+class FakeAudioTagger:
+    """Constant scores; small input so tests stay light. `fail_on_call` raises on that call (1-based)."""
+
+    def __init__(self, labels, value=0.6, input_samples=32000, fail_on_call=None, name="fake-ast"):
+        self.labels, self.value, self.input_samples, self.name = list(labels), value, input_samples, name
+        self.fail_on_call, self.calls, self.shapes = fail_on_call, 0, []
+
+    def score(self, clips):
+        self.calls += 1
+        if self.calls == self.fail_on_call:
+            raise RuntimeError("tagger broke")
+        self.shapes += [c.shape for c in clips]
+        return np.full((len(clips), len(self.labels)), self.value, np.float32)
+
+
+class FakePersonCounter:
+    def __init__(self, count=2, fail_on_call=None, name="fake-yolo"):
+        self.count_value, self.fail_on_call, self.calls, self.name = count, fail_on_call, 0, name
+
+    def count(self, frames):
+        self.calls += 1
+        if self.calls == self.fail_on_call:
+            raise RuntimeError("counter broke")
+        return [self.count_value] * len(frames)
+
+
+class FakeExpressionScorer:
+    """No faces on a uniform frame; otherwise `faces_per_frame` in-memory crops with fixed per-label scores."""
+
+    def __init__(self, labels, faces_per_frame=1, scores=None, fail_on_call=None, name="fake-expression"):
+        self.labels, self.faces_per_frame, self.name = list(labels), faces_per_frame, name
+        self.scores = np.asarray(scores if scores is not None else [0.5, 0.2, 0.1, 0.1][:len(self.labels)], np.float32)
+        self.fail_on_call, self.calls = fail_on_call, 0
+
+    def faces(self, frame):
+        self.calls += 1
+        if self.calls == self.fail_on_call:
+            raise RuntimeError("scorer broke")
+        if frame.std() == 0:
+            return []
+        return [frame[:8, :8].copy() for _ in range(self.faces_per_frame)]
+
+    def score(self, crops):
+        return np.tile(self.scores, (len(crops), 1))

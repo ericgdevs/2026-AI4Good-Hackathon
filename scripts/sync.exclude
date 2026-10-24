@@ -17,6 +17,7 @@ frames/
 crops/
 embeddings/
 transcripts/
+transcript*.json
 *.local.yaml
 slurm-*.out
 reply.md

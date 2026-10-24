@@ -83,6 +83,8 @@ class RunContext:
     stage: str
     run_id: str = field(default="")
     n_segments: int = 0
+    runtime_s: float | None = None  # set by a stage whose work was timed before the run started (shared pass)
+    peak_mem_gb: float | None = None  # likewise, or a measured value the default misses (non-torch GPU memory)
 
 
 @contextmanager
@@ -105,6 +107,7 @@ def track_run(stage: str, model: str | None = None, cfg_hash: str | None = None,
         "run_id": ctx.run_id, "stage": stage, "model": model,
         "config_hash": cfg_hash or config_hash(load_labels(), load_pipeline()),
         "hardware": hardware_name(dev), "n_segments": ctx.n_segments,
-        "runtime_s": max(time.perf_counter() - t0, 1e-6), "peak_mem_gb": _peak_mem_gb(dev), "started_at": started,
+        "runtime_s": ctx.runtime_s if ctx.runtime_s is not None else max(time.perf_counter() - t0, 1e-6),
+        "peak_mem_gb": ctx.peak_mem_gb if ctx.peak_mem_gb is not None else _peak_mem_gb(dev), "started_at": started,
         "git_commit": git_commit(),
     }], ctx.run_id, root)

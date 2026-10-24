@@ -240,10 +240,127 @@ def _check_pipeline_labels(d: dict, labels: dict) -> dict:
     for label in (d["models"].get("motion") or {}).get("labels") or []:
         if label not in activity:
             raise ConfigError(f"pipeline.models.motion: {label} is not an activity label")
+    _check_signals(d, labels)
     if not isinstance(d.get("app"), dict):
         raise ConfigError("pipeline: app section missing")
     _check_app(d["app"], d, labels)
     return d
+
+
+def _check_weight_entry(entry, where: str, keys=("file", "sha256")) -> None:
+    if not isinstance(entry, dict) or not all(k in entry for k in keys):
+        raise ConfigError(f"{where}: needs {', '.join(keys)}")
+    f = entry["file"]
+    if not isinstance(f, str) or not f or "/" in f or "\\" in f or f in (".", ".."):
+        raise ConfigError(f"{where}.file: must be a bare filename")
+    if "sha256" in keys and entry["sha256"] is not None \
+            and not (isinstance(entry["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])):
+        raise ConfigError(f"{where}.sha256: must be null or 64 lowercase hex characters")
+
+
+def _check_mapping(mapping, where: str, allowed: set[str]) -> None:
+    if not isinstance(mapping, dict) or not mapping:
+        raise ConfigError(f"{where}: must map label -> [model class, ...]")
+    seen: set[str] = set()
+    for label, classes in mapping.items():
+        if label not in allowed:
+            raise ConfigError(f"{where}.{label}: not an allowed label ({', '.join(sorted(allowed))})")
+        if not isinstance(classes, list) or not classes or not all(isinstance(c, str) and c for c in classes):
+            raise ConfigError(f"{where}.{label}: must be a non-empty list of class names")
+        for c in classes:
+            if c in seen:
+                raise ConfigError(f"{where}.{label}: class {c!r} is mapped to more than one label")
+            seen.add(c)
+
+
+def _check_signals(d: dict, labels: dict) -> None:
+    """004 signal stages: models and signals sections (load time; model class names are checked at startup)."""
+    models, sig = d["models"], d.get("signals")
+    t = models.get("transcript")
+    if not isinstance(t, dict) or not all(isinstance(t.get(k), str) for k in ("hpc", "mac")):
+        raise ConfigError("pipeline.models.transcript: hpc and mac model sizes are required")
+    if t.get("hpc_device") not in ("cuda", "cpu"):
+        raise ConfigError("pipeline.models.transcript.hpc_device: must be cuda or cpu")
+    if not isinstance(t.get("compute_type"), dict) or not all(isinstance(t["compute_type"].get(k), str)
+                                                              for k in ("cuda", "cpu")):
+        raise ConfigError("pipeline.models.transcript.compute_type: needs cuda and cpu")
+    a = models.get("audio")
+    if not isinstance(a, dict) or not all(isinstance(a.get(k), str) for k in ("hpc", "mac")):
+        raise ConfigError("pipeline.models.audio: hpc and mac model ids are required")
+    p = models.get("people")
+    if not isinstance(p, dict):
+        raise ConfigError("pipeline.models.people: hpc and mac weight entries are required")
+    for k in ("hpc", "mac"):
+        _check_weight_entry(p.get(k), f"pipeline.models.people.{k}")
+    e = models.get("expression")
+    if not isinstance(e, dict):
+        raise ConfigError("pipeline.models.expression: face_detector and model are required")
+    _check_weight_entry(e.get("face_detector"), "pipeline.models.expression.face_detector", ("repo", "file"))
+    _check_weight_entry(e.get("model"), "pipeline.models.expression.model", ("name", "file", "sha256"))
+    if not isinstance(sig, dict):
+        raise ConfigError("pipeline: signals section missing")
+    for where, block, key in (("pipeline.signals.people", sig.get("people"), "person_conf"),
+                              ("pipeline.signals.expression", sig.get("expression"), "face_score")):
+        if not isinstance(block, dict):
+            raise ConfigError(f"{where}: section missing")
+        if not 0 < _number(block, key, where) < 1:
+            raise ConfigError(f"{where}: {key} must be within (0, 1)")
+    audio_labels = {lab["name"] for lab in model_labels(labels, {"audio"})}
+    amap = (sig.get("audio") or {}).get("mapping")
+    _check_mapping(amap, "pipeline.signals.audio.mapping", audio_labels)
+    missing = audio_labels - set(amap)
+    if missing:
+        raise ConfigError(f"pipeline.signals.audio.mapping: audio label {sorted(missing)[0]} has no classes")
+    # confident is derived later (005), never model-scored here
+    expr_labels = {lab["name"] for lab in model_labels(labels, {"expression"})} - {"confident"}
+    _check_mapping(sig["expression"].get("mapping"), "pipeline.signals.expression.mapping", expr_labels)
+
+
+SIGNAL_STAGES = ("transcript", "audio", "people", "expression")
+
+
+def weights_dir() -> Path:
+    """GitHub-release weights (not on Hugging Face): TPA_WEIGHTS_DIR, else $HF_HOME/tpa-weights."""
+    if os.environ.get("TPA_WEIGHTS_DIR"):
+        return Path(os.environ["TPA_WEIGHTS_DIR"]).expanduser()
+    hf_home = os.environ.get("HF_HOME") or "~/.cache/huggingface"
+    return Path(hf_home).expanduser() / "tpa-weights"
+
+
+def pinned_weight(entry: dict) -> Path:
+    """Path of a pinned weight file under weights_dir(), checked against its sha256. Never downloads."""
+    path = weights_dir() / entry["file"]
+    if not path.is_file():
+        raise ConfigError(f"weights not found: {entry['file']}; run scripts/download_weights.sh on the login node")
+    if not entry.get("sha256"):
+        raise ConfigError(f"weights not pinned: set sha256 for {entry['file']}")
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    if h.hexdigest() != entry["sha256"]:
+        raise ConfigError(f"weights checksum mismatch: {entry['file']}")
+    return path
+
+
+def stage_config_hash(stage: str, labels: dict, pipeline: dict, video: dict) -> str:
+    """Resume key for one signal stage and video: config_hash over only the keys that stage reads.
+    Prompts and other stages' settings are left out, so editing them reruns nothing."""
+    if stage not in SIGNAL_STAGES:
+        raise ConfigError(f"unknown signal stage {stage!r}")
+    eff = effective_settings(pipeline, video)
+    part: dict = {"stage": stage, "window_s": eff["window_s"], "overlap_s": eff["overlap_s"],
+                  "model": pipeline["models"][stage]}
+    if stage in ("transcript", "audio"):
+        part["audio_sample_rate"] = pipeline["audio_sample_rate"]
+    if stage in ("people", "expression"):
+        part["frames_per_window"] = eff["frames_per_window"]
+    if stage in pipeline["signals"]:
+        part["signals"] = pipeline["signals"][stage]
+    if stage == "expression":
+        part["min_face_px"] = pipeline["min_face_px"]
+    names = sorted(lab["name"] for lab in model_labels(labels, {stage}) if stage in ("audio", "expression"))
+    return config_hash({"labels": names}, part)
 
 
 def _check_app(app: dict, pipeline: dict, labels: dict) -> None:

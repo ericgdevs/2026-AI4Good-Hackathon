@@ -29,6 +29,12 @@ for repo in Systran/faster-whisper-large-v3 Systran/faster-whisper-small \
     uv run hf download "$repo" >/dev/null
     echo "hf: $repo"
 done
+# faster-whisper needs CUDA 12 cuBLAS and cuDNN next to torch's CUDA 13 ones. Both cuDNN wheels write
+# nvidia/cudnn/lib/libcudnn.so.9, so install the cu12 pair last: the venv state that was verified on the node.
+if [[ "$(uname)" == "Linux" ]]; then
+    uv sync --frozen --reinstall-package nvidia-cublas-cu12 --reinstall-package nvidia-cudnn-cu12
+fi
+
 # the path only: `hf download` prints coloured status text, so ask huggingface_hub for the file path directly
 yunet=$(uv run python -c "from huggingface_hub import hf_hub_download; print(hf_hub_download('opencv/face_detection_yunet', 'face_detection_yunet_2023mar.onnx', revision='$YUNET_REVISION'))" | tail -n 1)
 [[ -f "$yunet" ]] || { echo "YuNet download did not return a file path" >&2; exit 1; }

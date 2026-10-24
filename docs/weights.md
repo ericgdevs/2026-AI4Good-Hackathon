@@ -34,5 +34,6 @@ The licences below are as published upstream. **Verify each one against the upst
 - **Expression labels are unvalidated suggestions of observable expressions**, never feelings or mental state. Fear and Surprise are dropped, because both misfire on open mouths while singing. Scores are not renormalized after dropping. `confident` is not model-scored (it is derived later).
 - **Expression needs a face of at least 48 px** (`min_face_px`) with a detector score of at least 0.8. Segments without one get `faces_detected = 0` and no expression scores.
 - **Transcript peak memory on CUDA is approximate**: CTranslate2 allocates GPU memory outside torch's counters.
+- **The transcript run's runtime includes the shared audio extraction** (it runs inside whichever audio stage goes first).
 - **People and expression share one frame pass**, so their runs record the same runtime and peak memory. Do not sum them.
 - **faster-whisper on HPC needs the CUDA 12 cuBLAS and cuDNN 9 libraries** (`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`, Linux only). `scripts/slurm/signals.sbatch` puts them on `LD_LIBRARY_PATH`.

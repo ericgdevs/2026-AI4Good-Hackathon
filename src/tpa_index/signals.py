@@ -25,10 +25,11 @@ class TranscriptError(Exception):
 def scratch_dir() -> Path:
     """Folder for the temporary WAV: TPA_SCRATCH_DIR, else $TMPDIR (per Slurm job), else the system temp."""
     path = Path(os.environ.get("TPA_SCRATCH_DIR") or os.environ.get("TMPDIR") or tempfile.gettempdir())
-    path = path.expanduser().resolve()
+    path = path.expanduser().resolve() / "tpa-index"
     if path.is_relative_to(repo_root()):
         raise GuardError("TPA_SCRATCH_DIR must point outside the repo")
     path.mkdir(parents=True, exist_ok=True)
+    path.chmod(0o700)  # participants' audio: never readable by other users of a shared node
     return path
 
 
@@ -235,6 +236,7 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
     from tpa_index.schema import find_complete_run
 
     stages = [s for s in (*AUDIO_STAGES, *FRAME_STAGES) if s in set(stages)]
+    hardware = "hpc" if device == "cuda" else "mac"
     scratch = scratch_dir()
     clean_stale_scratch(scratch)
     rate, batch = pipeline["audio_sample_rate"], pipeline["models"]["batch_windows"][device]
@@ -250,7 +252,7 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
             continue
         todo = []
         for stage in stages:
-            cfg = stage_config_hash(stage, labels, pipeline, video)
+            cfg = stage_config_hash(stage, labels, pipeline, video, hardware)
             done = None if force else find_complete_run(stage, vid, models[stage].name, cfg, root)
             if done:
                 results[(vid, stage)] = f"skipped:{done}"

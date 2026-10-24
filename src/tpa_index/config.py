@@ -351,14 +351,20 @@ def check_sha256(path: Path, entry: dict) -> Path:
     return path
 
 
-def stage_config_hash(stage: str, labels: dict, pipeline: dict, video: dict) -> str:
-    """Resume key for one signal stage and video: config_hash over only the keys that stage reads.
-    Prompts and other stages' settings are left out, so editing them reruns nothing."""
+def stage_config_hash(stage: str, labels: dict, pipeline: dict, video: dict, hardware: str = "mac") -> str:
+    """Resume key for one signal stage and video: config_hash over only the keys that stage reads on this
+    hardware ("hpc" or "mac"). Prompts, other stages and the other machine's model entry are left out, so
+    editing them reruns nothing."""
     if stage not in SIGNAL_STAGES:
         raise ConfigError(f"unknown signal stage {stage!r}")
+    if hardware not in ("hpc", "mac"):
+        raise ConfigError(f"hardware must be hpc or mac, not {hardware!r}")
     eff = effective_settings(pipeline, video)
-    part: dict = {"stage": stage, "window_s": eff["window_s"], "overlap_s": eff["overlap_s"],
-                  "model": pipeline["models"][stage]}
+    m = pipeline["models"][stage]
+    model = {k: v for k, v in m.items() if k not in ("hpc", "mac")}
+    if "hpc" in m:
+        model["entry"] = m[hardware]
+    part: dict = {"stage": stage, "window_s": eff["window_s"], "overlap_s": eff["overlap_s"], "model": model}
     if stage in ("transcript", "audio"):
         part["audio_sample_rate"] = pipeline["audio_sample_rate"]
     if stage in ("people", "expression"):

@@ -374,7 +374,7 @@ def test_stage_config_hash_is_scoped(pipeline, labels):
     mapped["signals"]["audio"]["mapping"]["music"] = ["Music", "Song"]
     assert stage_config_hash("audio", labels, mapped, video) != base["audio"]
     sized = copy.deepcopy(pipeline)
-    sized["models"]["transcript"]["hpc"] = "medium"
+    sized["models"]["transcript"]["mac"] = "medium"  # default hardware is mac; an hpc edit must not change it
     assert stage_config_hash("transcript", labels, sized, video) != base["transcript"]
 
 
@@ -404,3 +404,22 @@ def test_face_detector_needs_revision(pipeline, labels):
     bad["models"]["expression"]["face_detector"]["revision"] = "main"
     with pytest.raises(ConfigError, match="face_detector.revision"):
         _check_pipeline_labels(_check_pipeline(bad), labels)
+
+
+def test_stage_config_hash_ignores_the_other_hardware(pipeline, labels):
+    from tpa_index.config import stage_config_hash
+
+    video = {"video_id": "v01", "kind": "live"}
+    hpc_before = stage_config_hash("transcript", labels, pipeline, video, "hpc")
+    mac_before = stage_config_hash("people", labels, pipeline, video, "mac")
+    edited = copy.deepcopy(pipeline)
+    edited["models"]["transcript"]["mac"] = "tiny"  # a Mac-only edit
+    edited["models"]["people"]["hpc"]["file"] = "yolo11l.pt"  # an HPC-only edit
+    assert stage_config_hash("transcript", labels, edited, video, "hpc") == hpc_before
+    assert stage_config_hash("transcript", labels, edited, video, "mac") != \
+        stage_config_hash("transcript", labels, pipeline, video, "mac")
+    assert stage_config_hash("people", labels, edited, video, "mac") == mac_before
+    assert stage_config_hash("people", labels, edited, video, "hpc") != \
+        stage_config_hash("people", labels, pipeline, video, "hpc")
+    with pytest.raises(ConfigError, match="hardware must be hpc or mac"):
+        stage_config_hash("audio", labels, pipeline, video, "gpu")

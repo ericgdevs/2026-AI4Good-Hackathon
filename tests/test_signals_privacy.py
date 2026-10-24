@@ -80,7 +80,7 @@ def test_no_temp_or_image_files_survive(monkeypatch, clip_videos, pipeline, tmp_
     dead = 999_999
     while psutil.pid_exists(dead):
         dead += 1
-    (scratch / f"tpa-audio-{dead}-t01.wav").write_bytes(b"RIFF")  # left by a killed job
+    (signals.scratch_dir() / f"tpa-audio-{dead}-t01.wav").write_bytes(b"RIFF")  # left by a killed job
     assert cli.main(["signals", "--stages", "audio", "--force", *sel]) == 0
     assert _stray_files(scratch, out) == []
 

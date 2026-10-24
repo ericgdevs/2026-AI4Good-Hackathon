@@ -41,7 +41,9 @@ def official_clip_runs(videos, pipeline, tmp_path, monkeypatch, stage="segment")
 # ---- foundation (T012) --------------------------------------------------------------------------------------------
 def test_scratch_dir_override_and_repo_guard(tmp_path, monkeypatch):
     monkeypatch.setenv("TPA_SCRATCH_DIR", str(tmp_path / "s"))
-    assert signals.scratch_dir() == (tmp_path / "s").resolve() and (tmp_path / "s").is_dir()
+    scratch = signals.scratch_dir()
+    assert scratch == (tmp_path / "s").resolve() / "tpa-index" and scratch.is_dir()
+    assert scratch.stat().st_mode & 0o777 == 0o700  # owner only
     monkeypatch.setenv("TPA_SCRATCH_DIR", str(repo_root() / "tmp-scratch"))
     with pytest.raises(GuardError, match="outside the repo"):
         signals.scratch_dir()

@@ -22,7 +22,7 @@ A team member runs the predict command on a video. For each segment, the system 
 
 **Acceptance Scenarios**:
 
-1. **Given** a segmented video and the label config, **When** predict runs, **Then** every segment has one score for every label in the category, actor, activity and status groups, and none for audio, expression or indicator labels.
+1. **Given** a segmented video and the label config, **When** predict runs, **Then** every segment has one score for every model-scored label in the category, actor and activity groups, and none for audio, expression or indicator labels. Status labels are rule-derived (FR-007, FR-009a).
 2. **Given** a label with 3–5 prompt phrasings, **When** it is scored, **Then** all of its phrasings contribute to its single score.
 3. **Given** a portrait and a landscape video, **When** scored, **Then** the full frame is used for both, with nothing cropped away.
 4. **Given** the same input, config and model, **When** predict runs twice, **Then** the scores match to within a small tolerance (rounding differences between hardware are allowed).
@@ -137,7 +137,7 @@ A team member syncs the repo to their HPC work folder and pulls HPC outputs back
 
 **Scoring**
 
-- **FR-001**: The system MUST score every label in the category, actor, activity and status groups for every segment, with a score from 0 to 1. The rule-derived `uncertain_mixed` label is the exception: the rules produce it (FR-007), not the model.
+- **FR-001**: The system MUST score every model-scored label in the category, actor and activity groups for every segment, with a score from 0 to 1. Both status labels (`uncertain_mixed`, `needs_review`) are rule-derived, not model-scored.
 - **FR-002**: Each label's score MUST use all of its configured prompt phrasings, and each segment's score MUST use all of its sampled frames.
 - **FR-003**: Frames MUST be used whole (padded, never cropped), for both portrait and landscape videos.
 - **FR-004**: Each score MUST be stored as one prediction row: segment, label, label group, score, model name and run ID.
@@ -147,11 +147,14 @@ A team member syncs the repo to their HPC work folder and pulls HPC outputs back
 **Labels per segment and moments**
 
 - **FR-007**: For each segment, the system MUST derive:
-  - a primary activity: the top activity at or above the label threshold;
-  - secondary labels: the other labels at or above the threshold;
+  - a primary activity: the highest-scoring activity among those at or above their own label threshold (a per-label threshold if set, else the global one);
+  - secondary labels: the other labels at or above their own threshold;
   - an uncertain/mixed result, when no activity clears the threshold or the top two activities are within the configured margin. It is stored as an `uncertain_mixed` status prediction row (score 1 when flagged, 0 otherwise) under the model name `rules`, alongside the model rows.
 - **FR-008**: Moments MUST be built with the existing merge rules, using each video's effective window settings, including per-kind and per-video overrides. The current shortcut that always uses the default window MUST be removed.
 - **FR-009**: Idle segments MUST NOT start or extend moments.
+- **FR-009a**: A moment MUST be marked `needs_review` when its confidence is below its primary label's threshold, or when any of its segments is flagged `uncertain_mixed`. `needs_review` is a rule-derived status label with no prompts.
+- **FR-009b**: Thresholds MUST be settable per label (per model), falling back to the global threshold. A calibrate command MUST propose per-label thresholds from official **dev-split** predictions only. It MUST never read eval-split videos, and it writes the result to a local, gitignored thresholds file (Constitution I: data-derived values stay out of git).
+- **FR-009c**: A moments command MUST rebuild moments from existing official predictions with the current thresholds, as a new run per video, without re-running any model.
 - **FR-010**: The predict run MUST write the segments (with the idle signal filled in), predictions and moments for each video as a new run. Existing runs MUST NOT be modified.
 
 **Idle**
@@ -213,6 +216,8 @@ A team member syncs the repo to their HPC work folder and pulls HPC outputs back
 - Q: How is uncertain/mixed stored? → A: As a rule-based `uncertain_mixed` status prediction row (score 1/0, model `rules`). It replaces the model-scored `uncertain` and `mixed` labels, and the guideline version becomes 0.2.0.
 - Q: When is a segment idle? → A: Only when the idle description scores above its threshold **and** visual change is very low.
 - Q: Model weights on HPC? → A: They're already in `~/hf-cache`. The Slurm wrapper exports `HF_HOME=$HOME/hf-cache` explicitly.
+
+- Q (follow-up): Thresholds and `needs_review`? → A: Per-label thresholds with a global fallback, a dev-only `calibrate` command, and a `moments` rebuild command. `needs_review` is rules-based: low confidence or `uncertain_mixed`.
 
 ## Assumptions
 

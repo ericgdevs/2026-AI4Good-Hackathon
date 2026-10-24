@@ -1,0 +1,72 @@
+# Contract: Python API, CLI, Scripts (002)
+
+This contract extends `specs/001-foundation/contracts/interfaces.md`, and everything there still holds.
+
+## Python (`tpa_index`)
+
+```python
+# embed.py
+class Embedder(Protocol):
+    name: str                 # model id as recorded in predictions.model / runs.model
+    logit_scale: float        # already exp()'d
+    logit_bias: float
+    def embed_texts(self, texts: list[str]) -> np.ndarray: ...            # (n, d) float32, L2-normalized
+    def embed_images(self, images: np.ndarray) -> np.ndarray: ...         # (n, S, S, 3) uint8 -> (n, d) float32, L2-normalized
+
+SiglipEmbedder(model_id, device, batch_images)   # transformers, local_files_only=True, bf16 on cuda
+
+# score.py
+label_embeddings(embedder, labels: list[dict]) -> dict[str, np.ndarray]   # prompt-ensembled, renormalized
+window_embedding(frame_embeds: np.ndarray) -> np.ndarray                   # mean of N, renormalized
+sigmoid_scores(window_embeds, label_embeds, scale, bias) -> np.ndarray     # (windows, labels) float32 in 0-1
+visual_change(frames: np.ndarray) -> float | None                          # None if < 2 frames
+is_idle(idle_score, change, idle_cfg) -> bool
+uncertain_mixed(activity_scores: dict[str, float], thresholds: dict[str, float], margin) -> bool
+predict_video(video, pipeline, labels, embedder, run_id, motion=None) -> dict[str, list[dict]]
+#   returns {"videos": [...], "segments": [...], "predictions": [...], "moments": [...]}; writes nothing
+
+# xclip.py  (only imported when models.motion.enabled)
+XClipScorer(model_id, device, labels, other_prompt)   # .name, .score(windows_frames) -> (windows, labels) softmax
+
+# segment.py (changed)
+segment_video(video, settings, sample_rate=16000, with_audio=True) -> Iterator[Window]
+
+# moments.py (changed)
+merge_moments(segments, predictions, pipeline, run_id, window_s=None, model=None) -> list[dict]
+#   window_s defaults to pipeline["window_s"]; needs_review = conf < threshold(model, primary) or any segment uncertain_mixed
+
+# config.py (new)
+threshold(pipeline, model, label) -> float     # per-label (per model) with global fallback
+# load_pipeline() merges config/thresholds.local.yaml (gitignored) over pipeline.yaml
+
+# calibrate.py (new)
+propose_thresholds(predictions, videos, model, top_pct=10, min_segments=20) -> dict[str, float | None]   # dev only
+write_local_thresholds(model, thresholds, path=None) -> None
+
+# schema.py (new)
+load_official(path=None) -> dict[str, list[str]]
+read_official(table, stage=None, root=None) -> pa.Table   # result-facing code MUST use this, not read_table
+#   stage None: moments -> "moments" if listed else "predict"; others -> "predict" (rules rows from official moments runs replace predict's)
+list_runs(root=None) -> list[dict]   # run_id, stage, video_ids, hardware, n_segments, n_predictions, runtime_s, peak_mem_gb
+```
+
+## CLI
+
+| command | does | exit codes |
+|---|---|---|
+| `tpa-index predict [--videos PATH] [--video-id ID …] [--model ID]` | one predict run per video: segments with `is_idle`, predictions (model + rules [+ motion]), moments, runs | 0; 1 if any video failed (IDs listed); 2 guard; 3 config/model not found |
+| `tpa-index runs` | lists complete runs, one line each; no filenames or paths | 0 / 2 |
+| `tpa-index calibrate --stage predict --split dev [--top-pct 10] [--dry-run]` | official dev-split predictions only; prints label, proposed threshold, count clearing; writes `config/thresholds.local.yaml` | 0; 3 if `--split eval` or no official dev runs |
+| `tpa-index moments [--video-id ID …]` | rebuilds moments and `uncertain_mixed` rows from official predict runs with the current thresholds; one `moments` run per video; no model loaded | 0; 1 if any video failed |
+
+`--model` defaults to `models.main.hpc` on CUDA and `models.main.mac` otherwise. The model is loaded once, before the first video. A missing model exits 3 before any video is processed.
+
+## Scripts
+
+| script | does |
+|---|---|
+| `scripts/slurm/predict.sbatch [predict args]` | 1× `gpu:6KSE`, 8 CPUs, 64 GB, 2 h; sets `HF_HOME=$HOME/hf-cache` and `HF_HUB_OFFLINE=1`; runs `uv sync --frozen`, then `uv run tpa-index predict "$@"` |
+| `scripts/sync_code_to_hpc.sh [--dry-run]` | rsyncs the repo to `$HPC_USER@$HPC_HOST:~/tpa-work/repo/` with `scripts/sync.exclude`; no `--delete` |
+| `scripts/sync_outputs_from_hpc.sh [--dry-run]` | rsyncs `$HPC_OUTPUT_DIR/runs/` to the local `OUTPUT_DIR/runs/` (guarded) with `--ignore-existing`; never copies `reviews.duckdb` or media |
+
+Both sync scripts read `HPC_USER`, `HPC_HOST` (and `HPC_OUTPUT_DIR`) from `.env` by parsing it, never by `source`-ing it. A missing key exits 2 and transfers nothing.

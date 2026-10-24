@@ -13,11 +13,11 @@ LEARNED = "learned (cross-validated on our labels)"
 LIMITATIONS = [
     "single labeler: no human-vs-human agreement",
     "small eval set from two videos, most segments from v04; read every number with its 95% CI",
-    "intervals are wide: block bootstrap over about 21 blocks of 10 labeled segments",
+    "intervals are wide: block bootstrap over {blocks} blocks of {block} consecutive labeled segments",
     "model actor and category scores are weak, so staff exclusion is mostly reliable only on reviewed clips",
     "audio conditions use a fixed 0.5 AST probability, not a dev-tuned threshold",
     "review-mode decisions are per moment: one decision verifies every segment in that moment",
-    "the learned system is trained on our ~206 labels from two videos: its cross-validated row is the fair number; "
+    "the learned system is trained on our {n} labels from {videos} videos: its cross-validated row is the fair number; "
     "the final model's predictions on labeled segments are in-sample",
 ]
 
@@ -56,7 +56,7 @@ def label_metrics(H: np.ndarray, M: np.ndarray, names: list[str], min_support: i
     for i, name in enumerate(names):
         support = int(tp[i] + fn[i])
         ok = support >= min_support
-        p = tp[i] / (tp[i] + fp[i]) if ok and tp[i] + fp[i] else (0.0 if ok else None)
+        p = tp[i] / (tp[i] + fp[i]) if ok and tp[i] + fp[i] else None  # never predicted: undefined, not 0%
         r = tp[i] / support if ok else None
         f = float(_f1(tp[i], fp[i], fn[i])) if ok else None
         rows.append({"label": name, "support": support, "predicted": int(tp[i] + fp[i]), "tp": int(tp[i]),
@@ -349,5 +349,8 @@ def run_evaluate(pipeline: dict, labels: dict, root=None) -> dict:
             "learned_predictions": [{k: (";".join(v) if isinstance(v, list) else v) for k, v in r.items()
                                      if k != "_model"} for r in final.to_dict("records")],
             "eval_set": {**eval_set, "category_kappa_excluded": heads[0]["category_kappa_excluded"]},
-            "limitations": LIMITATIONS, "guideline_versions": versions,
+            "limitations": [line.format(n=len(base_df), videos=base_df["video_id"].nunique(),
+                                        blocks=len(set(block_ids(base_df, ins["bootstrap"]["block"]))),
+                                        block=ins["bootstrap"]["block"]) for line in LIMITATIONS],
+            "guideline_versions": versions,
             "official_runs": {k: v for k, v in official.items() if v}, "config_hash": config_hash(labels, pipeline)}

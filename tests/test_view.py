@@ -96,3 +96,31 @@ def test_verified_labels_blind_first(world):
     assert verified["e01_78000"]["actor"] == {"actor_staff_facilitation"}  # blind: instruction stretch
     assert world["skip_segment"] not in verified
     assert "e02_60000" not in verified  # model-only staff stretch, not labeled
+
+
+def test_review_decisions_verify_only_what_staff_decided(world):
+    """A review-mode decision on an unlabeled moment verifies a group with exactly the accepted/edited/added labels.
+    Deferred labels and model labels nobody decided on are never tagged staff-verified."""
+    from tpa_index.review import review_row
+    from tpa_index.schema import append_reviews, read_official
+
+    moment = next(m for m in read_official("moments").to_pylist() if m["video_id"] == "d01"
+                  and m["primary_label"] == "dance")  # d01 dance segments 5-9: no blind labels there
+    seg_ids = [f"d01_{s * 1000}" for s in (30, 36, 42, 48, 54)]
+    view = _view(world)
+    labels, pipeline = world["labels"], world["pipeline"]
+
+    append_reviews([review_row(moment, "dance", "primary", "defer", "mock-staff-b", labels)])
+    assert not set(seg_ids) & set(verified_labels(view, labels, pipeline))  # defer alone verifies nothing
+
+    append_reviews([review_row(moment, "dance", "primary", "accept", "mock-staff-b", labels),
+                    review_row(moment, "performance", "secondary", "defer", "mock-staff-b", labels)])
+    verified = verified_labels(view, labels, pipeline)
+    for sid in seg_ids:
+        assert verified[sid] == {"activity": {"dance"}}  # accepted label only; deferred category not touched
+        assert "performance" in view.set_index("segment_id").loc[sid, "model_cleared"]["category"]
+
+    append_reviews([review_row(moment, "dance", "primary", "reject", "mock-staff-b", labels),
+                    review_row(moment, "performance", "secondary", "accept", "mock-staff-b", labels)])
+    verified = verified_labels(view, labels, pipeline)
+    assert verified[seg_ids[0]] == {"activity": set(), "category": {"performance"}}  # reject: staff said not dance

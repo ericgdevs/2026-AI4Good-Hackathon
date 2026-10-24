@@ -192,8 +192,9 @@ def human_labels(labels: dict, pipeline: dict, root=None) -> pd.DataFrame:
 
 def verified_labels(view: pd.DataFrame, labels: dict, pipeline: dict, root=None) -> dict[str, dict]:
     """segment_id -> {group: verified label set}. A blind label verifies every group of its segment (the labeler saw
-    the full checklist); otherwise review-mode decisions on the containing moment adjust the model's set for the
-    groups they touch. Segments with neither are absent (the model call is used)."""
+    the full checklist); otherwise review-mode decisions on the containing moment verify a group with exactly the
+    labels staff accepted, edited to or added (reject adds nothing; defer and unreviewed model labels never count as
+    verified). Segments with neither are absent (the model call is used)."""
     from tpa_index.review import latest_state
     from tpa_index.schema import read_reviews
 
@@ -210,20 +211,16 @@ def verified_labels(view: pd.DataFrame, labels: dict, pipeline: dict, root=None)
     for seg in view.to_dict("records"):
         if seg["segment_id"] in out or seg["moment_id"] not in decisions:
             continue
-        sets = {g: set(seg["model_cleared"].get(g, set())) for g in (*GROUPS, "indicator")}
+        sets: dict[str, set] = {g: set() for g in (*GROUPS, "indicator")}
         touched = set()
         for r in decisions[seg["moment_id"]]:
             g = group_of.get(r["label"])
-            if g not in sets:
+            if g not in sets or r["action"] == "defer":
                 continue
             touched.add(g)
             if r["action"] == "accept":
                 sets[g].add(r["label"])
-            elif r["action"] == "reject":
-                sets[g].discard(r["label"])
             elif r["action"] in ("edit", "add") and r["new_label"]:
-                if r["action"] == "edit":
-                    sets[g].discard(r["label"])
                 sets[group_of.get(r["new_label"], g)].add(r["new_label"])
         if touched:
             out[seg["segment_id"]] = {g: sets[g] for g in touched}

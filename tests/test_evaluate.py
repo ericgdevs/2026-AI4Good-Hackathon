@@ -128,3 +128,26 @@ def test_kappa_sentence_is_plain():
     from tpa_index.evaluate import kappa_sentence
 
     assert "moderate agreement" in kappa_sentence(0.5) and "undefined" in kappa_sentence(None)
+
+
+def test_fusion_withdrawn_call_is_flagged_not_confident(world):
+    """A segment fusion turned into uncertain_mixed counts as flagged in the signal-rules row, so that row's
+    coverage drops by one segment and its confident calls are not charged with a call it withdrew."""
+    from tpa_index.rules import apply_fusion, context
+
+    out = run_evaluate(world["pipeline"], world["labels"])
+    zs, fused = (h["uncertainty"] for h in out["headline"][:2])
+    assert fused["n_confident"] == zs["n_confident"] - 1 and fused["n_flagged"] == zs["n_flagged"] + 1
+    view = segment_view(world["pipeline"], world["labels"])
+    fused_view, _ = apply_fusion(view, world["pipeline"]["insights"]["fusion"], context(world["pipeline"]))
+    row = fused_view.set_index("segment_id").loc[world["fusion_segment"]]
+    assert row["model_primary"] == "uncertain_mixed" and bool(row["uncertain_flag"])
+    assert not bool(view.set_index("segment_id").loc[world["fusion_segment"], "uncertain_flag"])
+
+
+def test_limitations_state_the_real_block_and_label_counts(world):
+    out = run_evaluate(world["pipeline"], world["labels"])
+    text = "\n".join(out["limitations"])
+    n = out["eval_set"]["labeled_eval_segments"]
+    assert f"over 3 blocks of 10" in text and f"on our {n} labels from 2 videos" in text
+    assert "{" not in text

@@ -73,5 +73,7 @@ def apply_fusion(view: pd.DataFrame, fusion: list[dict], ctx: dict) -> tuple[pd.
         if not seg["no_call"]:
             seg["model_primary"] = max(st["activity"], key=st["activity"].get) if st["activity"] else UNCERTAIN
             seg["model_strength"] = st["activity"].get(seg["model_primary"], 0.0)
+            # a call fusion withdrew is no longer a confident one (same meaning as the rules flag: nothing clears)
+            seg["uncertain_flag"] = bool(seg["uncertain_flag"]) or seg["model_primary"] == UNCERTAIN
         rows.append(seg)
     return pd.DataFrame(rows, columns=view.columns), counts

@@ -22,7 +22,7 @@ LIMITATIONS = [
     "review-mode decisions are per moment: one decision verifies every segment in that moment",
     "audio conditions use a fixed 0.5 AST probability, not a dev-tuned threshold",
     "expressions are observable, unvalidated model estimates, never feelings; segments with faces only",
-    "person_count includes any visible audience",
+    "person_count counts people at least 15% of frame height (performers); distant audience heads are dropped",
     "learned labels come from a model trained on ~206 labels from two videos; on labeled segments they are in-sample",
 ]
 

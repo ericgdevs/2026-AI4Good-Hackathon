@@ -52,9 +52,9 @@ Checked on 2026-10-24 against the locked environment: Gradio 6.30.0 and Homebrew
 ## 6. Keyboard shortcuts (FR-009)
 
 - **Decision**: `launch(js=...)` installs one `keydown` handler, ignored while typing in a text field. The key map is generated from `labels.yaml` at startup, so new labels get keys automatically:
-  - `1`–`9`: primary activity, in config order.
+  - `1`–`9`: the primary group's labels (from `pipeline.moments.primary_group`), in config order.
   - Letters: every other checklist item in config order, skipping the reserved keys.
-  - Reserved: `U` for uncertain/mixed, `Enter` for save-and-next, `Backspace` for back, `Space` for replay.
+  - Reserved: `U` for `app.uncertain_label`, `Enter` for save-and-next, `Backspace` for back, `Space` for replay.
 
   Each label's key is shown next to it. A handler "presses" the matching component through its `elem_id`.
 - **Alternatives**: Gradio's built-in `.key_up` events. Rejected: they're per-component, and focus would have to stay inside one box.
@@ -84,12 +84,12 @@ Checked on 2026-10-24 against the locked environment: Gradio 6.30.0 and Homebrew
 ## 8. Blind save rows (FR-010)
 
 - One row per chosen label: `target_type=segment`, `target_id=segment_id`, `action=add`, `new_label=label` (the 001 rule requires `new_label` for add), `source=staff`, `mode=blind`.
-- Label role mapping:
-  - the primary activity → `primary`;
-  - other activities, category, actor, audio, expression and `uncertain_mixed` → `secondary`;
-  - the indicator group → `indicator`.
+- Label role mapping, all from config (no label or group names in code):
+  - the chosen label of `pipeline.moments.primary_group` → `primary`;
+  - labels in `app.indicator_groups` → `indicator`;
+  - everything else, including `app.uncertain_label` → `secondary`.
 - **Re-label**: compare with that reviewer's latest blind state on the segment, and write `action=reject` (with `new_label` null) for labels that were unticked.
-- **Skip a missing file**: an observation row, `label_role=observation`, `label=clip_unavailable`, `action=add`. It counts as handled for resume.
+- **Skip a missing file**: an observation row, `label_role=observation`, `label=<app.skip_observation>`, `action=add`. It counts as handled for resume.
 
 ## 9. Review state and filters (FR-014 to FR-017)
 

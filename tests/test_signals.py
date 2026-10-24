@@ -369,7 +369,7 @@ def test_missing_weights_raise_our_error_and_never_download(tmp_path, monkeypatc
     monkeypatch.delenv("YOLO_OFFLINE", raising=False)
     m = pipeline["models"]
     with pytest.raises(ConfigError, match="weights not found: yolo11n.pt"):
-        YoloPersonCounter(m["people"]["mac"], "cpu", 0.4)
+        YoloPersonCounter(m["people"]["mac"], "cpu", 0.4, 0.25)
     with pytest.raises(ConfigError, match="weights not found: enet_b0_8_va_mtl.onnx"):
         FaceExpression(m["expression"]["face_detector"], m["expression"]["model"],
                        pipeline["signals"]["expression"]["mapping"], 0.8, 48)
@@ -381,9 +381,37 @@ def test_unpinned_weights_refused(tmp_path, monkeypatch, pipeline):
     monkeypatch.setenv("TPA_WEIGHTS_DIR", str(tmp_path))
     (tmp_path / "yolo11n.pt").write_bytes(b"not really weights")
     with pytest.raises(ConfigError, match="weights not pinned: set sha256 for yolo11n.pt"):
-        YoloPersonCounter({"file": "yolo11n.pt", "sha256": None}, "cpu", 0.4)
+        YoloPersonCounter({"file": "yolo11n.pt", "sha256": None}, "cpu", 0.4, 0.25)
     with pytest.raises(ConfigError, match="weights checksum mismatch: yolo11n.pt"):  # shipped config is pinned
-        YoloPersonCounter(pipeline["models"]["people"]["mac"], "cpu", 0.4)
+        YoloPersonCounter(pipeline["models"]["people"]["mac"], "cpu", 0.4, 0.25)
+
+
+def test_person_count_drops_small_boxes(tmp_path, monkeypatch):
+    """Boxes shorter than min_box_height_frac of the frame (audience heads, edge people) do not count."""
+    from types import SimpleNamespace
+
+    import numpy as np
+    import ultralytics
+
+    import tpa_index.config
+    from tpa_index.signal_models import YoloPersonCounter
+
+    heights = [[0.9, 0.25, 0.2499, 0.05], [0.1], []]  # normalized box heights, one list per frame
+
+    class FakeYolo:
+        def __init__(self, path):
+            pass
+
+        def predict(self, frames, **kw):
+            assert kw["classes"] == [0] and kw["conf"] == 0.4  # min confidence still goes to the detector
+            return [SimpleNamespace(boxes=SimpleNamespace(xywhn=np.array([[0.5, 0.5, 0.1, h] for h in hs]).reshape(-1, 4)))
+                    for hs in heights]
+
+    monkeypatch.setattr(tpa_index.config, "pinned_weight", lambda entry: tmp_path / "w.pt")
+    monkeypatch.setattr(ultralytics, "YOLO", FakeYolo)
+    frames = np.zeros((3, 8, 8, 3), np.uint8)
+    assert YoloPersonCounter({"file": "w.pt"}, "cpu", 0.4, 0.25).count(frames) == [2, 0, 0]  # 0.25 is kept
+    assert YoloPersonCounter({"file": "w.pt"}, "cpu", 0.4, 0.0).count(frames) == [4, 1, 0]
 
 
 def test_cli_sets_yolo_offline(monkeypatch, clip_videos, pipeline, tmp_path):

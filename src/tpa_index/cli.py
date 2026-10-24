@@ -158,8 +158,9 @@ def _make_signal_models(stages: list[str], pipeline: dict, dev: str) -> dict:
         elif stage == "audio":
             models[stage] = AstTagger(cfg["audio"]["hpc" if hpc else "mac"], dev, pipeline["signals"]["audio"]["mapping"])
         elif stage == "people":
-            models[stage] = YoloPersonCounter(cfg["people"]["hpc" if hpc else "mac"], dev,
-                                              pipeline["signals"]["people"]["person_conf"])
+            sp = pipeline["signals"]["people"]
+            models[stage] = YoloPersonCounter(cfg["people"]["hpc" if hpc else "mac"], dev, sp["person_conf"],
+                                              sp["min_box_height_frac"])
         elif stage == "expression":
             e = cfg["expression"]
             sx = pipeline["signals"]["expression"]

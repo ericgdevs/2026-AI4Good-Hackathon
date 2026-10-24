@@ -309,6 +309,8 @@ def test_singing_voice_is_an_audio_label(labels):
     (lambda p: p["signals"]["expression"].update(face_score=1.5), "face_score must be within"),
     (lambda p: p["signals"]["expression"].update(detect_max_side=100), "detect_max_side: must be an integer"),
     (lambda p: p["signals"]["people"].update(person_conf=0), "person_conf must be within"),
+    (lambda p: p["signals"]["people"].update(min_box_height_frac=1), "min_box_height_frac must be within"),
+    (lambda p: p["signals"]["people"].pop("min_box_height_frac"), "min_box_height_frac must be a number"),
     (lambda p: p["models"]["transcript"].update(hpc_device="tpu"), "hpc_device: must be cuda or cpu"),
     (lambda p: p["models"].pop("audio"), "models.audio"),
     (lambda p: p.pop("signals"), "signals section missing"),
@@ -374,6 +376,10 @@ def test_stage_config_hash_is_scoped(pipeline, labels):
     mapped = copy.deepcopy(pipeline)
     mapped["signals"]["audio"]["mapping"]["music"] = ["Music", "Song"]
     assert stage_config_hash("audio", labels, mapped, video) != base["audio"]
+    boxed = copy.deepcopy(pipeline)
+    boxed["signals"]["people"]["min_box_height_frac"] = 0.3
+    assert stage_config_hash("people", labels, boxed, video) != base["people"]
+    assert stage_config_hash("expression", labels, boxed, video) == base["expression"]
     sized = copy.deepcopy(pipeline)
     sized["models"]["transcript"]["mac"] = "medium"  # default hardware is mac; an hpc edit must not change it
     assert stage_config_hash("transcript", labels, sized, video) != base["transcript"]

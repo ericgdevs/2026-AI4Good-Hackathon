@@ -369,3 +369,34 @@ def test_mock_clips_cover_every_segment(tmp_path):
     with av.open(str(path)) as c:
         assert c.duration / 1e6 >= last_end - 0.5
     assert str(data_dir()) not in result.stdout
+
+
+
+def test_calibrate_lists_labels_and_idle_at_min_threshold(tmp_path, monkeypatch, capsys):
+    """Real-run case: null floor ~0, a barely-seen label and a ~0 idle score must stop at min_threshold."""
+    import yaml
+
+    from tpa_index import config
+    from tpa_index.schema import read_table, write_table
+
+    cli = _official_mock(tmp_path, monkeypatch)
+    null_group = config.load_pipeline()["calibrate"]["null_group"]
+    nulls = {lab["name"] for lab in config.load_labels()["labels"] if lab["group"] == null_group}
+    for table in ("videos", "segments", "predictions", "moments", "runs"):
+        rows = read_table(table, run_ids=["mock-seed0"]).to_pylist()
+        for r in rows:
+            if "run_id" in r:
+                r["run_id"] = "lowfloor"
+            if table == "predictions" and (r["label"] in nulls or r["label"] == "acting_theater"):
+                r["score"] = 0.00001  # null floor ~0; acting_theater barely seen
+            if table == "segments" and r["idle_score"] is not None:
+                r["idle_score"] = 0.00001  # idle percentile ~0
+        write_table(table, rows if table != "runs" else rows[:1], "lowfloor")
+    (tmp_path / "official.yaml").write_text("predict: [lowfloor]\n")
+    assert cli.main(["calibrate"]) == 0
+    out = capsys.readouterr().out
+    assert "labels at min_threshold: acting_theater" in out
+    assert "idle score_threshold: 0.0010 (at min_threshold)" in out
+    data = yaml.safe_load(config.THRESHOLDS_LOCAL.read_text())
+    assert data["label_thresholds"]["mock-model"]["acting_theater"] == 0.001
+    assert data["idle_thresholds"]["mock-model"] == 0.001

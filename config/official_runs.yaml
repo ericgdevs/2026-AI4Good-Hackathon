@@ -1,5 +1,28 @@
-# Run IDs that count for results, per stage. Fill in with `tpa-index runs`.
-# Run IDs only, never filenames or metadata.
-predict: []
-moments: []   # optional: rebuilt moments take precedence over predict's
-segment: []
+# Run IDs that count for results, per stage. Run IDs only, never filenames or metadata.
+segment:
+  - segment-20261023T233813-888f
+  - segment-20261023T234147-a7e1
+  - segment-20261024T000533-21bc
+  - segment-20261024T000951-36cc
+  - segment-20261024T002539-e3da
+  - segment-20261024T002621-93e8
+  - segment-20261024T002720-53ac
+  - segment-20261024T002759-7c5d
+  - segment-20261024T002806-0eb9
+  - segment-20261024T002811-f4ba
+  - segment-20261024T002814-18fe
+  - segment-20261024T002815-6c12
+predict:
+  - predict-20261024T030025-9cda
+  - predict-20261024T030221-7891
+  - predict-20261024T031531-c426
+  - predict-20261024T031751-f575
+  - predict-20261024T032628-ba75
+  - predict-20261024T032651-3cf3
+  - predict-20261024T032722-4d5c
+  - predict-20261024T032743-e11c
+  - predict-20261024T032746-8da2
+  - predict-20261024T032749-cebd
+  - predict-20261024T032750-3e71
+  - predict-20261024T032751-e702
+moments: []

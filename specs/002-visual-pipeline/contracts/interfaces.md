@@ -46,7 +46,8 @@ null_floor(predictions, videos, model, null_labels, null_percentile, min_segment
 propose_thresholds(predictions, videos, model, top_pct, min_segments, min_threshold, null_labels=(), floor=None)
     -> dict[str, tuple[float | None, str | None]]
 #   dev only; value = max(percentile, null floor, min_threshold); str = "null" | "min" when a floor won; null labels skipped
-propose_idle_threshold(segments, videos, top_pct, change_threshold, min_segments) -> float | None   # dev, low-change only
+propose_idle_threshold(segments, videos, top_pct, change_threshold, min_segments, min_threshold=0.0)
+    -> tuple[float | None, bool]   # dev, low-change only; (value, floored); value = max(percentile, min_threshold)
 dev_scores(predictions, videos, model) -> dict[str, np.ndarray]      # dev-split scores per label (used by the CLI table)
 idle_candidates(segments, videos, change_threshold) -> np.ndarray    # dev low-change idle scores
 write_local_thresholds(model, thresholds, idle_score_threshold=None, path=None) -> None
@@ -69,7 +70,7 @@ list_runs(root=None) -> list[dict]   # run_id, stage, video_ids, hardware, n_seg
 |---|---|---|
 | `tpa-index predict [--videos PATH] [--video-id ID …] [--kind KIND …] [--model ID]` | one predict run per video: segments with `is_idle`, predictions (model + rules [+ motion]), moments, runs | 0; 1 if any video failed (IDs listed); 2 guard; 3 config/model not found |
 | `tpa-index runs` | lists complete runs, one line each; no filenames or paths | 0 / 2 |
-| `tpa-index calibrate --stage predict --split dev [--top-pct N] [--idle-top-pct N] [--dry-run]` | official dev-split data only. Prints the null floor; label, threshold, n_dev, clearing and floored_by; the labels at the null floor and at `min_threshold`; and the idle threshold. Writes `config/thresholds.local.yaml` (label and idle thresholds per model). Defaults come from `calibrate.top_pct` and `idle.calibrate_top_pct`. | 0; 3 if `--split eval` or no official dev runs |
+| `tpa-index calibrate --stage predict --split dev [--top-pct N] [--idle-top-pct N] [--dry-run]` | official dev-split data only. Prints the null floor; label, threshold, n_dev, clearing and floored_by; the labels at the null floor and at `min_threshold`; and the idle threshold ("(at min_threshold)" when floored). Writes `config/thresholds.local.yaml` (label and idle thresholds per model). Defaults come from `calibrate.top_pct` and `idle.calibrate_top_pct`. | 0; 3 if `--split eval` or no official dev runs |
 | `tpa-index moments [--video-id ID …]` | rebuilds `is_idle` (from the stored `idle_score` and `visual_change`), `uncertain_mixed` rows and moments from official predict runs with the current thresholds; one `moments` run per video (videos, segments, rules predictions, moments); no model loaded | 0; 1 if any video failed |
 
 `--model` defaults to `models.main.hpc` on CUDA and `models.main.mac` otherwise. The model is loaded once, before the first video. A missing model exits 3 before any video is processed.

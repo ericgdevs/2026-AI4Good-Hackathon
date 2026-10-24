@@ -149,3 +149,9 @@ Checked on 2026-10-23 against the locked environment (transformers 5.20.2, torch
   - Label threshold = max(label percentile, null floor, `min_threshold`), with `min_threshold` defaulting to 0.0 as a hand override.
   - The null group is excluded from primary/secondary labels, `uncertain_mixed`, moments, `needs_review` and the calibrate table. Fewer than `min_segments` dev segments with null scores means the floor is not applied, and calibrate says so.
 - **Alternatives**: A fixed per-model absolute floor. Rejected: it needs hand-tuning per model, and nothing ties it to the noise level in this footage.
+
+## 19. `min_threshold` default 0.001 for labels and idle (first real calibrate run)
+
+- **Finding**: On the first real run (so400m, 10 dev videos), the null floor came out near 0, because the unrelated prompts scored below even the labels that are absent from the footage. Labels the model barely sees got thresholds of about 0.0000, so they would fire on `top_pct`% of segments. The idle threshold also came out at 0.0000, which would mark every low-change segment idle and hide still performances.
+- **Decision**: `calibrate.min_threshold` defaults to **0.001** (on so400m about cos ≈ 0.08, a weak but real match). It applies to every label threshold, alongside the null floor, which is kept as it is. The same floor now also applies to the idle score threshold: `idle = max(idle percentile, min_threshold)`. Calibrate lists labels at `min_threshold` and prints "(at min_threshold)" on the idle line when it is floored.
+- **Why not drop the null floor**: on another model or other footage it may bite. It costs nothing when it sits below `min_threshold`.

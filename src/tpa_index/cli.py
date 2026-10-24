@@ -201,9 +201,12 @@ def _calibrate(args) -> int:
     for by, name in (("null", "the null floor"), ("min", "min_threshold")):
         hit = [label for label, (_, b) in proposals.items() if b == by]
         print(f"labels at {name}: {', '.join(hit) if hit else 'none'}")
-    idle_value = propose_idle_threshold(segs, videos, idle_top_pct, idle["change_threshold"], cal["min_segments"])
+    idle_value, idle_floored = propose_idle_threshold(segs, videos, idle_top_pct, idle["change_threshold"],
+                                                      cal["min_segments"], cal["min_threshold"])
     n_idle = len(idle_candidates(segs, videos, idle["change_threshold"]))
     idle_shown = "too few, keeps fallback" if idle_value is None else f"{idle_value:.4f}"
+    if idle_floored:
+        idle_shown += " (at min_threshold)"
     print(f"idle score_threshold: {idle_shown} ({n_idle} dev low-change segments, top_pct {idle_top_pct})")
     if args.dry_run:
         print("dry run: nothing written")

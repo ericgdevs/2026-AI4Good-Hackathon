@@ -70,11 +70,16 @@ def idle_candidates(segments, videos, change_threshold: float) -> np.ndarray:
                        and s.get("visual_change") is not None and s["visual_change"] < change_threshold], np.float64)
 
 
-def propose_idle_threshold(segments, videos, top_pct: float, change_threshold: float,
-                           min_segments: int) -> float | None:
-    """(100 - top_pct) percentile of idle_score over dev low-change segments; change_threshold is never proposed."""
+def propose_idle_threshold(segments, videos, top_pct: float, change_threshold: float, min_segments: int,
+                           min_threshold: float = 0.0) -> tuple[float | None, bool]:
+    """(threshold, floored): max((100 - top_pct) percentile of idle_score over dev low-change segments, min_threshold).
+    None if too few segments. The floor stops a ~0 threshold from marking every still segment idle.
+    change_threshold is never proposed."""
     scores = idle_candidates(segments, videos, change_threshold)
-    return float(np.percentile(scores, 100 - top_pct)) if len(scores) >= min_segments else None
+    if len(scores) < min_segments:
+        return None, False
+    value = float(np.percentile(scores, 100 - top_pct))
+    return (min_threshold, True) if min_threshold > value else (value, False)
 
 
 def write_local_thresholds(model: str, thresholds: dict[str, float | None], idle_score_threshold=None,

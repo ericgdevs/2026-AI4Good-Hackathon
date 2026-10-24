@@ -78,6 +78,6 @@ idle_thresholds:
 
 Calibration rules:
 - null floor = percentile `calibrate.null_percentile` (default 99) of each dev segment's max null-group score;
-- label threshold = max(percentile `(100 − calibrate.top_pct)` of dev scores, null floor, `calibrate.min_threshold` (default 0.0, hand override));
-- idle threshold = percentile `(100 − idle.calibrate_top_pct)` of `idle_score` over dev segments with `visual_change < idle.change_threshold`;
+- label threshold = max(percentile `(100 − calibrate.top_pct)` of dev scores, null floor, `calibrate.min_threshold` (default 0.001));
+- idle threshold = max(percentile `(100 − idle.calibrate_top_pct)` of `idle_score` over dev segments with `visual_change < idle.change_threshold`, `calibrate.min_threshold`);
 - labels with fewer than `calibrate.min_segments` dev segments, and an idle set that small, keep the fallback.

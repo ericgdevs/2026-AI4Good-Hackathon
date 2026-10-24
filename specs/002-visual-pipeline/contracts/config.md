@@ -47,7 +47,7 @@ idle:
   calibrate_top_pct: 20          # idle percentile, separate from the label one (idle share differs from any label's)
 calibrate:
   top_pct: 10                    # label thresholds: (100 - top_pct) percentile of dev scores
-  min_threshold: 0.0             # hand override; the null floor does the automatic flooring
+  min_threshold: 0.001           # absolute floor for label and idle thresholds (so400m: cos ~0.08)
   null_group: "null"             # quoted: bare null is YAML for nothing; scored by predict, never a result
   null_percentile: 99            # null floor = this percentile of each dev segment's max null score
   min_segments: 20               # fewer dev segments than this: keep the fallback

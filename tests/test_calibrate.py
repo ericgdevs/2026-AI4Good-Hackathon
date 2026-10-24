@@ -48,6 +48,11 @@ def test_label_matching_only_noise_is_floored_by_null_floor():
     assert got["singing"][1] is None and got["singing"][0] > floor  # a real signal beats it
 
 
+def test_label_below_min_threshold_gets_exactly_the_floor():
+    rows = preds("acting_theater", {"mock01": list(np.linspace(0.0, 0.0008, 40))})  # top 10% below 0.001
+    assert propose_thresholds(rows, VIDEOS, "m1", 10, 20, 0.001, floor=0.0) == {"acting_theater": (0.001, "min")}
+
+
 def test_min_threshold_still_works_as_hand_override():
     rows = preds("acting_theater", {"mock01": [0.001] * 30})
     assert propose_thresholds(rows, VIDEOS, "m1", 10, 20, 0.05) == {"acting_theater": (0.05, "min")}
@@ -66,9 +71,15 @@ def test_idle_proposal_uses_dev_low_change_segments_only():
     segs += [{"video_id": "mock01", "idle_score": 0.99, "visual_change": 0.5}] * 30  # moving: ignored
     segs += [{"video_id": "mock04", "idle_score": 0.99, "visual_change": 0.001}] * 30  # eval: ignored
     segs += [{"video_id": "mock01", "idle_score": None, "visual_change": None}] * 5  # old rows: ignored
-    got = propose_idle_threshold(segs, VIDEOS, 20, 0.02, 20)
-    assert got == pytest.approx(np.percentile(np.linspace(0.1, 0.5, 30), 80))
-    assert propose_idle_threshold(segs[:10], VIDEOS, 20, 0.02, 20) is None
+    got, floored = propose_idle_threshold(segs, VIDEOS, 20, 0.02, 20)
+    assert got == pytest.approx(np.percentile(np.linspace(0.1, 0.5, 30), 80)) and not floored
+    assert propose_idle_threshold(segs[:10], VIDEOS, 20, 0.02, 20) == (None, False)
+
+
+def test_idle_proposal_below_min_threshold_is_floored():
+    segs = [{"video_id": "mock01", "idle_score": s, "visual_change": 0.001} for s in np.linspace(0.0, 0.0005, 30)]
+    assert propose_idle_threshold(segs, VIDEOS, 20, 0.02, 20, min_threshold=0.001) == (0.001, True)
+    assert propose_idle_threshold(segs, VIDEOS, 20, 0.02, 20, min_threshold=0.0)[1] is False
 
 
 def test_write_keeps_other_models(tmp_path):

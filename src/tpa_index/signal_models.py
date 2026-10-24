@@ -155,13 +155,15 @@ class FaceExpression:
         from huggingface_hub import hf_hub_download
         from huggingface_hub.errors import LocalEntryNotFoundError
 
-        from tpa_index.config import pinned_weight
+        from tpa_index.config import check_sha256, pinned_weight
 
         path = pinned_weight(model_entry)  # before importing the library: it downloads missing files
         try:
-            yunet = hf_hub_download(detector_entry["repo"], detector_entry["file"], local_files_only=True)
+            yunet = hf_hub_download(detector_entry["repo"], detector_entry["file"],
+                                    revision=detector_entry["revision"], local_files_only=True)
         except LocalEntryNotFoundError:
             raise ConfigError(f"model not found locally: {detector_entry['repo']}") from None
+        check_sha256(Path(yunet), detector_entry)
         import emotiefflib.facial_analysis as fa
 
         fa.get_model_path_onnx = lambda name: str(path)  # shortcut: library has no path argument; drop when it gets one

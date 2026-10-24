@@ -388,3 +388,19 @@ def test_stage_config_hash_by_video_override_only_that_video(pipeline, labels):
     assert stage_config_hash("people", labels, over, v2) == stage_config_hash("people", labels, pipeline, v2)
     with pytest.raises(ConfigError, match="unknown signal stage"):
         stage_config_hash("predict", labels, pipeline, v1)
+
+
+def test_shipped_weights_are_pinned(pipeline):
+    m = pipeline["models"]
+    entries = [m["people"]["hpc"], m["people"]["mac"], m["expression"]["model"], m["expression"]["face_detector"]]
+    assert all(re.fullmatch(r"[0-9a-f]{64}", e["sha256"]) for e in entries)
+    assert re.fullmatch(r"[0-9a-f]{40}", m["expression"]["face_detector"]["revision"])
+
+
+def test_face_detector_needs_revision(pipeline, labels):
+    from tpa_index.config import _check_pipeline_labels
+
+    bad = copy.deepcopy(pipeline)
+    bad["models"]["expression"]["face_detector"]["revision"] = "main"
+    with pytest.raises(ConfigError, match="face_detector.revision"):
+        _check_pipeline_labels(_check_pipeline(bad), labels)

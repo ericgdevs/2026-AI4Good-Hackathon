@@ -245,3 +245,33 @@ def test_download_weights_script_refuses_in_job(tmp_path):
                             env={"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path), "SLURM_JOB_ID": "1"})
     assert result.returncode == 2 and "login node" in result.stderr
     assert not marker.exists()
+
+
+def _weights_stubs(tmp_path, yunet_stdout):
+    """uv/curl stand-ins: `hf download` prints coloured status like the real CLI; curl writes its -o file."""
+    yunet = tmp_path / "hf/yunet.onnx"
+    yunet.parent.mkdir(parents=True)
+    yunet.write_bytes(b"yunet")
+    hf_noise = r"printf '\033[32m✓ Downloaded\033[0m path: /somewhere\n'"
+    return _stub_bin(tmp_path, uv=f'case "$*" in *python*) {yunet_stdout.format(yunet=yunet)};; *) {hf_noise};; esac',
+                     curl='while [ $# -gt 0 ]; do [ "$1" = -o ] && { echo weights > "$2"; }; shift; done'), yunet
+
+
+def test_download_weights_checksums_real_files(tmp_path):
+    import hashlib
+
+    bin_dir, yunet = _weights_stubs(tmp_path, "echo 'Fetching 1 file'; echo {yunet}")
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path), "TPA_WEIGHTS_DIR": str(tmp_path / "w")}
+    result = subprocess.run(["bash", str(WEIGHTS)], capture_output=True, text=True, env=env)
+    assert result.returncode == 0, result.stderr
+    weights = hashlib.sha256(b"weights\n").hexdigest()
+    assert f"yolo11n.pt  {weights}" in result.stdout and f"enet_b0_8_va_mtl.onnx  {weights}" in result.stdout
+    assert f"face_detection_yunet_2023mar.onnx  {hashlib.sha256(b'yunet').hexdigest()}" in result.stdout
+
+
+def test_download_weights_stops_when_yunet_path_is_not_a_file(tmp_path):
+    bin_dir, _ = _weights_stubs(tmp_path, r"printf '\033[32m✓ Downloaded\033[0m path: nope\n'")
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path), "TPA_WEIGHTS_DIR": str(tmp_path / "w")}
+    result = subprocess.run(["bash", str(WEIGHTS)], capture_output=True, text=True, env=env)
+    assert result.returncode == 1 and "did not return a file path" in result.stderr
+    assert "sha256 (file" not in result.stdout

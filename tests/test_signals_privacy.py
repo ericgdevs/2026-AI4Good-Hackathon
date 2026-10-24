@@ -215,6 +215,7 @@ def test_bad_expression_mapping_class_exits_before_any_video(monkeypatch, clip_v
     bad["signals"]["expression"]["mapping"]["positive"] = ["Happyness"]
     monkeypatch.setattr(cli, "load_pipeline", lambda: bad)
     monkeypatch.setattr(config, "pinned_weight", lambda entry: tmp_path / entry["file"])
+    monkeypatch.setattr(config, "check_sha256", lambda path, entry: path)
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", lambda *a, **k: str(tmp_path / "yunet.onnx"))
     monkeypatch.setattr(fa, "EmotiEffLibRecognizerOnnx", FakeRecognizer)
     monkeypatch.setattr(cli, "install_redaction", lambda: None)

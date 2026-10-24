@@ -15,9 +15,13 @@ export HF_HOME="${HF_HOME:-$HOME/hf-cache}"
 TPA_WEIGHTS_DIR="${TPA_WEIGHTS_DIR:-$HF_HOME/tpa-weights}"
 YOLO_RELEASE="v8.3.0"                 # ultralytics/assets release tag
 EMOTIEFFLIB_REF="main"                # pin to a commit hash for reproducible downloads; sha256 is the real pin
+YUNET_REVISION="3cc26e7f1014a5ee5d74a42acee58bafc9d0a310"   # HF snapshot, as in config/pipeline.yaml
 
 mkdir -p "$TPA_WEIGHTS_DIR"
-sha() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+sha() {
+    [[ -f "$1" ]] || { echo "not a file, cannot checksum: $1" >&2; exit 1; }
+    if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1
+}
 
 # Hugging Face (offline at run time via HF_HUB_OFFLINE=1)
 for repo in Systran/faster-whisper-large-v3 Systran/faster-whisper-small \
@@ -25,7 +29,9 @@ for repo in Systran/faster-whisper-large-v3 Systran/faster-whisper-small \
     uv run hf download "$repo" >/dev/null
     echo "hf: $repo"
 done
-yunet=$(uv run hf download opencv/face_detection_yunet face_detection_yunet_2023mar.onnx)
+# the path only: `hf download` prints coloured status text, so ask huggingface_hub for the file path directly
+yunet=$(uv run python -c "from huggingface_hub import hf_hub_download; print(hf_hub_download('opencv/face_detection_yunet', 'face_detection_yunet_2023mar.onnx', revision='$YUNET_REVISION'))" | tail -n 1)
+[[ -f "$yunet" ]] || { echo "YuNet download did not return a file path" >&2; exit 1; }
 
 # Official GitHub releases (not on Hugging Face)
 for f in yolo11n.pt yolo11m.pt; do
@@ -37,6 +43,8 @@ curl -fL --retry 3 -o "$TPA_WEIGHTS_DIR/enet_b0_8_va_mtl.onnx" \
 
 echo "sha256 (file  sha256):"
 for f in yolo11n.pt yolo11m.pt enet_b0_8_va_mtl.onnx; do
-    printf '%s  %s\n' "$f" "$(sha "$TPA_WEIGHTS_DIR/$f")"
+    h=$(sha "$TPA_WEIGHTS_DIR/$f")   # an assignment, so set -e stops on a failed checksum
+    printf '%s  %s\n' "$f" "$h"
 done
-printf '%s  %s\n' "face_detection_yunet_2023mar.onnx" "$(sha "$yunet")"
+h=$(sha "$yunet")
+printf '%s  %s  (revision %s)\n' "face_detection_yunet_2023mar.onnx" "$h" "$YUNET_REVISION"

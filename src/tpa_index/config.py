@@ -295,7 +295,10 @@ def _check_signals(d: dict, labels: dict) -> None:
     e = models.get("expression")
     if not isinstance(e, dict):
         raise ConfigError("pipeline.models.expression: face_detector and model are required")
-    _check_weight_entry(e.get("face_detector"), "pipeline.models.expression.face_detector", ("repo", "file"))
+    _check_weight_entry(e.get("face_detector"), "pipeline.models.expression.face_detector",
+                        ("repo", "file", "revision", "sha256"))
+    if not re.fullmatch(r"[0-9a-f]{40}", str(e["face_detector"]["revision"])):
+        raise ConfigError("pipeline.models.expression.face_detector.revision: must be a 40-hex commit")
     _check_weight_entry(e.get("model"), "pipeline.models.expression.model", ("name", "file", "sha256"))
     if not isinstance(sig, dict):
         raise ConfigError("pipeline: signals section missing")
@@ -332,6 +335,11 @@ def pinned_weight(entry: dict) -> Path:
     path = weights_dir() / entry["file"]
     if not path.is_file():
         raise ConfigError(f"weights not found: {entry['file']}; run scripts/download_weights.sh on the login node")
+    return check_sha256(path, entry)
+
+
+def check_sha256(path: Path, entry: dict) -> Path:
+    """`path` if its sha256 matches entry["sha256"]; ConfigError if unpinned or mismatched."""
     if not entry.get("sha256"):
         raise ConfigError(f"weights not pinned: set sha256 for {entry['file']}")
     h = hashlib.sha256()

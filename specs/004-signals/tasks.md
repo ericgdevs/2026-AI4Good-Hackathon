@@ -245,7 +245,7 @@
   - `git status --short` shows no data files, no `*.parquet`, `*.wav` or `transcript*.json`, and no `.local.yaml`;
   - `git diff --stat -- .venv` is empty and no file under `.venv` was edited;
   - grep `src/ tests/ config/` for feelings or emotion wording in labels, prompts, logs or docstrings (FR-030), allowing model class names only inside `signals.expression.mapping`.
-- [ ] T057 (Team, after merge, on the HPC login node) Run `scripts/download_weights.sh`, paste the printed sha256 values into `config/pipeline.yaml` (`models.people.hpc.sha256`, `.mac.sha256`, `models.expression.model.sha256`) and `docs/weights.md`, and keep `config/pipeline.yaml` identical on HPC and in the repo. Checksums of public weights may be committed.
+- [X] T057 (Team, after merge, on the HPC login node) Run `scripts/download_weights.sh`, paste the printed sha256 values into `config/pipeline.yaml` (`models.people.hpc.sha256`, `.mac.sha256`, `models.expression.model.sha256`) and `docs/weights.md`, and keep `config/pipeline.yaml` identical on HPC and in the repo. Checksums of public weights may be committed.
 
 ---
 

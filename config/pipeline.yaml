@@ -39,11 +39,15 @@ models:
     hpc: MIT/ast-finetuned-audioset-10-10-0.4593
     mac: MIT/ast-finetuned-audioset-10-10-0.4593
   people:                        # ultralytics/assets GitHub release; sha256 from scripts/download_weights.sh
-    hpc: {file: yolo11m.pt, sha256: null}
-    mac: {file: yolo11n.pt, sha256: null}
+    hpc: {file: yolo11m.pt, sha256: d5ffc1a674953a08e11a8d21e022781b1b23a19b730afc309290bd9fb5305b95}
+    mac: {file: yolo11n.pt, sha256: 0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1}
   expression:
-    face_detector: {repo: opencv/face_detection_yunet, file: face_detection_yunet_2023mar.onnx}
-    model: {name: enet_b0_8_va_mtl, file: enet_b0_8_va_mtl.onnx, sha256: null}   # EmotiEffLib GitHub, ONNX, CPU
+    face_detector:               # HF, pinned to one snapshot
+      repo: opencv/face_detection_yunet
+      file: face_detection_yunet_2023mar.onnx
+      revision: 3cc26e7f1014a5ee5d74a42acee58bafc9d0a310
+      sha256: 8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
+    model: {name: enet_b0_8_va_mtl, file: enet_b0_8_va_mtl.onnx, sha256: c43e056ad388d4a8dc911832b8291435b2af537f967e5870ebd731574ec7e812}   # EmotiEffLib GitHub, ONNX, CPU
 signals:                         # 004: per-segment signals (observable cues only; no identity)
   people:
     person_conf: 0.4

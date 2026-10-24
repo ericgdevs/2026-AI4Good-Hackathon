@@ -379,6 +379,8 @@ def test_unpinned_weights_refused(tmp_path, monkeypatch, pipeline):
     monkeypatch.setenv("TPA_WEIGHTS_DIR", str(tmp_path))
     (tmp_path / "yolo11n.pt").write_bytes(b"not really weights")
     with pytest.raises(ConfigError, match="weights not pinned: set sha256 for yolo11n.pt"):
+        YoloPersonCounter({"file": "yolo11n.pt", "sha256": None}, "cpu", 0.4)
+    with pytest.raises(ConfigError, match="weights checksum mismatch: yolo11n.pt"):  # shipped config is pinned
         YoloPersonCounter(pipeline["models"]["people"]["mac"], "cpu", 0.4)
 
 

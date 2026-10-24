@@ -51,6 +51,7 @@ models:
 signals:                         # 004: per-segment signals (observable cues only; no identity)
   people:
     person_conf: 0.4
+    min_box_height_frac: 0.15     # only person boxes at least this share of frame height count (drops audience heads, edge people)
   expression:
     face_score: 0.8              # YuNet score; minimum face size is min_face_px
     detect_max_side: 1280        # YuNet runs on a copy at most this long; min_face_px stays in source pixels

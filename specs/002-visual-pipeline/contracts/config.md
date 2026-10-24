@@ -75,4 +75,4 @@ label_thresholds:
   <model_id>: {<label>: <0-1>, ...}
 ```
 
-`load_pipeline()` merges this file over `pipeline.yaml: label_thresholds`, and the local file wins. It is never committed, because its values are derived from footage (Constitution I).
+`load_pipeline()` merges this file over `pipeline.yaml: label_thresholds`, and the local file wins. `TPA_THRESHOLDS_FILE` overrides its path, for tests and checkpoints only. It is never committed, because its values are derived from footage (Constitution I).

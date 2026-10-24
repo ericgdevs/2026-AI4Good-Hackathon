@@ -54,7 +54,7 @@ list_runs(root=None) -> list[dict]   # run_id, stage, video_ids, hardware, n_seg
 
 | command | does | exit codes |
 |---|---|---|
-| `tpa-index predict [--videos PATH] [--video-id ID …] [--model ID]` | one predict run per video: segments with `is_idle`, predictions (model + rules [+ motion]), moments, runs | 0; 1 if any video failed (IDs listed); 2 guard; 3 config/model not found |
+| `tpa-index predict [--videos PATH] [--video-id ID …] [--kind KIND …] [--model ID]` | one predict run per video: segments with `is_idle`, predictions (model + rules [+ motion]), moments, runs | 0; 1 if any video failed (IDs listed); 2 guard; 3 config/model not found |
 | `tpa-index runs` | lists complete runs, one line each; no filenames or paths | 0 / 2 |
 | `tpa-index calibrate --stage predict --split dev [--top-pct 10] [--dry-run]` | official dev-split predictions only; prints label, proposed threshold, count clearing; writes `config/thresholds.local.yaml` | 0; 3 if `--split eval` or no official dev runs |
 | `tpa-index moments [--video-id ID …]` | rebuilds moments and `uncertain_mixed` rows from official predict runs with the current thresholds; one `moments` run per video; no model loaded | 0; 1 if any video failed |
@@ -66,7 +66,9 @@ list_runs(root=None) -> list[dict]   # run_id, stage, video_ids, hardware, n_seg
 | script | does |
 |---|---|
 | `scripts/slurm/predict.sbatch [predict args]` | 1× `gpu:6KSE`, 8 CPUs, 64 GB, 2 h; sets `HF_HOME=$HOME/hf-cache` and `HF_HUB_OFFLINE=1`; runs `uv sync --frozen`, then `uv run tpa-index predict "$@"` |
-| `scripts/sync_code_to_hpc.sh [--dry-run]` | rsyncs the repo to `$HPC_USER@$HPC_HOST:~/tpa-work/repo/` with `scripts/sync.exclude`; no `--delete` |
-| `scripts/sync_outputs_from_hpc.sh [--dry-run]` | rsyncs `$HPC_OUTPUT_DIR/runs/` to the local `OUTPUT_DIR/runs/` (guarded) with `--ignore-existing`; never copies `reviews.duckdb` or media |
+| `scripts/sync_code_to_hpc.sh [--dry-run]` | rsyncs the repo to `$HPC_USER@$HPC_HOST:~/tpa-work/repo/` with `scripts/sync.exclude` (excludes `config/*.local.yaml`; `config/official_runs.yaml` is synced); no `--delete` |
+| `scripts/sync_outputs_from_hpc.sh [--dry-run]` | rsyncs `$HPC_OUTPUT_DIR/runs/` to the local `OUTPUT_DIR/runs/` (guarded) with `--ignore-existing`; never copies `reviews.duckdb` or media. Then fetches HPC `~/tpa-work/repo/config/thresholds.local.yaml` and **merges it per model** into the local file (HPC entries win for their models; the Mac's other models are kept) |
 
-Both sync scripts read `HPC_USER`, `HPC_HOST` (and `HPC_OUTPUT_DIR`) from `.env` by parsing it, never by `source`-ing it. A missing key exits 2 and transfers nothing.
+Both sync scripts read `HPC_USER`, `HPC_HOST` (and `HPC_OUTPUT_DIR`) from `.env` by parsing it, never by `source`-ing it. A missing key exits 2 and transfers nothing. `TPA_ENV_FILE` overrides the env-file path (for tests, so the real `.env` is never read).
+
+`--kind` selects mapped videos by `kind` (for example `--kind promo` for a test run) without naming video IDs. A test run is simply not listed in `official_runs.yaml`.

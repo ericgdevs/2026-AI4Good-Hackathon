@@ -15,7 +15,8 @@ uv run pytest -m slow                        # optional: real siglip2-base on a 
 # on the Mac: push code (never data, .env, or weights)
 scripts/sync_code_to_hpc.sh --dry-run && scripts/sync_code_to_hpc.sh
 
-# on HPC, in ~/tpa-work/repo (weights already in ~/hf-cache)
+# on HPC, in ~/tpa-work/repo (weights already in ~/hf-cache).
+# HPC keeps its own .env and config/videos.local.yaml; code sync never copies *.local.yaml or .env
 sbatch scripts/slurm/predict.sbatch                  # all mapped videos
 sbatch scripts/slurm/predict.sbatch --video-id v03   # one video
 

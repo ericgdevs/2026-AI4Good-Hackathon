@@ -1,4 +1,4 @@
-from tpa_index.score import segment_labels, uncertain_mixed
+from tpa_index.score import uncertain_mixed
 
 ACT = ["singing", "dancing", "acting"]
 T = {"singing": 0.5, "dancing": 0.5, "acting": 0.5, "music": 0.5, "solo": 0.5}
@@ -6,13 +6,11 @@ T = {"singing": 0.5, "dancing": 0.5, "acting": 0.5, "music": 0.5, "solo": 0.5}
 
 def test_clear_winner():
     scores = {"singing": 0.9, "dancing": 0.2, "acting": 0.1, "music": 0.7, "solo": 0.6}
-    assert segment_labels(scores, T, ACT) == ("singing", ["music", "solo"])
     assert not uncertain_mixed({k: scores[k] for k in ACT}, T, 0.1)
 
 
 def test_nothing_clears():
     scores = {"singing": 0.3, "dancing": 0.2, "acting": 0.1, "music": 0.7, "solo": 0.1}
-    assert segment_labels(scores, T, ACT) == (None, ["music"])
     assert uncertain_mixed({k: scores[k] for k in ACT}, T, 0.1)
 
 
@@ -25,10 +23,9 @@ def test_runner_up_below_threshold_still_counts_for_closeness():
     assert uncertain_mixed({"singing": 0.55, "dancing": 0.49, "acting": 0.1}, T, 0.1)
 
 
-def test_per_label_threshold_changes_winner():
+def test_per_label_threshold_is_used():
     scores = {"singing": 0.40, "dancing": 0.20, "acting": 0.05}
-    low = {**T, "dancing": 0.15}
-    assert segment_labels(scores, low, ACT)[0] == "dancing"  # singing below its 0.5; dancing clears its 0.15
+    low = {**T, "dancing": 0.15}  # singing below its 0.5; dancing clears its 0.15
     # dancing wins on its own threshold, but uncleared singing scores higher: too close to call
     assert uncertain_mixed(scores, low, 0.1)
 

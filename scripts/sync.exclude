@@ -1,4 +1,6 @@
 # Never sent to HPC by scripts/sync_code_to_hpc.sh (one rsync pattern per line; first match wins).
+# Fallback list: the script also excludes everything git ignores. rsync is case-sensitive, so media
+# patterns are listed in both cases.
 + .env.example
 .env
 .env.*
@@ -15,7 +17,7 @@ frames/
 crops/
 embeddings/
 transcripts/
-config/*.local.yaml
+*.local.yaml
 slurm-*.out
 reply.md
 *.mp4
@@ -26,6 +28,14 @@ reply.md
 *.wav
 *.mp3
 *.m4a
+*.MP4
+*.MOV
+*.M4V
+*.MKV
+*.AVI
+*.WAV
+*.MP3
+*.M4A
 *.npy
 *.pt
 *.onnx

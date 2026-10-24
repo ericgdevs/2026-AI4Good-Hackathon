@@ -56,7 +56,7 @@ def _run(script, env, *args):
 def test_exclude_list_covers_secrets_data_and_weights():
     rules = [line.strip() for line in (repo_root() / "scripts/sync.exclude").read_text().splitlines()
              if line.strip() and not line.startswith("#")]
-    for pattern in (".env", ".env.*", ".venv/", "models/", "__pycache__/", "config/*.local.yaml", "*.mp4",
+    for pattern in (".env", ".env.*", ".venv/", "models/", "__pycache__/", "*.local.yaml", "*.mp4", "*.MOV",
                     "outputs/", "*.parquet", "*.duckdb"):
         assert pattern in rules, pattern
     assert not any("official_runs" in r for r in rules)
@@ -68,7 +68,7 @@ def test_code_sync_command(env_file, fake_rsync):
     result = _run(CODE_SYNC, env)
     assert result.returncode == 0, result.stderr
     (call,) = fake_rsync["log"].read_text().splitlines()
-    assert "--exclude-from=" in call and "--delete" not in call and " -n" not in call
+    assert call.count("--exclude-from=") == 2 and "--delete" not in call and " -n" not in call
     assert call.endswith("mockuser@hpc.invalid:~/tpa-work/repo/")
     _run(CODE_SYNC, env, "--dry-run")
     assert "-n -v" in fake_rsync["log"].read_text().splitlines()[-1]
@@ -109,16 +109,21 @@ def test_output_sync_dry_run_writes_nothing(env_file, fake_rsync, tmp_path):
     assert "-n -v" in fake_rsync["log"].read_text().splitlines()[0] and not target.exists()
 
 
-def test_code_sync_real_rsync_into_local_folder(tmp_path, env_file):
+@pytest.mark.parametrize("with_git", [True, False])
+def test_code_sync_real_rsync_into_local_folder(tmp_path, env_file, with_git):
     repo, dest = tmp_path / "fakerepo", tmp_path / "dest"
     (repo / "scripts").mkdir(parents=True)
     for name in ("sync_code_to_hpc.sh", "sync.exclude"):
         shutil.copy(repo_root() / "scripts" / name, repo / "scripts" / name)
+    if with_git:  # same .gitignore as the real repo; without git, sync.exclude alone must hold
+        shutil.copy(repo_root() / ".gitignore", repo / ".gitignore")
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
     files = {"src/tpa_index/a.py": "x", "config/labels.yaml": "x", "config/official_runs.yaml": "predict: []",
              ".env.example": "x", ".env": "SECRET", ".env.local": "SECRET", ".venv/lib/x.py": "x",
              "models/m.pt": "x", "src/tpa_index/__pycache__/a.pyc": "x", "config/videos.local.yaml": "x",
              "config/thresholds.local.yaml": "x", "data/v.mp4": "x", "outputs/runs/r/s.parquet": "x",
-             "clip.mov": "x", "slurm-tpa-1.out": "x"}
+             "clip.mov": "x", "slurm-tpa-1.out": "x", "TEST.MOV": "x", "clip.MP4": "x",
+             "notes/thresholds.local.yaml": "x"}
     for rel, text in files.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         (repo / rel).write_text(text)
@@ -129,8 +134,13 @@ def test_code_sync_real_rsync_into_local_folder(tmp_path, env_file):
     assert {"src/tpa_index/a.py", "config/labels.yaml", "config/official_runs.yaml", ".env.example"} <= sent
     leaked = sent & {".env", ".env.local", ".venv/lib/x.py", "models/m.pt", "src/tpa_index/__pycache__/a.pyc",
                      "config/videos.local.yaml", "config/thresholds.local.yaml", "data/v.mp4",
-                     "outputs/runs/r/s.parquet", "clip.mov", "slurm-tpa-1.out"}
+                     "outputs/runs/r/s.parquet", "clip.mov", "slurm-tpa-1.out", "TEST.MOV", "clip.MP4",
+                     "notes/thresholds.local.yaml"}
     assert not leaked, leaked
+    if with_git:  # only git ignores this one (*token*): proves the git-ignored list is applied
+        (repo / "api_token.txt").write_text("x")
+        assert _run(repo / "scripts/sync_code_to_hpc.sh", env).returncode == 0
+        assert not (dest / "api_token.txt").exists()
 
 
 def test_output_sync_real_rsync_from_local_folder(tmp_path):

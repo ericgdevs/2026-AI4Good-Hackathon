@@ -2,15 +2,6 @@
 import numpy as np
 
 
-def segment_labels(scores: dict[str, float], thresholds: dict[str, float],
-                   activity: list[str]) -> tuple[str | None, list[str]]:
-    """Primary = best activity at or above its own threshold; secondary = all other labels at or above theirs."""
-    cleared = [lab for lab, s in scores.items() if s >= thresholds[lab]]
-    primary = max((lab for lab in cleared if lab in activity), key=lambda lab: scores[lab], default=None)
-    secondary = sorted((lab for lab in cleared if lab != primary), key=lambda lab: -scores[lab])
-    return primary, secondary
-
-
 def uncertain_mixed(activity_scores: dict[str, float], thresholds: dict[str, float], margin: float) -> bool:
     """No activity clears its threshold, or the best one is within `margin` of the next-highest activity."""
     cleared = [lab for lab, s in activity_scores.items() if s >= thresholds[lab]]

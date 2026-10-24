@@ -1,7 +1,8 @@
 #!/bin/bash
 # Push the repo (code and committed config only) to ~/tpa-work/repo on UNF HPC.
 # Usage: scripts/sync_code_to_hpc.sh [--dry-run]
-# Never sends data, .env, config/*.local.yaml, model weights or outputs (see scripts/sync.exclude). No --delete.
+# Never sends data, .env, *.local.yaml, model weights, outputs or anything git ignores
+# (scripts/sync.exclude plus `git ls-files -oi`). No --delete.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -22,4 +23,10 @@ FLAGS=(-az)
 [ "${1:-}" = "--dry-run" ] && FLAGS+=(-n -v)
 DEST=${TPA_SYNC_DEST:-"$HPC_USER@$HPC_HOST:~/tpa-work/repo/"}  # TPA_SYNC_DEST: local folder, for tests only
 
-rsync "${FLAGS[@]}" --exclude-from="$REPO/scripts/sync.exclude" "$REPO/" "$DEST"
+# everything git ignores stays behind too (git matches case-insensitively here, rsync does not)
+GITIGNORED=$(mktemp)
+trap 'rm -f "$GITIGNORED"' EXIT
+{ git -C "$REPO" -c core.quotePath=false ls-files -oi --exclude-standard --directory 2>/dev/null || true; } \
+    | sed 's|^|/|' > "$GITIGNORED"
+
+rsync "${FLAGS[@]}" --exclude-from="$REPO/scripts/sync.exclude" --exclude-from="$GITIGNORED" "$REPO/" "$DEST"

@@ -306,3 +306,43 @@ def test_moments_rebuild_recomputes_idle(tmp_path, monkeypatch):
     idle_spans = [(s["video_id"], s["start_s"], s["end_s"]) for s in segs if s["is_idle"]]
     for m in read_table("moments", run_ids=[rebuilt]).to_pylist():  # no moment contains an idle segment
         assert not any(v == m["video_id"] and m["start_s"] <= a and b <= m["end_s"] for v, a, b in idle_spans)
+
+
+def test_calibrate_refuses_mixed_models_unless_named(tmp_path, monkeypatch, capsys):
+    cli = _official_mock(tmp_path, monkeypatch)
+    _crafted_run("acting")
+    from tpa_index.schema import read_table, write_table
+
+    rows = read_table("predictions", run_ids=["crafted"]).to_pylist()
+    other = [dict(r, model="other-model") for r in rows if r["model"] == "mock-model"][:50]
+    for r in other:
+        r["segment_id"] = r["segment_id"].replace("mock01", "mock99")
+    write_table("videos", [dict(read_table("videos", run_ids=["crafted"]).to_pylist()[0], video_id="mock99")], "mixed")
+    write_table("predictions", other, "mixed")
+    write_table("runs", [dict(read_table("runs", run_ids=["crafted"]).to_pylist()[0], run_id="mixed")], "mixed")
+    (tmp_path / "official.yaml").write_text("predict: [crafted, mixed]\n")
+    assert cli.main(["calibrate", "--dry-run"]) == 3
+    assert "official runs use several models (mock-model, other-model); pass --model" in capsys.readouterr().err
+    assert cli.main(["calibrate", "--dry-run", "--model", "mock-model"]) == 0
+    out = capsys.readouterr().out
+    assert "model: mock-model" in out and "dev videos used: mock01, mock02, mock03" in out
+    assert cli.main(["calibrate", "--dry-run", "--model", "nope"]) == 3
+    assert "model nope not in official predict runs" in capsys.readouterr().err
+
+
+def test_calibrate_moments_stage_has_no_model_rows(tmp_path, monkeypatch, capsys):
+    cli = _official_mock(tmp_path, monkeypatch)
+    assert cli.main(["moments"]) == 0
+    from tpa_index.schema import list_runs
+
+    rebuilt = [r["run_id"] for r in list_runs() if r["stage"] == "moments"]
+    (tmp_path / "official.yaml").write_text(f"predict: [mock-seed0]\nmoments: [{rebuilt[0]}]\n")
+    capsys.readouterr()
+    assert cli.main(["calibrate", "--stage", "moments", "--dry-run"]) == 3
+    assert "no model-scored predictions in official moments runs" in capsys.readouterr().err
+
+
+def test_moments_unknown_video_id_exits_3(tmp_path, monkeypatch, capsys):
+    cli = _official_mock(tmp_path, monkeypatch)
+    assert cli.main(["moments", "--video-id", "typo1"]) == 3
+    assert "no official predict run covers typo1" in capsys.readouterr().err

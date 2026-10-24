@@ -148,9 +148,21 @@ def _main_model(predictions) -> str | None:
     return counts.most_common(1)[0][0] if counts else None
 
 
-def _calibrate(args) -> int:
-    import numpy as np
+def _calibration_model(predictions, stage: str, requested: str | None) -> str:
+    """The one model to calibrate: never guessed when official runs mix models."""
+    models = sorted({m for m in predictions["model"].to_pylist() if m != "rules"})
+    if not models:
+        raise ConfigError(f"no model-scored predictions in official {stage} runs")
+    if requested is not None:
+        if requested not in models:
+            raise ConfigError(f"model {requested} not in official {stage} runs ({', '.join(models)})")
+        return requested
+    if len(models) > 1:
+        raise ConfigError(f"official runs use several models ({', '.join(models)}); pass --model")
+    return models[0]
 
+
+def _calibrate(args) -> int:
     from tpa_index.calibrate import (dev_scores, idle_candidates, propose_idle_threshold, propose_thresholds,
                                      write_local_thresholds)
     from tpa_index.schema import read_official
@@ -165,10 +177,12 @@ def _calibrate(args) -> int:
     if not preds.num_rows or not segs.num_rows or not videos.num_rows \
             or "dev" not in set(videos["split"].to_pylist()):
         raise ConfigError(f"no official dev runs for stage {args.stage}")
-    model = _main_model(preds)
+    model = _calibration_model(preds, args.stage, args.model)
+    dev_ids = sorted(v["video_id"] for v in videos.to_pylist() if v["split"] == "dev")
     proposals = propose_thresholds(preds, videos, model, top_pct, cal["min_segments"], cal["min_threshold"])
     scores = dev_scores(preds, videos, model)
     print(f"model: {model}  label top_pct: {top_pct}  floor: {cal['min_threshold']}")
+    print(f"dev videos used: {', '.join(dev_ids)}")
     print(f"{'label':<20} {'threshold':>9} {'n_dev':>6} {'clearing':>8}  floored")
     for label, (value, floored) in proposals.items():
         n = len(scores[label])
@@ -200,13 +214,14 @@ def _moments(args) -> int:
     sources = load_official().get("predict", [])
     if not sources:
         raise ConfigError("no official predict runs to rebuild")
-    failed, wanted = [], set(args.video_id or [])
+    failed, wanted, covered = [], set(args.video_id or []), set()
     for source in sources:
         videos = read_table("videos", run_ids=[source]).to_pylist()
         if not videos:
             raise ConfigError(f"official run {source} not found or incomplete")
         if wanted and not wanted & {v["video_id"] for v in videos}:
             continue
+        covered |= {v["video_id"] for v in videos}
         try:
             preds = read_table("predictions", run_ids=[source])
             model = _main_model(preds)
@@ -236,6 +251,8 @@ def _moments(args) -> int:
             print(redact(f"moments failed for {source}: {type(e).__name__}: {e}"), file=sys.stderr)
             continue
         print(f"moments run: {ctx.run_id} (from {source}, {len(moments)} moments)")
+    if wanted - covered:
+        raise ConfigError(f"no official predict run covers {', '.join(sorted(wanted - covered))}")
     if failed:
         print(f"failed runs: {', '.join(failed)}", file=sys.stderr)
         return 1
@@ -265,6 +282,7 @@ def main(argv=None) -> int:
     cal.add_argument("--split", default="dev")
     cal.add_argument("--top-pct", type=float, help="label percentile (default: calibrate.top_pct)")
     cal.add_argument("--idle-top-pct", type=float, help="idle percentile (default: idle.calibrate_top_pct)")
+    cal.add_argument("--model", help="model to calibrate (required when official runs mix models)")
     cal.add_argument("--dry-run", action="store_true")
     cal.set_defaults(func=_calibrate)
     mom = sub.add_parser("moments", help="rebuild idle flags and moments from official predict runs")

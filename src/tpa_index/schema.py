@@ -274,6 +274,9 @@ def load_official(path=None) -> dict[str, list[str]]:
     if not path.exists():
         return {}
     data = yaml.safe_load(path.read_text()) or {}
+    for stage, ids in data.items():
+        if ids is not None and not isinstance(ids, list):
+            raise SchemaError("official_runs", stage, "must be a list of run IDs")
     return {stage: list(ids or []) for stage, ids in data.items()}
 
 

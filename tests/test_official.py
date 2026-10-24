@@ -82,3 +82,9 @@ def test_list_runs_skips_incomplete():
     (r,) = list_runs()
     assert r["run_id"] == "p1" and r["video_ids"] == "mock01,mock02" and r["n_predictions"] == 4
     assert r["n_segments"] == 1 and r["hardware"] == "mock-hardware"
+
+
+def test_stage_value_must_be_a_list(tmp_path, monkeypatch):
+    _official(tmp_path, monkeypatch, "predict: predict-20261024T000000-abcd\n")
+    with pytest.raises(SchemaError, match="must be a list of run IDs"):
+        read_official("moments")

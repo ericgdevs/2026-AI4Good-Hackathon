@@ -90,6 +90,10 @@ class FakePersonCounter:
             raise RuntimeError("counter broke")
         return [self.count_value] * len(frames)
 
+    def boxes(self, frames):
+        """Plain boxes (0-1 of the frame), one per counted person, side by side."""
+        return [[(0.05 + 0.3 * i, 0.2, 0.3 + 0.3 * i, 0.95) for i in range(n)] for n in self.count(frames)]
+
 
 class FakeExpressionScorer:
     """No faces on a uniform frame; otherwise `faces_per_frame` in-memory crops with fixed per-label scores."""

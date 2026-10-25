@@ -4,7 +4,7 @@ built from an allow-list: no transcript text or counts, no filenames, no segment
 import re
 
 from tpa_index import review
-from tpa_index.app import _cut, _fmt_conf, _fmt_time
+from tpa_index.app import LOCAL_BADGE, _cut, _fmt_conf, _fmt_time
 from tpa_index.config import ConfigError, load_labels, load_pipeline
 from tpa_index.paths import redact
 
@@ -66,8 +66,12 @@ class DemoController:
         from tpa_index.schema import read_official, read_reviews
         from tpa_index.view import main_model, segment_view, verified_labels
 
-        self.moments = sorted(read_official("moments", root=self.root).to_pylist(),
+        from tpa_index.schema import local_only
+
+        # laptop-only videos are browsable here (badged, read-only); results never read them
+        self.moments = sorted(read_official("moments", root=self.root, include_local=True).to_pylist(),
                               key=lambda m: (m["video_id"], m["start_s"]))
+        self.local = set(local_only(self.root).get("predict", {}))
         self.state = review.latest_state(read_reviews(self.root), "review")
         self.segments, self.note = [], ""
         model = main_model(read_official("predictions", root=self.root))
@@ -93,13 +97,16 @@ class DemoController:
                          for s in view.to_dict("records")]  # pandas turns a missing signal into NaN
 
     def _allowed(self) -> dict[str, dict]:
-        return {v["video_id"]: v for v in review.review_videos(self.root)}
+        return {v["video_id"]: v for v in review.review_videos(self.root, include_local=True)}
+
+    def _name(self, v: dict, shown: list[dict]) -> str:
+        return video_name(v, shown) + (f" · {LOCAL_BADGE}" if v["video_id"] in self.local else "")
 
     def video_choices(self) -> tuple[list[tuple[str, str]], str]:
         """Same eval lock and message as the Review tab: eval videos are not listed while it holds."""
         _, reason = review.eval_unlocked(self.root)
         shown = list(self._allowed().values())
-        return [(video_name(v, shown), v["video_id"]) for v in shown], reason
+        return [(self._name(v, shown), v["video_id"]) for v in shown], reason
 
     def moments_table(self, video_id) -> tuple[list[list], list[str]]:
         """(table rows, moment IDs in row order). The IDs stay in app state; they are never shown."""
@@ -142,7 +149,10 @@ class DemoController:
 
     # ---- Search moments and the Review queue's "AI noticed" box ----
     def strength(self, m) -> float | None:
-        """The moment's confidence over its primary label's calibrated cut-off (never shown as a percentage)."""
+        """The moment's confidence over its primary label's calibrated cut-off (never shown as a percentage).
+        None for laptop runs: their model has no calibrated cut-offs."""
+        if m["video_id"] in self.local:
+            return None
         thr = self.thresholds.get(m["primary_label"])
         return m["confidence"] / thr if thr and m["confidence"] is not None else None
 
@@ -203,7 +213,7 @@ class DemoController:
             detail = [f"{people} {'person' if people == 1 else 'people'}" if people is not None else "people n/a",
                       *(info["sounds"] or [])[:2], f"{st:.1f}×" if st is not None else ""]
             results.append({"video_id": m["video_id"], "moment_id": m["moment_id"], "start_s": m["start_s"],
-                            "video": video_name(allowed[m["video_id"]], list(allowed.values())),
+                            "video": self._name(allowed[m["video_id"]], list(allowed.values())),
                             "time": _fmt_time(m["start_s"], m["end_s"]),
                             "label": display_label(m["primary_label"], self.labels),
                             "detail": " · ".join(d for d in detail if d), "review_status": status})

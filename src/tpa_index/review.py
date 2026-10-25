@@ -286,12 +286,13 @@ def eval_unlocked(root=None) -> tuple[bool, str]:
     return True, ""
 
 
-def review_videos(root=None) -> list[dict]:
-    """Official videos, sorted by id, without eval-split videos while blind labeling is unfinished."""
+def review_videos(root=None, include_local: bool = False) -> list[dict]:
+    """Official videos (plus laptop-only videos when include_local), sorted by id, without eval-split videos while
+    blind labeling is unfinished."""
     from tpa_index.schema import read_official
 
     unlocked, _ = eval_unlocked(root)
-    videos = read_official("videos", root=root).to_pylist()
+    videos = read_official("videos", root=root, include_local=include_local).to_pylist()
     return sorted((v for v in videos if unlocked or v["split"] != "eval"), key=lambda v: v["video_id"])
 
 

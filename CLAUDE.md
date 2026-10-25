@@ -27,6 +27,10 @@ tests/
 
 uv run pytest
 
+## Data rules
+
+- Never run tpa-index commands (check, app, benchmark, segment, predict, signals, evaluate, insights, export) or anything else that reads config/*.local.yaml, DATA_DIR or OUTPUT_DIR outside the test sandbox; use the test fixtures/overrides only.
+
 ## Code Style
 
 Python 3.12, managed with uv; package `tpa_index` (src layout): Follow standard conventions

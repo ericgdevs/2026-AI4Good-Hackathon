@@ -362,14 +362,51 @@ def _video_of(segment_id: str) -> str:
     return segment_id.rsplit("_", 1)[0]
 
 
-def read_official(table: str, stage: str | None = None, root=None) -> pa.Table:
+def local_runs_path(root=None) -> Path:
+    """Laptop runs from the Process tab: {stage: [run_id]} like official_runs.yaml, kept next to the run folders."""
+    return Path(root or output_dir()) / "local_runs.yaml"
+
+
+def register_local(run_ids: dict[str, list[str]], root=None) -> None:
+    """Add laptop runs to local_runs.yaml. A newer run of a stage replaces the older one for the same video, so each
+    video has at most one local run per stage. Official run IDs are refused: the two lists never share a run."""
+    import yaml
+
+    official = {r for ids in load_official().values() for r in ids}
+    if official & {r for ids in run_ids.values() for r in ids}:
+        raise SchemaError("local_runs", "run_id", "an official run cannot be registered as a local run")
+    path = local_runs_path(root)
+    local = load_official(path)
+    for stage, new in run_ids.items():
+        covered = {v for r in new for v in _run_videos(r, root)}
+        local[stage] = [r for r in local.get(stage, []) if not covered & set(_run_videos(r, root))] + list(new)
+    tmp = path.with_suffix(".yaml.tmp")
+    tmp.write_text("# Laptop runs (Process tab). Run IDs only; never counted in results.\n"
+                   + yaml.safe_dump(local, sort_keys=True))
+    tmp.replace(path)  # atomic: a crash never leaves a half-written registry
+
+
+def local_only(root=None) -> dict[str, dict[str, str]]:
+    """{stage: {video_id: run_id}} of registered laptop runs, only for videos with no official predict or moments
+    run. Videos that have official results never take a local run."""
+    official = load_official()
+    taken = set(_official_by_video(official, "predict", root)) | set(_official_by_video(official, "moments", root))
+    local = load_official(local_runs_path(root))
+    return {stage: {v: r for v, r in _official_by_video(local, stage, root).items() if v not in taken}
+            for stage in local}
+
+
+def read_official(table: str, stage: str | None = None, root=None, include_local: bool = False) -> pa.Table:
     """Rows from the official runs only. Result-facing code must use this, not read_table.
     Default: moments and segments come from an official moments run for a video when listed, else predict;
-    predictions take the moments run's rules rows in place of predict's."""
+    predictions take the moments run's rules rows in place of predict's.
+    include_local (browse tabs only, never results): videos with no official run are filled from local_runs.yaml."""
     official = load_official()
+    extra = local_only(root) if include_local else {}
     if stage is not None:
-        return read_table(table, root, run_ids=sorted(set(_official_by_video(official, stage, root).values())))
-    predict = _official_by_video(official, "predict", root)
+        runs = {**extra.get(stage, {}), **_official_by_video(official, stage, root)}
+        return read_table(table, root, run_ids=sorted(set(runs.values())))
+    predict = {**extra.get("predict", {}), **_official_by_video(official, "predict", root)}
     rebuilt = _official_by_video(official, "moments", root)
     if table in ("moments", "segments"):
         chosen = {**predict, **rebuilt}

@@ -10,6 +10,9 @@ from tpa_index.paths import redact  # noqa: E402
 
 QUEUE_NAMES = {"Main sample": "main", "Overlap set (second labeler)": "overlap", "Top-up": "topup"}
 REVIEWER_HINT = "staff first name or role"
+LOCAL_BADGE = "local run (laptop models, uncalibrated)"
+LOCAL_READ_ONLY = (f"This moment is from a {LOCAL_BADGE}. Reviews are saved only on official results, "
+                   "so nothing was saved.")
 
 # On load: force the light theme (Constitution X) and install the keyboard shortcuts: review queue buttons by element
 # ID, blind checklist keys by the "[k]" suffix of each choice's text, so no label name is written here.
@@ -217,8 +220,12 @@ class ReviewController:
         from tpa_index.config import threshold
         from tpa_index.schema import read_official
 
-        self.moments = read_official("moments", root=self.root).to_pylist()
-        self.segments = read_official("segments", root=self.root).to_pylist()
+        from tpa_index.schema import local_only
+
+        # laptop-only videos are shown (badged, read-only); scores and thresholds stay the official model's
+        self.moments = read_official("moments", root=self.root, include_local=True).to_pylist()
+        self.segments = read_official("segments", root=self.root, include_local=True).to_pylist()
+        self.local = set(local_only(self.root).get("predict", {}))
         preds = read_official("predictions", root=self.root)
         main = Counter(m for m in preds["model"].to_pylist() if m != "rules").most_common(1)
         # shortcut: one main model across the official runs (as calibrate assumes); per-video models if they mix
@@ -232,7 +239,7 @@ class ReviewController:
     # ---- choices ----
     def video_choices(self) -> tuple[list[tuple[str, str]], str]:
         _, reason = review.eval_unlocked(self.root)
-        videos = review.review_videos(self.root)
+        videos = review.review_videos(self.root, include_local=True)
         return [(f"{v['video_id']} ({v['split']})", v["video_id"]) for v in videos], reason
 
     def label_filter_choices(self) -> list[tuple[str, str]]:
@@ -261,7 +268,7 @@ class ReviewController:
 
     def timeline(self, video_id, label=ANY, needs=ANY, status=ANY, show_idle=False):
         """Outputs: table values, rows (state), message."""
-        allowed = {v["video_id"] for v in review.review_videos(self.root)}
+        allowed = {v["video_id"] for v in review.review_videos(self.root, include_local=True)}
         if not video_id or video_id not in allowed:
             return [], [], "Pick a video." if not video_id else review.eval_unlocked(self.root)[1]
         state = self._state()
@@ -303,7 +310,7 @@ class ReviewController:
         if not rows or index is None or not 0 <= index < len(rows):
             return [None, None, [], [], [], "", ""]
         r = rows[index]
-        video = next((v for v in review.review_videos(self.root) if v["video_id"] == r["video_id"]), None)
+        video = next((v for v in review.review_videos(self.root, include_local=True) if v["video_id"] == r["video_id"]), None)
         clip, msg = _cut(self.cutter, video, r["start_s"], r["end_s"], self.pipeline["app"]["padding_s"])
         if r["kind"] != "moment":
             return [None, clip, [], [], [], "Idle stretch (no labels).", msg]
@@ -315,6 +322,8 @@ class ReviewController:
         reviewer = (reviewer or "").strip().lower()
         if current is None:
             return [None, None, None, "Select a moment first."]
+        if current["video_id"] in self.local:
+            return [None, None, None, LOCAL_READ_ONLY]
         if not reviewer:
             return [None, None, None, f"Enter a reviewer ({REVIEWER_HINT}) first."]
         try:
@@ -370,6 +379,9 @@ class ReviewController:
 
         if current is None:
             return ""
+        if current["video_id"] in self.local:
+            return (f"AI suggests **{display_label(current['primary_label'], self.labels)}** · {LOCAL_BADGE} · "
+                    "view only")
         thr = self.thresholds.get(current["primary_label"])
         st = current["confidence"] / thr if thr and current["confidence"] is not None else None
         extra = f" · {strength_text(st)}" if st is not None else ""
@@ -398,6 +410,8 @@ class ReviewController:
         reviewer = (reviewer or "").strip().lower()
         if current is None:
             return [None, None, None, "Select a moment first."]
+        if current["video_id"] in self.local:
+            return [None, None, None, LOCAL_READ_ONLY]
         if not reviewer:
             return [None, None, None, f"Enter a reviewer ({REVIEWER_HINT}) first."]
         state, mid, ticked = self._state(), current["moment_id"], set(ticked or [])
@@ -465,6 +479,54 @@ def export_download(verified_only=False, root=None) -> tuple[list[str], str]:
     copies = [str(shutil.copy(p, out / p.name)) for p in paths]
     summary = ", ".join(f"{n} {k}" for k, n in sorted(counts.items()))
     return copies, f"Exported {sum(counts.values())} moments ({summary})."
+
+
+PROCESS_INTRO = ("Runs the laptop versions of the models on one video, on this machine. Nothing leaves it: no "
+                 "cloud, no saved frames or faces, and no transcript text (speech yes/no only).")
+PROCESS_HEADERS = ["time", "activity (AI suggestion, uncalibrated)", "needs review"]
+
+
+def local_note(root=None) -> str:
+    """Scorecard line: how many videos have laptop runs (never part of these numbers)."""
+    from tpa_index.schema import load_official, local_runs_path, read_table
+
+    ids = load_official(local_runs_path(root)).get("predict", [])
+    n = len({v for v in read_table("videos", root, run_ids=ids)["video_id"].to_pylist()}) if ids else 0
+    return (f"{n} video{'s' if n != 1 else ''} processed on this laptop {'are' if n != 1 else 'is'} not in these "
+            "numbers.") if n else ""
+
+
+def process_rows(moments: list[dict], labels: dict) -> list[list]:
+    from tpa_index.demo import display_label
+
+    return [[_fmt_time(m["start_s"], m["end_s"]), display_label(m["primary_label"], labels),
+             "yes" if m["needs_review"] else "no"] for m in sorted(moments, key=lambda m: m["start_s"])]
+
+
+def process_video(video_id, root=None, labels=None, poll=0.5, **makers):
+    """Generator for the Process button: (progress HTML, preview HTML, message, moments table update) about twice a
+    second until the run ends. `makers` replace the model loaders in tests."""
+    import gradio as gr
+
+    from tpa_index import process, ui_html
+
+    labels = labels or load_labels()
+    if not video_id:
+        yield ui_html.process_status(None), ui_html.preview_panel(None, labels), "Pick a video first.", gr.update()
+        return
+    try:
+        job = process.start(video_id, root, **makers)
+    except Exception as e:  # noqa: BLE001 - config problems become a message, never a traceback
+        job = process.plain("predict", e)
+    if isinstance(job, str):
+        yield ui_html.process_status(None), ui_html.preview_panel(None, labels), job, gr.update()
+        return
+    while not job.done.wait(poll):
+        yield (ui_html.process_status(job.snapshot()), ui_html.preview_panel(job.live.view(), labels), "",
+               gr.update())
+    rows = process_rows(job.moments, labels)
+    yield (ui_html.process_status(job.snapshot()), ui_html.preview_panel(job.live.view(), labels), job.message,
+           gr.update(value=rows, visible=bool(rows)))
 
 
 QUICK_SEARCHES = {"Solo singing": "solo singing", "Spoken word": "spoken word", "Group performance": "group performance",
@@ -535,6 +597,7 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                     sc_gauge = gr.HTML(g0, elem_id="scorecard-gauge")
                     sc_drives = gr.HTML(d0, elem_id="scorecard-drives")
                 sc_facts = gr.HTML(f0, elem_id="scorecard-facts")
+                sc_local = gr.Markdown(local_note(root), elem_id="scorecard-local")
                 sc_foot = gr.Markdown(footer_line(), elem_id="scorecard-footer")
                 with gr.Accordion("Limitations", open=False, elem_id="scorecard-limitations-box"):
                     sc_limits = gr.Markdown(limitations(), elem_id="scorecard-limitations")
@@ -616,6 +679,22 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                                                  elem_id="review-panel")
                             history = gr.Dataframe(headers=HISTORY_HEADERS, interactive=False, label="Review history",
                                                    elem_id="review-history")
+            # ---- Process a video (laptop models; runs register as local, never official) ----
+            with gr.Tab("Process a video", id="process", elem_id="process-tab"):
+                from tpa_index import process as proc
+
+                gr.Markdown("# Process a video", elem_id="process-title")
+                gr.Markdown(PROCESS_INTRO, elem_id="process-intro")
+                p_choices, p_note = proc.video_choices(root)
+                with gr.Row():
+                    p_video = gr.Dropdown(p_choices, value=None, label="Video", elem_id="process-video", scale=4)
+                    p_btn = gr.Button("Process", variant="primary", elem_id="process-run", scale=1)
+                p_note_md = gr.Markdown(p_note, elem_id="process-note")
+                p_status = gr.HTML(ui_html.process_status(None), elem_id="process-status")
+                p_preview = gr.HTML(ui_html.preview_panel(None, blind.labels), elem_id="process-preview")
+                p_msg = gr.Markdown(elem_id="process-msg")
+                p_moments = gr.Dataframe(headers=PROCESS_HEADERS, interactive=False, visible=False,
+                                         label="Moments in this laptop run", elem_id="process-moments")
             # ---- Blind labels (unchanged behaviour) ----
             with gr.Tab("Blind labels", id="blind", elem_id="blind-tab"):
                 blind_reviewer = gr.Textbox(label="Reviewer", placeholder=REVIEWER_HINT, elem_id="blind-reviewer")
@@ -765,15 +844,25 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
             a, b = ins.default_pair()
             g, d, f = scorecard(a, b)
             strip_v, rows_v, hits_v = search("", "", False)
+            p_choices_v, p_note_v = proc.video_choices(root)
             return (gr.update(choices=names), note, gr.update(choices=choices), reason,
                     gr.update(choices=[("All videos", "")] + choices, value=""), reason,
                     gr.update(choices=phase_choices(), value=a), gr.update(choices=phase_choices(), value=b),
                     ins.subtitle() if ins.available else "", ins.message(), gr.update(visible=ins.available),
-                    g, d, f, footer_line(), limitations(), strip_v, rows_v, hits_v)
+                    g, d, f, footer_line(), limitations(), strip_v, rows_v, hits_v, local_note(root),
+                    gr.update(choices=p_choices_v), p_note_v)
 
-        reload_btn.click(reload, None, [queue_pick, topup_note, video, lock_note, s_video, s_lock, sc_a, sc_b, sc_sub,
-                                        sc_empty, sc_dl, sc_gauge, sc_drives, sc_facts, sc_foot, sc_limits, s_strip,
-                                        s_results, s_hits])
+        reload_outputs = [queue_pick, topup_note, video, lock_note, s_video, s_lock, sc_a, sc_b, sc_sub, sc_empty, sc_dl,
+                          sc_gauge, sc_drives, sc_facts, sc_foot, sc_limits, s_strip, s_results, s_hits, sc_local,
+                          p_video, p_note_md]
+        reload_btn.click(reload, None, reload_outputs)
+
+        # ---- Process a video: one run at a time, then refresh the browse tabs ----
+        def run_process(video_id):
+            yield from process_video(video_id, root, blind.labels)
+
+        p_btn.click(run_process, [p_video], [p_status, p_preview, p_msg, p_moments], concurrency_limit=1).then(
+            reload, None, reload_outputs)
     return demo
 
 

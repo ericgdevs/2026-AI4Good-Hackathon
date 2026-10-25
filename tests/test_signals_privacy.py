@@ -18,8 +18,11 @@ def _contains(path, needle: str) -> bool:
 
 
 def test_transcript_text_never_leaks(monkeypatch, clip_videos, pipeline, tmp_path, caplog, capsys):
-    """SC-003: success on t01, a failure carrying the sentinel in its message on t03."""
+    """SC-003: success on t01, a failure carrying the sentinel in its message on t03. On a laptop (no cuda) no text
+    is written at all; on HPC only the successful run's transcript.json holds it."""
     import logging
+
+    from tpa_index.runs import device
 
     caplog.set_level(logging.DEBUG)
     models = {"transcript": FakeTranscriber(sentinel=SENTINEL, fail_for={"t03"}, raise_with=f"boom {SENTINEL}")}
@@ -32,9 +35,10 @@ def test_transcript_text_never_leaks(monkeypatch, clip_videos, pipeline, tmp_pat
     assert not any(leaked.values()), f"sentinel leaked into: {[k for k, v in leaked.items() if v]}"
     holders = sorted(p.parent.name.split("-")[0] for p in (tmp_path / "out").rglob("*") if p.is_file()
                      and _contains(p, SENTINEL))
-    assert holders == ["transcript"]  # only the successful run's transcript.json
+    hpc = device() == "cuda"
+    assert holders == (["transcript"] if hpc else [])  # HPC: only the successful run's transcript.json
     assert [p.name for p in (tmp_path / "out").rglob("*") if p.is_file() and _contains(p, SENTINEL)] == \
-        ["transcript.json"]
+        (["transcript.json"] if hpc else [])
 
 
 def test_transcript_error_carries_no_text(clip_videos, pipeline, tmp_path, monkeypatch):

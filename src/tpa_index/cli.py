@@ -121,12 +121,22 @@ def _make_motion(motion_cfg: dict, labels: dict, dev: str):
                        motion_cfg["other_prompt"], motion_cfg["frames_per_window"])
 
 
+def _predict_run(v: dict, run_id: str, pipeline: dict, labels: dict, embedder, dev: str, motion=None, root=None,
+                 preview=None) -> dict:
+    """Score one video and write its predict run tables (shared by `predict` and the app's Process tab)."""
+    from tpa_index.schema import write_table
+    from tpa_index.score import predict_video
+
+    out = predict_video(v, pipeline, labels, embedder, run_id, device=dev, motion=motion, preview=preview)
+    for table in ("videos", "segments", "predictions", "moments"):
+        write_table(table, out[table], run_id, root)
+    return out
+
+
 def _predict(args) -> int:
     import os
 
     from tpa_index.runs import device
-    from tpa_index.schema import write_table
-    from tpa_index.score import predict_video
 
     videos = _select_videos(args)
     pipeline, labels = load_pipeline(), load_labels()
@@ -138,10 +148,7 @@ def _predict(args) -> int:
     motion = _make_motion(motion_cfg, labels, dev) if motion_cfg.get("enabled") else None
 
     def work(v, run_id):
-        out = predict_video(v, pipeline, labels, embedder, run_id, device=dev, motion=motion)
-        for table in ("videos", "segments", "predictions", "moments"):
-            write_table(table, out[table], run_id)
-        return len(out["segments"])
+        return len(_predict_run(v, run_id, pipeline, labels, embedder, dev, motion)["segments"])
 
     return _per_video("predict", videos, embedder.name, work)
 
@@ -195,7 +202,9 @@ def _signals(args) -> int:
                  "skipped": f"skipped (done: {detail})"}.get(kind, f"failed {detail}")
         print(f"{key[1]} {key[0]}: {shown}", flush=True)
 
-    results = run_signals(videos, stages, models, pipeline, labels, force=args.force, device=dev, report=report)
+    # transcript text is written on HPC (cuda) only; laptop runs keep speech yes/no and a character count
+    results = run_signals(videos, stages, models, pipeline, labels, force=args.force, device=dev, report=report,
+                          keep_transcript=dev == "cuda")
     failed = [f"{stage} {vid}" for (vid, stage), status in sorted(results.items()) if status.startswith("failed:")]
     if failed:
         print(f"failed: {', '.join(failed)}", file=sys.stderr)

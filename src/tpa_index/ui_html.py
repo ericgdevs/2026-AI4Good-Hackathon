@@ -155,6 +155,90 @@ def noticed(info: dict | None) -> str:
 <span>{speech}</span><span>{expr}</span></div></div>"""
 
 
+# ---- Process a video ----
+STATUS_TEXT = {"waiting": "Waiting", "running": "Running", "done": "Done", "failed": "Did not finish",
+               "skipped": "Skipped"}
+SOUND_NAMES = {"singing_voice": "Singing", "music": "Music", "speech": "Speech", "applause": "Applause"}
+
+
+def _mins(secs: float) -> str:
+    secs = max(0, round(secs))
+    return f"{secs // 60} min {secs % 60:02d} s" if secs >= 60 else f"{secs} s"
+
+
+def process_status(snap: dict | None) -> str:
+    """Per-step status, clip counts, elapsed time and the estimate, from process.Job.snapshot()."""
+    from tpa_index.process import STAGES
+
+    p = _p()
+    if not snap:
+        return ('<div class="tpa-box tpa-pad"><p class="tpa-cap">Progress</p><p class="tpa-muted">Pick a video and '
+                'press Process. The steps run one after another on this laptop.</p></div>')
+    colour = {"waiting": p["track"], "running": p["accent"], "done": p["accent_deep"],
+              "failed": p["chart_series"][2], "skipped": p["muted"]}
+    n = snap["n_segments"]
+    rows = []
+    for stage, title, model in STAGES:
+        st = snap["status"][stage]
+        detail = ""
+        if st == "running" and n:
+            done = snap["counts"]["predict" if stage == "predict" else "frames"] if stage in (
+                "predict", "people", "expression") else None
+            detail = f"{min(done, n)} of {n} clips" if done is not None else "whole video"
+        rows.append(f"""<tr><td><span class="tpa-tag"><span class="tpa-dot" style="background:{colour[st]}"></span>
+{escape(STATUS_TEXT[st])}</span></td><td><span style="font-weight:600">{escape(title)}</span>
+<span class="tpa-small"> · {escape(model)}</span></td><td class="tpa-mono tpa-small">{escape(detail)}</td></tr>""")
+    est = snap["estimate_s"]
+    if snap["done"]:
+        timing = f"Finished in {_mins(snap['elapsed_s'])}."
+    elif est is None:
+        timing = f"Elapsed {_mins(snap['elapsed_s'])} · no estimate yet (first run on this laptop)."
+    else:
+        timing = (f"Elapsed {_mins(snap['elapsed_s'])} · about {_mins(max(est - snap['elapsed_s'], 0))} left "
+                  "(estimate from earlier runs on this laptop; model loading not included).")
+    return f"""<section class="tpa-box" aria-label="Progress" style="padding:4px 0 0">
+<div class="tpa-row-between" style="padding:20px 20px 8px"><p class="tpa-cap">Progress · {escape(snap["video_id"])}</p>
+<span class="tpa-small tpa-mono">{escape(timing)}</span></div>
+<div style="overflow-x:auto"><table class="tpa-table"><tbody>{"".join(rows)}</tbody></table></div></section>"""
+
+
+def preview_panel(view: dict | None, labels: dict) -> str:
+    """The live preview: the latest blurred frame (or why none is shown) and the shown clip's AI suggestions."""
+    from tpa_index.demo import display_label
+
+    p = _p()
+    if not view or not view["shown"]:
+        return ('<div class="tpa-box tpa-pad"><p class="tpa-cap">Live preview</p><p class="tpa-muted">Sampled frames '
+                'appear here while the models run, about once a second. Faces are blurred before anything is shown, '
+                'and nothing is saved.</p></div>')
+    name = lambda n: escape(display_label(n, labels))  # noqa: E731
+    seg = view["shown"]
+    image = (f'<img class="tpa-preview-img" src="{view["image"]}" alt="Sampled frame, faces blurred">'
+             if view["image"] else f'<p class="tpa-muted">{escape(view["hidden"] or "")}</p>')
+    people = ('<p class="tpa-small">Boxes: person detection (counts only)</p>' if view["image"] and seg["people_boxes"]
+              else "")
+    act = view.get("activity")
+    activity = ("<span>AI suggestion (uncalibrated): not yet</span>" if not act else
+                f'<span>AI suggestion (uncalibrated): <strong>{name(act)}</strong></span>'
+                + "".join(f'<span class="tpa-small">next: {name(lab)} <span class="tpa-mono">{r:.2f}×</span> the top'
+                          '</span>' for lab, r in view.get("others") or []))
+    sounds = view.get("sounds")
+    meter = ('<span class="tpa-small">not measured yet</span>' if sounds is None else "".join(
+        f'<div class="tpa-meter"><span>{escape(SOUND_NAMES[k])}</span><div class="tpa-bar"><div style="width:'
+        f'{100 * max(0.0, min(1.0, v)):.0f}%;background:{p["accent"]}"></div></div></div>'
+        for k, v in sounds.items() if k in SOUND_NAMES))
+    speech = {None: "not measured yet", True: "yes", False: "no"}[view.get("speech")]
+    expr = view.get("expression")
+    expression = ("not measured yet" if expr is None else "no faces in view" if expr == "no faces" else name(expr))
+    return f"""<section class="tpa-box tpa-pad tpa-col" aria-label="Live preview">
+<div class="tpa-row-between"><p class="tpa-cap">Live preview</p>
+<span class="tpa-small tpa-mono">clip {int(seg["start_s"] // 60)}:{int(seg["start_s"] % 60):02d}</span></div>
+<div class="tpa-preview"><div>{image}{people}</div><div class="tpa-col" style="gap:10px;font-size:14px">
+{activity}<div><p class="tpa-label">Sounds</p>{meter}</div><span>Speech: {speech}</span>
+<span>Expression (unvalidated): {expression}</span></div></div>
+<p class="tpa-small">In memory only: frames are blurred inside face boxes and never saved.</p></section>"""
+
+
 def page_css() -> str:
     """Draft 3 look from the theme: deep-purple top bar and tabs, white boxes with a 1px border and 6px radius."""
     p = _p()
@@ -208,4 +292,11 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
 .tpa-hint {{ font-size: 12px; color: {p['text_secondary']}; }}
 .tpa-hint kbd {{ font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border-radius: 4px;
   background: {p['track']}; border: 1px solid {p['border']}; color: {p['text']}; }}
+.tpa-preview {{ display: grid; grid-template-columns: minmax(0, 3fr) minmax(220px, 2fr); gap: 24px; }}
+.tpa-preview-img {{ width: 100%; height: auto; border-radius: 6px; border: 1px solid {p['border']}; display: block; }}
+.tpa-meter {{ display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 8px; font-size: 13px;
+  margin-top: 6px; }}
+.tpa-meter .tpa-bar {{ width: 100%; }}
+#process-title h1 {{ margin: 0; font-size: 26px; font-weight: 700; color: {p['text']}; }}
+#process-intro p {{ margin: 0; font-size: 14px; color: {p['text_secondary']}; }}
 """

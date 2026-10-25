@@ -12,7 +12,7 @@ from tests.test_insights import _evaluate_folder
 from tpa_index import cli, demo, report, ui_html
 from tpa_index.schema import read_official, read_reviews
 
-TABS = ["Scorecard", "Search moments", "Review queue", "Blind labels", "Export"]
+TABS = ["Scorecard", "Search moments", "Review queue", "Process a video", "Blind labels", "Export"]
 
 
 @pytest.fixture

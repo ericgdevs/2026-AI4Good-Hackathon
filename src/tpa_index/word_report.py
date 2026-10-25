@@ -1,12 +1,18 @@
-"""006: a plain-English Word report of the newest 005 insights result, for TPA staff and funders.
+"""006: a plain-English Word report of the newest 005 insights result, for funders and TPA staff (about 3 pages).
 Reads result files through demo.InsightsController (no parsing of its own). Aggregates only: no video names, no
-clip-level rows, no transcript text, no individual scores; expressions are always unvalidated."""
+clip-level rows, no transcript text, no individual scores; expressions are always unvalidated. Every number comes from
+the result files."""
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tpa_index.config import ConfigError, load_labels, load_theme
+from tpa_index.config import ConfigError, load_theme
 from tpa_index.demo import PHASE_NAMES, InsightsController, indicator_name
 
+FONT = "Calibri"
+TITLE = "Program Impact Report"
+ORG, PROGRAM = "The Performance Academy", "This Is ME"
+CREDIT = "Built for The Performance Academy"
 # plain subject for key findings, unit words after a number, one-sentence explanation
 PLAIN = {
     "performance_share": ("Time spent performing", "of youth time",
@@ -19,23 +25,30 @@ PLAIN = {
                                      "Minutes per hour of youth footage where young people performed with their "
                                      "voice: singing, speaking or spoken word."),
     "positive_expression_rate": ("Positive expressions (unvalidated)", "of clips with visible faces",
-                                 "Among 8-second clips where faces were visible, the share where the AI suggested a "
-                                 "positive expression such as a smile. This is an unvalidated AI suggestion about what "
-                                 "the camera shows, never a measure of feelings."),
+                                 "Among short clips where faces were visible, the share where the AI suggested a "
+                                 "positive expression such as a smile. This is an unchecked suggestion about what the "
+                                 "camera shows, never a measure of feelings."),
 }
-SYSTEMS = {"zero-shot": "The AI on its own", "zero-shot + signal rules": "The AI with extra sound and people checks"}
-TAG_MEANINGS = [
-    ("staff-verified", "Every 8-second clip behind this number was checked and confirmed by TPA staff."),
-    ("model estimate (learned)", "No clip behind this number was checked by staff; it comes from an AI model trained "
-                                 "on staff labels."),
-    ("mixed (NN% staff-verified)", "Part of this number was confirmed by staff; NN tells you what percentage."),
-    ("model estimate (unvalidated)", "No clip behind this number was checked by staff; it is an AI suggestion only."),
+TAG_MEANINGS = {
+    "Staff-verified": "Every clip behind this number was checked and confirmed by TPA staff.",
+    "Partly verified": "Part of this number was confirmed by staff; the exact tag gives the percentage.",
+    "AI estimate (trained)": "No clip behind this number was checked by staff; it comes from an AI model trained on "
+                             "staff labels.",
+    "AI estimate (unchecked)": "No clip behind this number was checked by staff; it is an AI suggestion only.",
+}
+EXACT = {"Staff-verified": "staff-verified", "Partly verified": "mixed (NN% staff-verified)",
+         "AI estimate (trained)": "model estimate (learned)", "AI estimate (unchecked)": "model estimate (unvalidated)"}
+PROTECTION = [
+    "Everything runs on one private computer. Nothing is sent to cloud services.",
+    "No faces are stored, and no names are recorded.",
+    "There are no individual scores. Results describe the footage, never a young person.",
+]
+GOOD_TO_KNOW = [
+    "Numbers marked as AI estimates have not been checked by staff yet. Staff-verified numbers are the most reliable.",
+    "Every number describes the footage as a whole, not any individual young person.",
+    "The showcase is a performance, so some increase in performing time is expected by design.",
 ]
 SAMPLE_BANNER = "SAMPLE — generated from mock test data. These numbers are not real program results."
-INTRO = ("This report summarises what an AI-assisted review of TPA program footage found. It covers youth time only: "
-         "time led by staff and idle or setup time are left out. It describes the footage as a whole, never any "
-         "individual young person. The AI makes suggestions, and staff review confirms them; each number says how "
-         "much of it staff have confirmed.")
 
 
 def _num(v):
@@ -52,6 +65,8 @@ def _plain_value(v: float, unit: str) -> str:
 
 def key_findings(headline: list[dict]) -> list[str]:
     """One sentence per headline indicator with both an early and a showcase value (at most four)."""
+    from tpa_index.ui_html import tag_kind
+
     out = []
     for ind in dict.fromkeys(r["indicator"] for r in headline):
         by = {r["phase"]: r for r in headline if r["indicator"] == ind}
@@ -62,52 +77,129 @@ def key_findings(headline: list[dict]) -> list[str]:
         subject, unit_words, _ = PLAIN.get(ind, (indicator_name(ind), "", ""))
         verb = "rose" if b > a else "fell" if b < a else "stayed the same"
         pa, pb = _plain_value(a, early["unit"]), _plain_value(b, show["unit"])
-        tags = early["tag"] if early["tag"] == show["tag"] else f"early: {early['tag']}; showcase: {show['tag']}"
+        la, lb = tag_kind(early["tag"])[0], tag_kind(show["tag"])[0]
         out.append(f"{subject} {verb} from {pa} to {pb} {unit_words}, from early sessions to the showcase "
-                   f"({tags}).".replace("  ", " "))
+                   f"({la if la == lb else f'early: {la}; showcase: {lb}'}).".replace("  ", " "))
     return out[:4]
 
 
+def program_line(ins: InsightsController) -> str:
+    """`The Performance Academy · This Is ME 2025`: the year only when the videos share one cohort name with a year."""
+    from tpa_index.schema import read_official
+
+    vids = set(ins.state.get("videos", []))
+    cohorts = {v["cohort"] for v in read_official("videos", root=ins.root).to_pylist() if v["video_id"] in vids}
+    year = re.search(r"\b(19|20)\d{2}\b", cohorts.pop()) if len(cohorts) == 1 and None not in cohorts else None
+    return f"{ORG} · {PROGRAM}" + (f" {year.group(0)}" if year else "")
+
+
+# ---- formatting helpers (python-docx has no boxes, shading or page fields of its own) ----
 def _rgb(hex_colour: str):
     from docx.shared import RGBColor
 
     return RGBColor.from_string(hex_colour.lstrip("#").upper())
 
 
-def _box(doc, title: str, lines: list[str], fill: str):
-    """A one-cell shaded table: python-docx has no text box, so this is the usual way to draw one."""
+def _shade(cell, fill: str):
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
-    cell = doc.add_table(rows=1, cols=1).cell(0, 0)
-    shading = OxmlElement("w:shd")
-    shading.set(qn("w:val"), "clear")
-    shading.set(qn("w:fill"), fill.lstrip("#"))
-    cell._tc.get_or_add_tcPr().append(shading)
-    cell.paragraphs[0].add_run(title).bold = True
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:fill"), fill.lstrip("#"))
+    cell._tc.get_or_add_tcPr().append(shd)
+
+
+def _borders(table, colour: str):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    borders = OxmlElement("w:tblBorders")
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement(f"w:{side}")
+        el.set(qn("w:val"), "single")
+        el.set(qn("w:sz"), "4")
+        el.set(qn("w:color"), colour.lstrip("#"))
+        borders.append(el)
+    table._tbl.tblPr.append(borders)
+
+
+def _field(paragraph, code: str):
+    """A Word field (PAGE, NUMPAGES) that Word fills in when the document opens or prints."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    run = paragraph.add_run()
+    for kind, text in (("begin", None), (None, code), ("end", None)):
+        if kind:
+            el = OxmlElement("w:fldChar")
+            el.set(qn("w:fldCharType"), kind)
+        else:
+            el = OxmlElement("w:instrText")
+            el.set(qn("xml:space"), "preserve")
+            el.text = f" {text} "
+        run._r.append(el)
+    return run
+
+
+def _space(paragraph, before=0, after=6):
+    from docx.shared import Pt
+
+    paragraph.paragraph_format.space_before, paragraph.paragraph_format.space_after = Pt(before), Pt(after)
+    return paragraph
+
+
+def _box(doc, title: str, lines: list[str], theme: dict):
+    """A highlighted box: one shaded cell with a bold title and bullets."""
+    table = doc.add_table(rows=1, cols=1)
+    _borders(table, theme["border"])
+    cell = table.cell(0, 0)
+    _shade(cell, theme["accent_soft"])
+    run = cell.paragraphs[0].add_run(title)
+    run.bold, run.font.color.rgb = True, _rgb(theme["accent_deep"])
+    _space(cell.paragraphs[0], 4, 4)
     for line in lines:
-        cell.add_paragraph(line, style="List Bullet")
-    doc.add_paragraph()
+        _space(cell.add_paragraph(line, style="List Bullet"), 0, 3)
+    _space(doc.add_paragraph(), 0, 4)
 
 
-def _table(doc, header: list[str], rows: list[list[str]]):
-    t = doc.add_table(rows=1, cols=len(header))
-    t.style = "Light Grid Accent 1"
-    for cell, text in zip(t.rows[0].cells, header):
-        cell.text = text
-    for row in rows:
-        for cell, text in zip(t.add_row().cells, row):
-            cell.text = text
-    return t
+def _table(doc, header: list[str], rows: list[list[str]], theme: dict):
+    """Theme-coloured header row, light shading on every other row, thin borders in the theme border colour.
+    A cell's second line (after a newline) is the source label, in smaller secondary text."""
+    from docx.shared import Pt
+
+    table = doc.add_table(rows=1, cols=len(header))
+    _borders(table, theme["border"])
+    for cell, text in zip(table.rows[0].cells, header):
+        _shade(cell, theme["accent_deep"])
+        run = cell.paragraphs[0].add_run(text)
+        run.bold, run.font.color.rgb = True, _rgb(theme["surface"])
+    for i, row in enumerate(rows):
+        for cell, text in zip(table.add_row().cells, row):
+            first, *rest = str(text).split("\n")
+            cell.paragraphs[0].add_run(first)
+            for extra in rest:
+                run = cell.add_paragraph().add_run(extra)
+                run.font.size, run.font.color.rgb = Pt(8.5), _rgb(theme["text_secondary"])
+            if i % 2:
+                _shade(cell, theme["background"])
+    _space(doc.add_paragraph(), 0, 2)
+    return table
+
+
+def _heading(doc, text: str):
+    return _space(doc.add_heading(text, level=1), 14, 6)
 
 
 def write_word_report(dest, root=None, sample: bool = False) -> Path:
     """Write the report for the newest complete insights folder (and evaluate folder, if any) to dest.
     sample=True marks a report built from mock data: a banner under the title and in the footer."""
     import docx
+    from docx.oxml.ns import qn
     from docx.shared import Pt
 
     from tpa_index.report import show
+    from tpa_index.ui_html import tag_kind
 
     ins = InsightsController(root)
     if not ins.available:
@@ -116,86 +208,115 @@ def write_word_report(dest, root=None, sample: bool = False) -> Path:
     doc = docx.Document()
     props = doc.core_properties  # the template's defaults name the library; replace them
     props.author, props.last_modified_by, props.comments = "TPA video index", "TPA video index", ""
-    props.title = "Program insights report"
-    normal = doc.styles["Normal"].font
-    normal.size, normal.color.rgb = Pt(10.5), _rgb(theme["text"])
-    for level in (0, 1, 2):
-        doc.styles["Title" if level == 0 else f"Heading {level}"].font.color.rgb = _rgb(theme["accent_deep"])
+    props.title = TITLE
+    for name in ("Normal", "Title", "Heading 1", "List Bullet"):
+        style = doc.styles[name]
+        style.font.name = FONT
+        style.element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:eastAsia"), FONT)
+    doc.styles["Normal"].font.size, doc.styles["Normal"].font.color.rgb = Pt(10.5), _rgb(theme["text"])
+    doc.styles["Title"].font.size, doc.styles["Heading 1"].font.size = Pt(26), Pt(14)
+    for name in ("Title", "Heading 1"):
+        doc.styles[name].font.color.rgb = _rgb(theme["accent_deep"])
 
-    doc.add_heading("Program insights: youth activity in TPA footage", level=0)
-    created = datetime.strptime(st["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+    # (1) cover block
+    _space(doc.add_heading(TITLE, level=0), 0, 2)
+    sub = doc.add_paragraph().add_run(program_line(ins))
+    sub.bold, sub.font.size = True, Pt(13)
+    doc.add_paragraph().add_run(f"Generated {datetime.now(timezone.utc):%d %B %Y}").font.color.rgb = \
+        _rgb(theme["text_secondary"])
     if sample:
         banner = doc.add_paragraph().add_run(SAMPLE_BANNER)
-        banner.bold, banner.font.size, banner.font.color.rgb = True, Pt(13), _rgb(theme["accent_deep"])
-    doc.add_paragraph(f"Results from {created:%d %B %Y}.").runs[0].italic = True
-    doc.add_heading("What this report is", level=1)
-    doc.add_paragraph(INTRO)
+        banner.bold, banner.font.size, banner.font.color.rgb = True, Pt(12), _rgb(theme["accent_deep"])
 
+    # (2) at a glance
     head = st["headline"]
-    findings = key_findings(head) or ["No early-to-showcase comparison is available in these results."]
-    _box(doc, "Key findings at a glance", findings, theme["background"])
+    _box(doc, "At a glance", key_findings(head) or ["No early-to-showcase comparison is available in these results."],
+         theme)
 
-    doc.add_heading("What did young people do, from early sessions to the showcase?", level=1)
+    # (3) youth indicators by phase: each value with its short source label; the legend gives the exact tags
+    _heading(doc, "Youth indicators by phase")
     phases = [p for p in ("early", "mid", "showcase") if any(r["phase"] == p for r in head)]
-    rows = []
+    rows, tags = [], []
     for ind in dict.fromkeys(r["indicator"] for r in head):
         by = {r["phase"]: r for r in head if r["indicator"] == ind}
-        cells = [f"{show(_num(by[p]['value']), by[p]['unit'])} ({by[p]['tag']})" if p in by and _ok(by[p])
-                 else (by[p]["status"] if p in by else "") for p in phases]
+        cells = []
+        for p in phases:
+            r = by.get(p)
+            if r and _ok(r):
+                cells.append(f"{show(_num(r['value']), r['unit'])}\n{tag_kind(r['tag'])[0]}")
+                tags.append(r["tag"])
+            else:
+                cells.append(r["status"] if r else "")
         rows.append([PLAIN.get(ind, (indicator_name(ind),))[0], *cells])
-    _table(doc, ["What we measured", *[PHASE_NAMES[p] for p in phases]], rows)
+    _table(doc, ["Measure", *[PHASE_NAMES[p] for p in phases]], rows, theme)
+    legend = doc.add_paragraph()
+    legend.add_run("Source labels: ").bold = True
+    grouped: dict[str, list[str]] = {}
+    for t in dict.fromkeys(tags):  # each short label once, with every exact tag it stands for here
+        grouped.setdefault(tag_kind(t)[0], []).append(t)
+    legend.add_run("; ".join(f"{label} = {', '.join(ts)}" for label, ts in grouped.items()) + ".")
+    for run in legend.runs:
+        run.font.size, run.font.color.rgb = Pt(8.5), _rgb(theme["text_secondary"])
     for ind in dict.fromkeys(r["indicator"] for r in head):
         if ind in PLAIN:
-            p = doc.add_paragraph(style="List Bullet")
+            p = _space(doc.add_paragraph(style="List Bullet"), 0, 2)
             p.add_run(PLAIN[ind][0] + ": ").bold = True
             p.add_run(PLAIN[ind][2])
 
-    doc.add_heading("How much of the footage was youth-led?", level=1)
+    # (4) who was leading
+    _heading(doc, "Who was leading?")
     t = st["time"]
     if t:
-        parts = [("Youth", "youth_s"), ("Staff-led, confirmed by staff", "staff_led_verified_s"),
-                 ("Staff-led, AI estimate", "staff_led_model_s"), ("Idle or setup", "idle_s")]
+        parts = [("Young people leading", "youth_s"), ("Staff leading, confirmed by staff", "staff_led_verified_s"),
+                 ("Staff leading, AI estimate", "staff_led_model_s"), ("Idle or setup", "idle_s")]
         total = _num(t["total_s"]) or 0.0
         _table(doc, ["Time", "Minutes", "Share of all footage"],
                [[name, f"{_num(t[k]) / 60:.1f}", f"{100 * _num(t[k]) / total:.0f}%" if total else "n/a"]
-                for name, k in parts])
+                for name, k in parts], theme)
         doc.add_paragraph("Staff-led and idle time are left out of every youth number in this report.")
     else:
         doc.add_paragraph("Not available in these results.")
 
-    doc.add_heading("How accurate is the AI?", level=1)
-    if st["ablation"]:
-        n = st["ablation"][0]["n_segments"]
-        doc.add_paragraph(f"A staff member labeled {n} short clips (8 seconds each) without seeing the AI's suggestions. "
-                          "We compared each version of the AI with those labels.")
-        for i, r in enumerate(st["ablation"], 1):
-            name = SYSTEMS.get(r["system"]) or ("The AI trained on staff labels (tested only on clips it had not "
-                                                 "seen)" if r["system"].startswith("learned") else f"AI version {i}")
-            v, lo, hi = (_num(r[k]) for k in ("primary_accuracy", "primary_accuracy_ci_low", "primary_accuracy_ci_high"))
-            if v is None:
-                text = "this comparison could not be made."
-            else:
-                rng = f" (range {100 * lo:.0f}–{100 * hi:.0f})" if lo is not None and hi is not None else ""
-                text = f"the main activity label matched the staff member's label about {100 * v:.0f} out of 100 times{rng}."
-            p = doc.add_paragraph(style="List Bullet")
-            p.add_run(name + ": ").bold = True
-            p.add_run(text)
-        doc.add_paragraph("AI suggestions are a starting point. Staff review confirms them before they are used.")
+    # (5) how we measured it
+    _heading(doc, "How we measured it")
+    n_videos, n_clips = len(st.get("videos", [])), st.get("clips")
+    clips = f" and {n_clips} short clips" if n_clips is not None else ""
+    doc.add_paragraph(f"We looked at {n_videos} video{'s' if n_videos != 1 else ''}{clips}. The AI finds moments in "
+                      "the footage and suggests what is happening; TPA staff then check and confirm those suggestions.")
+    r = ins.agreement_row()
+    v = _num(r["primary_accuracy"]) if r else None
+    if v is None:
+        doc.add_paragraph("Accuracy check: not available yet. No comparison with staff labels has been run.")
     else:
-        doc.add_paragraph("Not available: no comparison with staff labels has been run yet.")
+        lo, hi = _num(r["primary_accuracy_ci_low"]), _num(r["primary_accuracy_ci_high"])
+        m = round(_num(r["n_segments"]) or 0)
+        rng = f" (likely range {100 * lo:.0f}–{100 * hi:.0f}%)" if lo is not None and hi is not None else ""
+        doc.add_paragraph(f"Accuracy check: a staff member labelled {m} clips without seeing the AI's suggestions. "
+                          f"The AI's main activity matched the staff label in {100 * v:.0f}% of them{rng}. AI "
+                          "suggestions are a starting point; staff review confirms them.")
 
-    _box(doc, "What the labels mean", [f"{tag}: {meaning}" for tag, meaning in TAG_MEANINGS], theme["background"])
+    # (6) how the data is protected
+    _heading(doc, "How the data is protected")
+    for line in PROTECTION:
+        _space(doc.add_paragraph(line, style="List Bullet"), 0, 2)
 
-    doc.add_heading("Limitations", level=1)
-    for line in st["limitations"]:
-        doc.add_paragraph(line, style="List Bullet")
+    # (7) what the labels mean
+    _box(doc, "What the labels mean",
+         [f"{label}: {meaning} (tag: {EXACT[label]})" for label, meaning in TAG_MEANINGS.items()], theme)
 
+    # (8) good to know
+    _heading(doc, "Good to know")
+    for line in GOOD_TO_KNOW:
+        _space(doc.add_paragraph(line, style="List Bullet"), 0, 2)
+
+    # (9) footer: credit and page numbers (plus the sample banner when built from mock data)
     footer = doc.sections[0].footer.paragraphs[0]
-    # 005 insights manifests leave guideline_versions empty: then name the vocabulary in use, marked as such
-    versions = ", ".join(st["guideline_versions"]) or f"{load_labels()['guideline_version']} (current vocabulary)"
-    footer.text = (f"Guideline version {versions} · "
-                   f"Results: {st['folder']} · Generated {datetime.now(timezone.utc):%Y-%m-%d}")
-    footer.runs[0].font.size, footer.runs[0].font.color.rgb = Pt(8), _rgb(theme["text_secondary"])
+    footer.add_run(f"{CREDIT} · Page ")
+    _field(footer, "PAGE")
+    footer.add_run(" of ")
+    _field(footer, "NUMPAGES")
+    for run in footer.runs:
+        run.font.size, run.font.color.rgb = Pt(8), _rgb(theme["text_secondary"])
     if sample:
         footer.insert_paragraph_before().add_run(SAMPLE_BANNER).bold = True
 

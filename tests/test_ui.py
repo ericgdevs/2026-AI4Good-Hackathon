@@ -94,7 +94,9 @@ def test_download_writes_word_report(world, tmp_path, monkeypatch):
     path, msg = report_download()
     assert msg == "" and path.endswith(".docx") and path.startswith(str(tmp_path))
     text = "\n".join(p.text for p in docx.Document(path).paragraphs)
-    assert "Program insights" in text and "SAMPLE" not in text
+    from tpa_index.word_report import TITLE
+
+    assert TITLE in text and "SAMPLE" not in text
 
 
 def test_download_without_insights(tmp_path, monkeypatch):

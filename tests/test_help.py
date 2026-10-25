@@ -8,14 +8,17 @@ import yaml
 from tpa_index import ui_html
 from tpa_index.config import ConfigError, load_help
 
-TOPICS = ["Getting started", "The tabs", "Reviewing", "Understanding the numbers"]
+TOPICS = ["Getting started", "The tabs", "Reviewing", "Understanding the numbers", "Search moments", "Review queue",
+          "Blind labels"]
 
 
 def test_help_yaml_loads_grouped_by_topic():
     items = load_help()
-    assert len(items) == 20 and list(dict.fromkeys(it["topic"] for it in items)) == TOPICS
+    assert len(items) == 38 and list(dict.fromkeys(it["topic"] for it in items)) == TOPICS
     html = ui_html.help_html(items)
-    assert html.count("<details") == 20 and all(f">{t}<" in html for t in TOPICS)
+    assert html.count("<details") == 38 and all(f">{t}<" in html for t in TOPICS)
+    for tab in ("search", "review", "blind"):  # every tab with a help panel has its own tagged entries
+        assert sum(tab in (it.get("tabs") or []) for it in items) >= 5, tab
     assert "What is this app?" in html and "Everything runs on this computer." in html
 
 
@@ -23,7 +26,8 @@ def test_search_filters_question_and_answer_text():
     items = load_help()
     assert ui_html.filter_help(items, "") == items
     hits = ui_html.filter_help(items, "CUT-OFF")  # case-insensitive, in the question or the answer
-    assert {it["question"] for it in hits} == {'What does "Needs review" mean?', 'What does "× above its cut-off" mean?'}
+    assert {'What does "Needs review" mean?', 'What does "× above its cut-off" mean?'} <= {it["question"] for it in hits}
+    assert all("cut-off" in f"{it['question']} {it['answer']}".lower() for it in hits)
     assert [it["question"] for it in ui_html.filter_help(items, "json csv")] == ["What does Export do?"]
     assert "No questions match" in ui_html.help_html(items, "zzz-nothing")
     html = ui_html.help_html(items, "export")
@@ -36,7 +40,7 @@ def test_no_external_urls_and_bad_entries_refused(tmp_path):
     text = json.dumps(load_help())
     assert not re.search(r"https?://|www\.", text)
     for bad in ([{"topic": "T", "question": "Q", "answer": "see https://example.org"}],
-                [{"topic": "T", "question": "Q"}], []):
+                [{"topic": "T", "question": "Q"}], [], [{"topic": "T", "question": "Q", "answer": "A", "tabs": ["moon"]}]):
         path = tmp_path / "help.yaml"
         path.write_text(yaml.safe_dump({"help": bad}))
         with pytest.raises(ConfigError):

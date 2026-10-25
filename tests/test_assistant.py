@@ -105,3 +105,93 @@ def test_answer_html_and_app_wiring():
     by = {c["props"].get("elem_id"): c["props"] for c in build_app().config["components"]}
     assert {"help-ask", "help-ask-btn", "help-answer", "help-search", "help-list"} <= set(by)
     assert by["help-ask"]["max_length"] == 300
+
+
+# ---- the panel on Search moments, Review queue and Blind labels -------------------------------------------------
+def _components(demo):
+    return {c["props"].get("elem_id"): c for c in demo.config["components"]}
+
+
+def test_panel_on_every_tab_collapsed_and_wired_to_the_question_only():
+    from tpa_index.app import build_app
+
+    demo = build_app()
+    by = _components(demo)
+    for tab in ("search", "review", "blind"):
+        assert by[f"{tab}-assistant"]["props"]["open"] is False  # collapsed by default
+        assert by[f"{tab}-assistant"]["props"]["label"] == "Ask for help · runs on this computer"
+        assert "tpa-assistant" in by[f"{tab}-assistant"]["props"]["elem_classes"]
+        assert by[f"{tab}-ask"]["props"]["max_length"] == assistant.MAX_QUESTION
+    for tab in ("search", "review", "blind", "help"):
+        assert {f"{tab}-ask", f"{tab}-ask-btn", f"{tab}-answer"} <= set(by)
+        ids = {b._id: getattr(b, "elem_id", None) for b in demo.blocks.values()}
+        btn = next(i for i, e in ids.items() if e == f"{tab}-ask-btn")
+        fns = [f for f in demo.fns.values() if any(t[0] == btn for t in f.targets)]
+        assert fns and all([ids[i._id] for i in f.inputs] == [f"{tab}-ask"] for f in fns)  # no app state passed in
+    # the review panel sits at the bottom of the review column, after every control
+    order = [c["props"].get("elem_id") for c in demo.config["components"]]
+    assert order.index("review-assistant") > max(order.index(f"review-{b}") for b in ("accept", "defer", "more", "next"))
+    assert order.index("blind-assistant") > order.index("blind-save")
+
+
+def test_tab_name_boosts_that_tabs_entries():
+    q = "why is it hidden?"
+    assert assistant.top_entries(ITEMS, q, tab="search")[0]["question"] == 'What does "staff-led moments hidden" mean?'
+    assert assistant.top_entries(ITEMS, q, tab="blind")[0]["question"] == "Why are the AI's answers hidden in Blind labels?"
+    assert assistant.top_entries(ITEMS, "what do the statuses mean", tab="review")[0]["question"] == \
+        "What do the queue statuses mean?"
+    assert assistant.top_entries(ITEMS, "zebra xylophone", tab="review") == []  # a boost never adds unrelated entries
+
+
+def _allowed_lines(tab):
+    return {assistant.SYSTEM, f"Current tab: {assistant.TAB_NAMES[tab]}", *(it["question"] for it in ITEMS),
+            *(it["answer"] for it in ITEMS)}
+
+
+def _only_help_text(body, question, tab):
+    system, user = body["messages"]
+    assert user == {"role": "user", "content": question}
+    allowed = _allowed_lines(tab)
+    for chunk in system["content"].replace("Help entries:", "").replace("Q: ", "\n").replace("A: ", "\n").split("\n"):
+        assert not chunk.strip() or chunk.strip() in allowed, chunk
+
+
+def test_blind_panel_never_sends_ai_suggestions_or_app_data(fake, tmp_path, monkeypatch):
+    """With a full mock world loaded (moments, AI scores, blind queue, reviews), the Blind tab's panel sends only
+    help.yaml text, the question and the tab name."""
+    from tests.insights_fixtures import build_world
+    from tpa_index.app import build_app
+    from tpa_index.schema import read_official, read_reviews
+
+    world = build_world(tmp_path, monkeypatch)
+    demo = build_app(labels=world["labels"], pipeline=world["pipeline"])
+    rv = demo.review
+    moment = rv.open(rv.timeline("d01")[1], 0)[0]
+    secrets = {rv.suggestion(moment), moment["moment_id"], moment["primary_label"], "mock-staff-a",
+               *(m["moment_id"] for m in read_official("moments").to_pylist()),
+               *(r["target_id"] for r in read_reviews().to_pylist())}
+    secrets |= {f"{s:.3f}" for s in rv.scores.get(world["ids"]["d01"][0], {}).values()}
+
+    ids = {b._id: getattr(b, "elem_id", None) for b in demo.blocks.values()}
+    for tab in ("blind", "review", "search"):
+        btn = next(i for i, e in ids.items() if e == f"{tab}-ask-btn")
+        fn = next(f for f in demo.fns.values() if any(t[0] == btn for t in f.targets))
+        question = "What does the AI suggest for this clip and what is the main label?"
+        outputs = list(fn.fn(question))
+        assert outputs[0] == ui_html.help_answer_html("Thinking…", [])
+        body = fake.requests[-1][1]
+        sent = json.dumps(body)
+        for secret in secrets:
+            if secret and len(secret) > 3 and secret not in " ".join(f"{it['question']} {it['answer']}" for it in ITEMS):
+                assert secret not in sent, (tab, secret)
+        _only_help_text(body, question, tab)
+        assert f"Current tab: {assistant.TAB_NAMES[tab]}" in body["messages"][0]["content"]
+
+
+def test_typing_in_the_panel_never_triggers_shortcuts():
+    from tpa_index.app import PAGE_JS
+
+    text_guard = PAGE_JS.index("t.tagName === 'TEXTAREA'")
+    panel_guard = PAGE_JS.index("t.closest('.tpa-assistant')")
+    first_key = min(PAGE_JS.index("#review-decide"), PAGE_JS.index("#blind-checklist"))
+    assert text_guard < first_key and panel_guard < first_key  # both checks run before any shortcut

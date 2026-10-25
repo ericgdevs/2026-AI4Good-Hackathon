@@ -623,6 +623,7 @@ def check_guideline(labels: dict, path=None) -> str:
 
 
 HELP = CONFIG_DIR / "help.yaml"
+HELP_TABS = {"scorecard", "search", "review", "process", "blind", "export", "help"}  # optional per-entry `tabs:`
 
 
 def load_help(path=None) -> list[dict]:
@@ -636,4 +637,7 @@ def load_help(path=None) -> list[dict]:
             raise ConfigError(f"help entry {i}: needs a topic, a question and an answer")
         if re.search(r"https?://|www\.", " ".join(item[k] for k in ("topic", "question", "answer")), re.IGNORECASE):
             raise ConfigError(f"help entry {i}: links are not allowed (the app works offline)")
+        tabs = item.get("tabs", [])
+        if not isinstance(tabs, list) or not set(tabs) <= HELP_TABS:
+            raise ConfigError(f"help entry {i}: tabs must be a list of {', '.join(sorted(HELP_TABS))}")
     return items

@@ -11,8 +11,8 @@ from tpa_index.paths import redact  # noqa: E402
 QUEUE_NAMES = {"Main sample": "main", "Overlap set (second labeler)": "overlap", "Top-up": "topup"}
 REVIEWER_HINT = "staff first name or role"
 
-# On load: force the light theme (Constitution X) and install the checklist shortcuts. Keys are matched by the
-# "[k]" suffix of each choice's text, so no label name is written here.
+# On load: force the light theme (Constitution X) and install the keyboard shortcuts: review queue buttons by element
+# ID, blind checklist keys by the "[k]" suffix of each choice's text, so no label name is written here.
 PAGE_JS = """
 () => {
   const url = new URL(window.location);
@@ -23,8 +23,15 @@ PAGE_JS = """
     const t = e.target;
     if (t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !['radio', 'checkbox'].includes(t.type)))) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const review = document.querySelector('#review-decide');
+    if (review && review.offsetParent !== null) {  // review queue: A / E / R / D and down arrow for the next item
+      const k = { a: '#review-accept', e: '#review-edit', r: '#review-reject', d: '#review-defer' }[e.key.toLowerCase()];
+      if (k) { if (click(k)) e.preventDefault(); return; }
+      if (e.key === 'ArrowDown') { if (click('#review-next')) e.preventDefault(); }
+      return;
+    }
     const blind = document.querySelector('#blind-checklist');
-    if (!blind || blind.offsetParent === null) return;  // keys belong to the blind tab only
+    if (!blind || blind.offsetParent === null) return;  // the remaining keys belong to the blind tab only
     if (e.key === 'Enter') { if (click('#blind-save')) e.preventDefault(); return; }
     if (e.key === 'Backspace') { if (click('#blind-back')) e.preventDefault(); return; }
     if (e.key === ' ') { if (click('#blind-replay')) e.preventDefault(); return; }
@@ -341,11 +348,138 @@ class ReviewController:
     def add_observation(self, current, reviewer, obs, note=None):
         return self._save(current, reviewer, lambda who: review.observation_row(current, obs, who, self.labels, note))
 
+    # ---- Review queue (three panes): queue entries, activity checkboxes, one-click decisions ----
+    def queue_choices(self, rows) -> list[tuple[str, str]]:
+        from tpa_index.demo import display_label, queue_status
+
+        state = self._state()
+        return [(f"{_fmt_time(r['start_s'], r['end_s'])} · {display_label(r['primary_label'], self.labels)} — "
+                 f"{queue_status(r, state)}" if r["kind"] == "moment" else
+                 f"{_fmt_time(r['start_s'], r['end_s'])} · idle", str(i)) for i, r in enumerate(rows)]
+
+    def queue_head(self, video_name: str, rows) -> str:
+        from tpa_index.demo import queue_status
+
+        state = self._state()
+        moments = [r for r in rows if r["kind"] == "moment"]
+        done = sum(queue_status(r, state) in ("Accepted", "Edited") for r in moments)
+        return f"**To review · {video_name}** · {done} / {len(moments)} done" if video_name else "Pick a video."
+
+    def suggestion(self, current) -> str:
+        from tpa_index.demo import display_label, strength_text
+
+        if current is None:
+            return ""
+        thr = self.thresholds.get(current["primary_label"])
+        st = current["confidence"] / thr if thr and current["confidence"] is not None else None
+        extra = f" · {strength_text(st)}" if st is not None else ""
+        return f"AI suggests **{display_label(current['primary_label'], self.labels)}**{extra}"
+
+    def activities(self, current) -> tuple[list[tuple[str, str]], list[str]]:
+        """Checkbox choices (the moment's AI labels, main first, then other activities) and the ticked ones: AI labels
+        not rejected, plus labels staff added."""
+        from tpa_index.demo import display_label
+
+        if current is None:
+            return [], []
+        ai = [lab for lab, _ in review.ai_labels(current)]
+        others = [n for n in review.checklist(self.labels, self.pipeline)["primary"] if n not in ai]  # activities
+        state = self._state()
+        mid = current["moment_id"]
+        ticked = [lab for lab in ai if state.get((mid, lab), {}).get("action") != "reject"]
+        ticked += [lab for lab in others if state.get((mid, lab), {}).get("action") == "add"]
+        main = current["primary_label"]
+        return ([(display_label(n, self.labels) + (" (main)" if n == main else ""), n) for n in ai + others], ticked)
+
+    def decide(self, current, reviewer, action, ticked=None, edit_to=None, note=None):
+        """One decision on the main label, plus the checkbox changes: an unticked AI label is rejected, a ticked label
+        the AI did not suggest is added by staff, and on accept or edit the other ticked AI labels are accepted (staff
+        confirmed the set). Same rows as the per-label actions; the note goes on the main row."""
+        reviewer = (reviewer or "").strip().lower()
+        if current is None:
+            return [None, None, None, "Select a moment first."]
+        if not reviewer:
+            return [None, None, None, f"Enter a reviewer ({REVIEWER_HINT}) first."]
+        state, mid, ticked = self._state(), current["moment_id"], set(ticked or [])
+        ai = dict(review.ai_labels(current))
+        main = current["primary_label"]
+        rows = []
+        try:
+            for lab, role in ai.items():
+                if lab == main:
+                    continue
+                latest = state.get((mid, lab), {}).get("action")
+                if lab not in ticked and latest != "reject":
+                    rows.append(review.review_row(current, lab, role, "reject", reviewer, self.labels))
+                elif lab in ticked and action in ("accept", "edit") and latest != "accept":
+                    rows.append(review.review_row(current, lab, role, "accept", reviewer, self.labels))
+            for lab in sorted(ticked - set(ai)):
+                if lab in self.vocab and state.get((mid, lab), {}).get("action") != "add":
+                    rows.append(review.review_row(current, lab, review.role_of(lab, self.labels, self.pipeline), "add",
+                                                  reviewer, self.labels))
+            rows.append(review.review_row(current, main, ai[main], action, reviewer, self.labels,
+                                          new_label=edit_to if action == "edit" else None, note=note))
+        except ValueError as e:
+            return [None, None, None, str(e)]
+        from tpa_index.schema import append_reviews
+
+        append_reviews(rows, self.root)
+        panel, _, history, status = self._panel(current)
+        return [panel, history, status, f"Saved: {action} {main}" + (f" (+{len(rows) - 1} label change(s))"
+                                                                    if len(rows) > 1 else "") + "."]
+
+
+def _download_dir() -> str:
+    import tempfile
+
+    # inside Gradio's temp folder (the private session folder once launched), so the file can be served
+    return tempfile.mkdtemp(prefix="download-", dir=os.environ.get("GRADIO_TEMP_DIR") or None)
+
+
+def report_download(root=None) -> tuple[str | None, str]:
+    """(path of a fresh Word report, message). The plain-English reason when there is no insights result."""
+    from pathlib import Path
+
+    from tpa_index.config import ConfigError
+    from tpa_index.word_report import write_word_report
+
+    try:
+        return str(write_word_report(Path(_download_dir()) / "TPA_insights_report.docx", root)), ""
+    except ConfigError as e:
+        return None, str(e)
+
+
+def export_download(verified_only=False, root=None) -> tuple[list[str], str]:
+    """(paths of the JSON/CSV pair copied for download, message). The originals stay under OUTPUT_DIR/exports."""
+    import shutil
+    from pathlib import Path
+
+    from tpa_index.config import ConfigError
+    from tpa_index.export import export_official
+
+    try:
+        counts, paths = export_official(root, verified_only=bool(verified_only))
+    except ConfigError as e:
+        return [], redact(str(e))
+    out = Path(_download_dir())
+    copies = [str(shutil.copy(p, out / p.name)) for p in paths]
+    summary = ", ".join(f"{n} {k}" for k, n in sorted(counts.items()))
+    return copies, f"Exported {sum(counts.values())} moments ({summary})."
+
+
+QUICK_SEARCHES = {"Solo singing": "solo singing", "Spoken word": "spoken word", "Group performance": "group performance",
+                  "Needs review": "needs review"}
+SEARCH_HEADERS = ["video · time", "label", "details", "review status"]
+OBSERVATION_PREFIX = "expression_"  # staff expression observation types in labels.yaml get a quick button each
+SHORTCUT_HINT = ('<p class="tpa-hint"><kbd>A</kbd> accept · <kbd>E</kbd> edit · <kbd>R</kbd> reject · <kbd>D</kbd> defer'
+                 ' · <kbd>↓</kbd> next</p>')
+
 
 def build_app(root=None, cutter=None, labels=None, pipeline=None):
     import gradio as gr
 
     from tpa_index import demo as tabs
+    from tpa_index import ui_html
 
     blind = BlindController(cutter, root, labels, pipeline)
     rv = ReviewController(cutter, root, blind.labels, blind.pipeline)
@@ -353,122 +487,225 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
     ins = tabs.InsightsController(root)
     cl = blind.checklist
     palette = load_theme()
-    with gr.Blocks(analytics_enabled=False, title="TPA video index") as demo:
+
+    def phase_choices():
+        return [(ui_html.phase_name(ph), ph) for ph in ins.phases()]
+
+    def scorecard(a, b):
+        if not ins.available or not a or not b:
+            return "", "", ""
+        cmp = ins.compare(a, b)
+        return ui_html.gauge(cmp), ui_html.drives(cmp), ui_html.facts(ins.facts())
+
+    def limitations():
+        return "\n".join(f"- {x}" for x in ins.state.get("limitations", [])) if ins.available else ""
+
+    def footer_line():
+        return f"{palette['credit']} · {ins.guideline_line()}" if ins.available else palette["credit"]
+
+    def search(query, video_id, show_staff):
+        found = tl.search(query, video_id or None, show_staff)
+        rows = [[f"{r['video']} · {r['time']}", r["label"], r["detail"], r["review_status"]] for r in found["results"]]
+        hits = [(r["video_id"], r["moment_id"]) for r in found["results"]]
+        return ui_html.strip(len(rows), found["marks"], found["hidden"]), rows, hits
+
+    with gr.Blocks(analytics_enabled=False, title="This Is ME · TPA") as demo:
         demo.blind, demo.review, demo.timeline, demo.insights = blind, rv, tl, ins
-        gr.Markdown("## TPA video index (local only)")
-        gr.Markdown(palette["credit"], elem_id="app-credit-header")
+        with gr.Row(elem_id="app-top", equal_height=True):
+            gr.HTML(ui_html.header(), elem_id="app-header")
+            gr.Markdown(palette["credit"], elem_id="app-credit-header")
+        with gr.Tabs(elem_id="app-tabs") as app_tabs:
+            # ---- Scorecard (opens first) ----
+            with gr.Tab("Scorecard", id="scorecard", elem_id="scorecard-tab"):
+                a0, b0 = ins.default_pair()
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=3):
+                        gr.Markdown("# Program scorecard", elem_id="scorecard-title")
+                        sc_sub = gr.Markdown(ins.subtitle() if ins.available else "", elem_id="scorecard-subtitle")
+                    with gr.Column(scale=4):
+                        with gr.Row():
+                            sc_a = gr.Dropdown(phase_choices(), value=a0, label="Compare", elem_id="scorecard-from")
+                            sc_b = gr.Dropdown(phase_choices(), value=b0, label="with", elem_id="scorecard-to")
+                            sc_dl = gr.Button("Download report", variant="primary", elem_id="scorecard-download",
+                                              visible=ins.available)
+                sc_empty = gr.Markdown(ins.message(), elem_id="scorecard-empty")
+                sc_file = gr.File(label="Word report", visible=False, interactive=False, elem_id="scorecard-file")
+                g0, d0, f0 = scorecard(a0, b0)
+                with gr.Row(equal_height=True):
+                    sc_gauge = gr.HTML(g0, elem_id="scorecard-gauge")
+                    sc_drives = gr.HTML(d0, elem_id="scorecard-drives")
+                sc_facts = gr.HTML(f0, elem_id="scorecard-facts")
+                sc_foot = gr.Markdown(footer_line(), elem_id="scorecard-footer")
+                with gr.Accordion("Limitations", open=False, elem_id="scorecard-limitations-box"):
+                    sc_limits = gr.Markdown(limitations(), elem_id="scorecard-limitations")
+            # ---- Search moments (same data and eval lock as Review) ----
+            with gr.Tab("Search moments", id="search", elem_id="search-tab"):
+                s_choices, s_reason = tl.video_choices()
+                with gr.Row():
+                    s_box = gr.Textbox(placeholder="Search moments: a label, a status, solo or group",
+                                       show_label=False, elem_id="search-box", scale=4)
+                    s_video = gr.Dropdown([("All videos", "")] + s_choices, value="", label="Video",
+                                          elem_id="search-video", scale=1)
+                s_lock = gr.Markdown(s_reason, elem_id="search-lock")
+                with gr.Row(elem_classes="tpa-quick"):
+                    quick = [gr.Button(name, size="sm", elem_id=f"search-q-{i}")
+                             for i, name in enumerate(QUICK_SEARCHES)]
+                s_staff = gr.Checkbox(False, label="Show staff-led moments", elem_id="search-show-staff")
+                strip0, rows0, hits0 = search("", "", False)
+                s_strip = gr.HTML(strip0, elem_id="search-strip")
+                s_results = gr.Dataframe(rows0, headers=SEARCH_HEADERS, interactive=False,
+                                         label="Results (select one to open it in the Review queue)",
+                                         elem_id="search-results")
+                s_hits = gr.State(hits0)
+                gr.Markdown(tabs.NOTE, elem_id="search-note")
+            # ---- Review queue: queue | clip and what the AI noticed | your review ----
+            with gr.Tab("Review queue", id="review", elem_id="review-tab"):
+                with gr.Row():
+                    video = gr.Dropdown(s_choices, value=None, label="Video", elem_id="review-video", scale=2)
+                    reviewer = gr.Textbox(label="Reviewer", placeholder=REVIEWER_HINT, elem_id="reviewer", scale=2)
+                lock_note = gr.Markdown(s_reason, elem_id="review-lock")
+                rows, current = gr.State([]), gr.State(None)
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=1, min_width=220):
+                        q_head = gr.Markdown("Pick a video.", elem_id="review-queue-head")
+                        queue = gr.Radio([], show_label=False, elem_id="review-queue")
+                        with gr.Accordion("Filter the queue", open=False, elem_id="review-filters"):
+                            f_label = gr.Dropdown(rv.label_filter_choices(), value=ANY, label="Label",
+                                                  elem_id="review-f-label")
+                            f_needs = gr.Radio([ANY, "yes", "no"], value=ANY, label="Needs review",
+                                               elem_id="review-f-needs")
+                            f_status = gr.Dropdown([ANY, *review.STATUSES], value=ANY, label="Status",
+                                                   elem_id="review-f-status")
+                            f_idle = gr.Checkbox(False, label="Show idle", elem_id="review-f-idle")
+                    with gr.Column(scale=3, min_width=420):
+                        r_clip = gr.Video(autoplay=True, interactive=False, label="Moment (with context)",
+                                          elem_id="review-clip")
+                        r_noticed = gr.HTML(ui_html.noticed(None), elem_id="review-noticed")
+                        r_msg = gr.Markdown(elem_id="review-msg")
+                    with gr.Column(scale=2, min_width=300, elem_id="review-decide"):
+                        r_suggest = gr.Markdown(elem_id="review-suggest")
+                        r_acts = gr.CheckboxGroup([], label="Activities in this clip", elem_id="review-activities")
+                        gr.Markdown("**Your observation** (optional)", elem_id="review-obs-title")
+                        with gr.Row():
+                            obs_btns = {o: gr.Button(o.removeprefix(OBSERVATION_PREFIX).capitalize(), size="sm",
+                                                     elem_id=f"review-obs-{o.removeprefix(OBSERVATION_PREFIX)}")
+                                        for o in rv.observations if o.startswith(OBSERVATION_PREFIX)}
+                        note_box = gr.Textbox(label="Note (optional)", placeholder="Add a note or your own label",
+                                              max_lines=2, elem_id="review-note")
+                        gr.Markdown(REMINDER, elem_id="review-reminder")
+                        with gr.Row():
+                            accept_btn = gr.Button("Accept", variant="primary", elem_id="review-accept")
+                            edit_btn = gr.Button("Edit", elem_id="review-edit")
+                            reject_btn = gr.Button("Reject", elem_id="review-reject")
+                            defer_btn = gr.Button("Defer", elem_id="review-defer")
+                        edit_to = gr.Dropdown([], label="Edit main label to", elem_id="review-edit-to")
+                        with gr.Row():
+                            gr.HTML(SHORTCUT_HINT, elem_id="review-hint")
+                            next_btn = gr.Button("Next ↓", size="sm", elem_id="review-next")
+                        m_status = gr.Markdown(elem_id="review-status")
+                        with gr.Accordion("More: other labels, observations and history", open=False,
+                                          elem_id="review-more"):
+                            with gr.Row():
+                                add_pick = gr.Dropdown(rv.vocab, label="Add label", elem_id="review-add-label")
+                                add_btn = gr.Button("Add label", elem_id="review-add")
+                            with gr.Row():
+                                obs_pick = gr.Dropdown(rv.observations, label="Add observation",
+                                                       elem_id="review-add-obs")
+                                obs_btn = gr.Button("Add observation", elem_id="review-obs")
+                            panel = gr.Dataframe(headers=PANEL_HEADERS, interactive=False, label="AI labels",
+                                                 elem_id="review-panel")
+                            history = gr.Dataframe(headers=HISTORY_HEADERS, interactive=False, label="Review history",
+                                                   elem_id="review-history")
+            # ---- Blind labels (unchanged behaviour) ----
+            with gr.Tab("Blind labels", id="blind", elem_id="blind-tab"):
+                blind_reviewer = gr.Textbox(label="Reviewer", placeholder=REVIEWER_HINT, elem_id="blind-reviewer")
+                names, note = blind.queue_choices()
+                queue_pick = gr.Radio(names, value="Main sample", label="Queue", elem_id="blind-queue")
+                topup_note = gr.Markdown(note)
+                start_btn = gr.Button("Start / resume", variant="primary")
+                progress = gr.Markdown()
+                status = gr.Markdown()
+                clip = gr.Video(autoplay=True, loop=True, interactive=False, label="Segment", elem_id="blind-clip")
+                with gr.Column(elem_id="blind-checklist"):
+                    primary = gr.Radio([blind.choice(n) for n in cl["primary"]], label="Primary activity",
+                                       elem_id="blind-primary")
+                    group_boxes = [gr.CheckboxGroup([blind.choice(n) for n in names], label=group,
+                                                    elem_id=f"blind-group-{i}")
+                                   for i, (group, names) in enumerate(cl["groups"])]
+                uncertain = gr.Checkbox(label=f"{cl['uncertain']} [u]", elem_id="blind-uncertain")
+                if blind.unkeyed:
+                    gr.Markdown("No shortcut: " + ", ".join(blind.unkeyed))
+                with gr.Row():
+                    back_btn = gr.Button("Back [Backspace]", elem_id="blind-back")
+                    replay_btn = gr.Button("Replay [Space]", elem_id="blind-replay")
+                    skip_btn = gr.Button("Skip: clip unavailable", elem_id="blind-skip")
+                    save_btn = gr.Button("Save & next [Enter]", variant="primary", elem_id="blind-save")
+            # ---- Export ----
+            with gr.Tab("Export", id="export", elem_id="export-tab"):
+                gr.Markdown("### Annotation export\nOne record per moment, as JSON and CSV, in the case format. The "
+                            "files are also kept in the outputs folder.", elem_id="export-intro")
+                ex_verified = gr.Checkbox(False, label="Leave out moments whose main label staff rejected",
+                                          elem_id="export-verified")
+                ex_btn = gr.Button("Create annotation export", variant="primary", elem_id="export-run")
+                ex_msg = gr.Markdown(elem_id="export-msg")
+                ex_files = gr.File(label="Export files", file_count="multiple", interactive=False,
+                                   elem_id="export-files")
         with gr.Row():
-            reviewer = gr.Textbox(label="Reviewer", placeholder=REVIEWER_HINT, elem_id="reviewer", scale=3)
-            reload_btn = gr.Button("Reload data", scale=1)
-        state = gr.State(None)
-        with gr.Tab("Blind labeling"):
-            names, note = blind.queue_choices()
-            queue = gr.Radio(names, value="Main sample", label="Queue", elem_id="blind-queue")
-            topup_note = gr.Markdown(note)
-            start_btn = gr.Button("Start / resume", variant="primary")
-            progress = gr.Markdown()
-            status = gr.Markdown()
-            clip = gr.Video(autoplay=True, loop=True, interactive=False, label="Segment", elem_id="blind-clip")
-            with gr.Column(elem_id="blind-checklist"):
-                primary = gr.Radio([blind.choice(n) for n in cl["primary"]], label="Primary activity",
-                                   elem_id="blind-primary")
-                group_boxes = [gr.CheckboxGroup([blind.choice(n) for n in names], label=group,
-                                                elem_id=f"blind-group-{i}")
-                               for i, (group, names) in enumerate(cl["groups"])]
-            uncertain = gr.Checkbox(label=f"{cl['uncertain']} [u]", elem_id="blind-uncertain")
-            if blind.unkeyed:
-                gr.Markdown("No shortcut: " + ", ".join(blind.unkeyed))
-            with gr.Row():
-                back_btn = gr.Button("Back [Backspace]", elem_id="blind-back")
-                replay_btn = gr.Button("Replay [Space]", elem_id="blind-replay")
-                skip_btn = gr.Button("Skip: clip unavailable", elem_id="blind-skip")
-                save_btn = gr.Button("Save & next [Enter]", variant="primary", elem_id="blind-save")
-        with gr.Tab("Review"):
-            v_choices, lock_reason = rv.video_choices()
-            video = gr.Dropdown(v_choices, value=None, label="Video", elem_id="review-video")
-            lock_note = gr.Markdown(lock_reason, elem_id="review-lock")
-            with gr.Row():
-                f_label = gr.Dropdown(rv.label_filter_choices(), value=ANY, label="Label", elem_id="review-f-label")
-                f_needs = gr.Radio([ANY, "yes", "no"], value=ANY, label="Needs review", elem_id="review-f-needs")
-                f_status = gr.Dropdown([ANY, *review.STATUSES], value=ANY, label="Status", elem_id="review-f-status")
-                f_idle = gr.Checkbox(False, label="Show idle", elem_id="review-f-idle")
-            timeline = gr.Dataframe(headers=TIMELINE_HEADERS, interactive=False, label="Moments (select one)",
-                                    elem_id="review-timeline")
-            rows = gr.State([])
-            current = gr.State(None)
-            r_msg = gr.Markdown(elem_id="review-msg")
-            r_clip = gr.Video(autoplay=True, interactive=False, label="Moment (with context)", elem_id="review-clip")
-            m_status = gr.Markdown(elem_id="review-status")
-            panel = gr.Dataframe(headers=PANEL_HEADERS, interactive=False, label="AI labels", elem_id="review-panel")
-            ai_pick = gr.Radio([], label="AI label to review", elem_id="review-ai-label")
-            with gr.Row():
-                accept_btn = gr.Button("Accept", elem_id="review-accept")
-                reject_btn = gr.Button("Reject", elem_id="review-reject")
-                defer_btn = gr.Button("Defer", elem_id="review-defer")
-                edit_to = gr.Dropdown([], label="Edit to", elem_id="review-edit-to")
-                edit_btn = gr.Button("Edit", elem_id="review-edit")
-            with gr.Row():
-                add_pick = gr.Dropdown(rv.vocab, label="Add label", elem_id="review-add-label")
-                add_btn = gr.Button("Add label", elem_id="review-add")
-                obs_pick = gr.Dropdown(rv.observations, label="Add observation", elem_id="review-add-obs")
-                obs_btn = gr.Button("Add observation", elem_id="review-obs")
-            gr.Markdown(REMINDER, elem_id="review-reminder")
-            note_box = gr.Textbox(label="Note (optional)", max_lines=2, elem_id="review-note")
-            history = gr.Dataframe(headers=HISTORY_HEADERS, interactive=False, label="Review history",
-                                   elem_id="review-history")
-        with gr.Tab("Timeline"):
-            t_choices, t_reason = tl.video_choices()
-            t_video = gr.Dropdown(t_choices, value=None, label="Video", elem_id="timeline-video")
-            t_lock = gr.Markdown(t_reason, elem_id="timeline-lock")
-            t_signals = gr.Markdown(tl.note, elem_id="timeline-signals-note")
-            t_moments = gr.Dataframe(headers=tabs.MOMENT_HEADERS, interactive=False,
-                                     label="Moments (select one to see its segments)", elem_id="timeline-moments")
-            t_ids, t_moment = gr.State([]), gr.State(None)
-            t_show = gr.Checkbox(False, label="Show staff-led segments", elem_id="timeline-show-staff")
-            t_hidden = gr.Markdown(elem_id="timeline-hidden")
-            t_segments = gr.Dataframe(headers=tabs.SEGMENT_HEADERS, interactive=False, label="Segments",
-                                      elem_id="timeline-segments")
-            t_clip = gr.Video(autoplay=True, interactive=False, label="Moment", elem_id="timeline-clip")
-            gr.Markdown(tabs.NOTE, elem_id="timeline-note")
-        with gr.Tab("Insights"):
-            from tpa_index.indicators import HEADLINE
-            from tpa_index.report import INDEX_CAVEAT
+            gr.Markdown(palette["credit"], elem_id="app-credit-footer")
+            reload_btn = gr.Button("Reload data", size="sm", elem_id="app-reload")
 
-            i_source = gr.Markdown(ins.source_line(), elem_id="insights-source")
-            i_empty = gr.Markdown(ins.message(), elem_id="insights-empty")
-            figs = ins.figures()
-            # shortcut: one plot slot per 005 headline indicator; extra indicators show in the table only
-            with gr.Row():
-                i_plots = [gr.Plot(figs[i] if i < len(figs) else None, label=None, elem_id=f"insights-chart-{i}")
-                           for i in range(len(HEADLINE))]
-            i_table = gr.Dataframe(ins.table(), headers=tabs.TABLE_HEADERS, interactive=False,
-                                   label="Headline indicators (youth only, program level)", elem_id="insights-table")
-            i_context = gr.Markdown(ins.context(), elem_id="insights-context")
-            gr.Markdown("### TPA Expression Index (optional example)\n\n" + INDEX_CAVEAT +
-                        " Shown next to the indicators above, never instead of them.", elem_id="insights-index-note")
-            i_index = gr.Dataframe(ins.index_table(), headers=tabs.INDEX_HEADERS, interactive=False,
-                                   label="Expression Index by phase", elem_id="insights-index")
-            i_ablation = gr.Dataframe(ins.ablation_table(), headers=tabs.ABLATION_HEADERS, interactive=False,
-                                      label="Ablation (model vs blind labels on eval videos)",
-                                      elem_id="insights-ablation")
+        # ---- Scorecard handlers ----
+        for comp in (sc_a, sc_b):
+            comp.change(scorecard, [sc_a, sc_b], [sc_gauge, sc_drives, sc_facts])
 
-        outputs = [state, clip, progress, primary, *group_boxes, uncertain, status]
-        start_btn.click(blind.start, [reviewer, queue], outputs)
-        save_btn.click(blind.save, [state, primary, *group_boxes, uncertain], outputs)
-        back_btn.click(blind.back, [state], outputs)
-        replay_btn.click(blind.replay, [state], outputs)
-        skip_btn.click(blind.skip, [state], outputs)
+        def download():
+            path, msg = report_download(root)
+            return gr.update(value=path, visible=path is not None), msg
+
+        sc_dl.click(download, None, [sc_file, sc_empty])
+
+        # ---- Search handlers ----
+        s_inputs = [s_box, s_video, s_staff]
+        s_box.submit(search, s_inputs, [s_strip, s_results, s_hits])
+        for comp in (s_video, s_staff):
+            comp.change(search, s_inputs, [s_strip, s_results, s_hits])
+        for btn, q in zip(quick, QUICK_SEARCHES.values()):
+            btn.click(lambda q=q: q, None, s_box).then(search, s_inputs, [s_strip, s_results, s_hits])
+
+        # ---- Review handlers ----
         filters = [video, f_label, f_needs, f_status, f_idle]
+        pane = [current, r_clip, panel, history, m_status, r_msg, r_suggest, r_acts, r_noticed, edit_to]
+
+        def video_label(video_id):
+            return next((n for n, v in tl.video_choices()[0] if v == video_id), "")
+
+        def refresh(video_id, label, needs, status_v, idle, keep=None):
+            _, rows_v, msg = rv.timeline(video_id, label, needs, status_v, idle)
+            value = keep if keep is not None and keep in {str(i) for i in range(len(rows_v))} else None
+            return [rows_v, gr.update(choices=rv.queue_choices(rows_v), value=value),
+                    rv.queue_head(video_label(video_id), rows_v) if video_id else msg]
+
+        def open_item(rows_v, value):
+            if value in (None, "") or not rows_v:
+                return [None, None, [], [], "", "", "", gr.update(choices=[], value=[]), ui_html.noticed(None),
+                        gr.update(choices=[], value=None)]
+            m, clip_path, panel_v, _, history_v, status_v, msg = rv.open(rows_v, int(value))
+            choices, ticked = rv.activities(m)
+            info = tl.summary(m["moment_id"]) if m else None
+            edit_choices = rv.edit_choices(m, m["primary_label"]) if m else []
+            return [m, clip_path, panel_v, history_v, status_v, msg, rv.suggestion(m),
+                    gr.update(choices=choices, value=ticked), ui_html.noticed(info),
+                    gr.update(choices=edit_choices, value=None)]
+
         for comp in filters:
-            comp.change(rv.timeline, filters, [timeline, rows, r_msg])
+            comp.input(refresh, filters, [rows, queue, q_head])
+        queue.change(open_item, [rows, queue], pane)
 
-        def on_select(rows_value, evt: gr.SelectData):
-            current_m, clip_path, panel_v, ai_choices, history_v, status_v, msg = rv.open(rows_value, evt.index[0])
-            return [current_m, clip_path, panel_v, gr.update(choices=ai_choices, value=None), history_v, status_v,
-                    msg, gr.update(choices=[], value=None)]
+        def next_item(rows_v, value):
+            i = int(value) + 1 if value not in (None, "") else 0
+            return gr.update(value=str(i)) if i < len(rows_v) else gr.update()
 
-        timeline.select(on_select, [rows], [current, r_clip, panel, ai_pick, history, m_status, r_msg, edit_to])
-        ai_pick.change(lambda c, lab: gr.update(choices=rv.edit_choices(c, lab), value=None), [current, ai_pick], edit_to)
+        next_btn.click(next_item, [rows, queue], queue)
 
         def saved(out):
             panel_v, history_v, status_v, msg = out
@@ -477,66 +714,85 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
             return [panel_v, history_v, status_v, msg, ""]
 
         save_out = [panel, history, m_status, r_msg, note_box]
-        for btn, action in ((accept_btn, "accept"), (reject_btn, "reject"), (defer_btn, "defer")):
-            btn.click(lambda c, who, lab, n, a=action: saved(rv.act(c, who, lab, a, note=n)),
-                      [current, reviewer, ai_pick, note_box], save_out).then(rv.timeline, filters, [timeline, rows, r_msg])
-        edit_btn.click(lambda c, who, lab, to, n: saved(rv.act(c, who, lab, "edit", edit_to=to, note=n)),
-                       [current, reviewer, ai_pick, edit_to, note_box], save_out).then(
-            rv.timeline, filters, [timeline, rows, r_msg])
+        after = (lambda v, lab, nd, st, idl, keep: refresh(v, lab, nd, st, idl, keep), [*filters, queue],
+                 [rows, queue, q_head])
+        for btn, action in ((accept_btn, "accept"), (edit_btn, "edit"), (reject_btn, "reject"), (defer_btn, "defer")):
+            btn.click(lambda c, who, ticked, to, n, a=action: saved(rv.decide(c, who, a, ticked, to, n)),
+                      [current, reviewer, r_acts, edit_to, note_box], save_out).then(*after)
+        for obs_type, btn in obs_btns.items():
+            btn.click(lambda c, who, n, o=obs_type: saved(rv.add_observation(c, who, o, n)),
+                      [current, reviewer, note_box], save_out).then(*after)
         add_btn.click(lambda c, who, lab, n: saved(rv.add_label(c, who, lab, n)),
-                      [current, reviewer, add_pick, note_box], save_out).then(rv.timeline, filters, [timeline, rows, r_msg])
+                      [current, reviewer, add_pick, note_box], save_out).then(*after)
         obs_btn.click(lambda c, who, o, n: saved(rv.add_observation(c, who, o, n)),
-                      [current, reviewer, obs_pick, note_box], save_out).then(rv.timeline, filters, [timeline, rows, r_msg])
+                      [current, reviewer, obs_pick, note_box], save_out).then(*after)
 
-        def segments(video_id, moment_id, show_staff):
-            rows_v, hidden = tl.segments_table(video_id, moment_id, show_staff)
-            return rows_v, f"{hidden} staff-led segment(s) hidden." if hidden else ""
+        def open_from_search(hits, evt: gr.SelectData):
+            if not hits or not 0 <= evt.index[0] < len(hits):
+                return [gr.update()] * 4
+            video_id, moment_id = hits[evt.index[0]]
+            _, rows_v, _ = rv.timeline(video_id)
+            i = next((k for k, r in enumerate(rows_v) if r.get("moment_id") == moment_id), None)
+            return [gr.Tabs(selected="review"), gr.update(value=video_id), rows_v,
+                    gr.update(choices=rv.queue_choices(rows_v), value=None if i is None else str(i))]
 
-        def pick_video(video_id, show_staff):
-            table, ids = tl.moments_table(video_id)
-            return [table, ids, None, *segments(video_id, None, show_staff), None]
+        s_results.select(open_from_search, [s_hits], [app_tabs, video, rows, queue]).then(
+            lambda v, r: rv.queue_head(video_label(v), r), [video, rows], q_head)
 
-        def pick_moment(video_id, ids, show_staff, evt: gr.SelectData):
-            moment_id = ids[evt.index[0]] if ids and 0 <= evt.index[0] < len(ids) else None
-            clip_path, _ = tl.clip(video_id, moment_id)
-            return [moment_id, *segments(video_id, moment_id, show_staff), clip_path]
+        # ---- Blind handlers (one reviewer name, typed in either tab) ----
+        reviewer.input(lambda v: v, reviewer, blind_reviewer)
+        blind_reviewer.input(lambda v: v, blind_reviewer, reviewer)
+        b_state = gr.State(None)
+        outputs = [b_state, clip, progress, primary, *group_boxes, uncertain, status]
+        start_btn.click(blind.start, [blind_reviewer, queue_pick], outputs)
+        save_btn.click(blind.save, [b_state, primary, *group_boxes, uncertain], outputs)
+        back_btn.click(blind.back, [b_state], outputs)
+        replay_btn.click(blind.replay, [b_state], outputs)
+        skip_btn.click(blind.skip, [b_state], outputs)
+        start_btn.click(lambda: blind.queue_choices()[1], None, topup_note)
 
-        t_video.change(pick_video, [t_video, t_show], [t_moments, t_ids, t_moment, t_segments, t_hidden, t_clip])
-        t_moments.select(pick_moment, [t_video, t_ids, t_show], [t_moment, t_segments, t_hidden, t_clip])
-        t_show.change(segments, [t_video, t_moment, t_show], [t_segments, t_hidden])
+        # ---- Export ----
+        ex_btn.click(lambda v: export_download(v, root)[::-1], [ex_verified], [ex_msg, ex_files])
 
+        # ---- Reload everything ----
         def reload():
             blind.reload()
             rv.reload()
             tl.reload()
-            names, note = blind.queue_choices()
-            v_choices, reason = rv.video_choices()
-            t_choices, t_reason = tl.video_choices()
             ins.load()
-            figs = ins.figures()
-            return (gr.update(choices=names), note, gr.update(choices=v_choices), reason, gr.update(choices=t_choices),
-                    t_reason, tl.note, ins.source_line(), ins.message(),
-                    *[figs[i] if i < len(figs) else None for i in range(len(i_plots))], ins.table(), ins.context(),
-                    ins.index_table(), ins.ablation_table())
+            names, note = blind.queue_choices()
+            choices, reason = tl.video_choices()
+            a, b = ins.default_pair()
+            g, d, f = scorecard(a, b)
+            strip_v, rows_v, hits_v = search("", "", False)
+            return (gr.update(choices=names), note, gr.update(choices=choices), reason,
+                    gr.update(choices=[("All videos", "")] + choices, value=""), reason,
+                    gr.update(choices=phase_choices(), value=a), gr.update(choices=phase_choices(), value=b),
+                    ins.subtitle() if ins.available else "", ins.message(), gr.update(visible=ins.available),
+                    g, d, f, footer_line(), limitations(), strip_v, rows_v, hits_v)
 
-        reload_btn.click(reload, None, [queue, topup_note, video, lock_note, t_video, t_lock, t_signals, i_source,
-                                        i_empty, *i_plots, i_table, i_context, i_index, i_ablation])
-        start_btn.click(lambda: blind.queue_choices()[1], None, topup_note)
-        gr.Markdown(palette["credit"], elem_id="app-credit-footer")
+        reload_btn.click(reload, None, [queue_pick, topup_note, video, lock_note, s_video, s_lock, sc_a, sc_b, sc_sub,
+                                        sc_empty, sc_dl, sc_gauge, sc_drives, sc_facts, sc_foot, sc_limits, s_strip,
+                                        s_results, s_hits])
     return demo
 
 
 def theme():
-    """Light theme from config/theme.yaml (no colour is written in code)."""
+    """Light theme from config/theme.yaml (no colour is written in code). IBM Plex comes from the font files
+    bundled with Gradio and served by the app itself: nothing is fetched from the internet."""
     import gradio as gr
 
     p = load_theme()
-    return gr.themes.Default(font=["system-ui", "sans-serif"], font_mono=["ui-monospace", "monospace"]).set(
+    sans = [gr.themes.LocalFont("IBM Plex Sans", weights=(400, 600, 700)), "system-ui", "sans-serif"]
+    mono = [gr.themes.LocalFont("IBM Plex Mono", weights=(400, 500, 600)), "ui-monospace", "monospace"]
+    return gr.themes.Default(font=sans, font_mono=mono, radius_size=gr.themes.sizes.radius_sm).set(
         body_background_fill=p["background"], background_fill_primary=p["surface"],
         background_fill_secondary=p["background"], block_background_fill=p["surface"],
+        block_border_color=p["border"], block_border_width="1px", block_radius="6px",
+        border_color_primary=p["border"], input_border_color=p["border_strong"],
         body_text_color=p["text"], body_text_color_subdued=p["text_secondary"], table_text_color=p["text"],
         block_title_text_color=p["accent_deep"], block_label_text_color=p["text_secondary"],
-        color_accent=p["accent"], color_accent_soft=p["background"], border_color_accent=p["accent"],
+        color_accent=p["accent"], color_accent_soft=p["accent_soft"], border_color_accent=p["accent"],
         link_text_color=p["accent_deep"], link_text_color_hover=p["accent"], link_text_color_visited=p["accent_deep"],
         button_primary_background_fill=p["accent"], button_primary_background_fill_hover=p["accent_deep"],
         button_primary_border_color=p["accent"], button_primary_text_color=p["surface"],
@@ -545,7 +801,9 @@ def theme():
 
 
 def page_css() -> str:
-    return f"h1, h2, h3 {{ color: {load_theme()['accent_deep']}; }}"  # deep accent for headers, from theme.yaml
+    from tpa_index.ui_html import page_css as css
+
+    return css()  # every colour from theme.yaml
 
 
 def launch_kwargs(session, port: int) -> dict:

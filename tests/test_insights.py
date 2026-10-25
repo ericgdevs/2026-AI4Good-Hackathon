@@ -131,7 +131,7 @@ def test_insights_empty_state(tmp_path, monkeypatch):
     ins = demo.InsightsController()
     assert ins.message() == demo.EMPTY and ins.source_line() == "" and ins.table() == [] and ins.context() == ""
     by_id = {c["props"].get("elem_id"): c["props"] for c in build_app().config["components"]}
-    assert by_id["insights-empty"]["value"] == demo.EMPTY
+    assert by_id["scorecard-empty"]["value"] == demo.EMPTY
 
 
 def test_insights_never_shows_transcript(results):

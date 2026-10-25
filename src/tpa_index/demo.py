@@ -70,7 +70,11 @@ class DemoController:
                               key=lambda m: (m["video_id"], m["start_s"]))
         self.state = review.latest_state(read_reviews(self.root), "review")
         self.segments, self.note = [], ""
-        if main_model(read_official("predictions", root=self.root)) is None:
+        model = main_model(read_official("predictions", root=self.root))
+        from tpa_index.config import threshold
+
+        self.thresholds = {lab["name"]: threshold(self.pipeline, model, lab["name"]) for lab in self.labels["labels"]}
+        if model is None:
             self.note = "Segment signals not available: no official predictions."
             return
         try:
@@ -136,6 +140,105 @@ class DemoController:
         return _cut(self.cutter, self._allowed().get(video_id), m["start_s"], m["end_s"],
                     self.pipeline["app"]["padding_s"])
 
+    # ---- Search moments and the Review queue's "AI noticed" box ----
+    def strength(self, m) -> float | None:
+        """The moment's confidence over its primary label's calibrated cut-off (never shown as a percentage)."""
+        thr = self.thresholds.get(m["primary_label"])
+        return m["confidence"] / thr if thr and m["confidence"] is not None else None
+
+    def summary(self, moment_id) -> dict:
+        """What the AI noticed across a moment's clips: counts and cues only."""
+        from collections import Counter
+
+        segs = [s for s in self.segments if s["moment_id"] == moment_id]
+        people = Counter(int(s["person_count"]) for s in segs if s["person_count"] is not None).most_common(1)
+        audio = [s["audio_ok"] or {} for s in segs]
+        sounds = [lab for lab in dict.fromkeys(k for a in audio for k in a) if any(a.get(lab) for a in audio)]
+        speech = [s["has_speech"] for s in segs if s["has_speech"] is not None]
+        faces = [s for s in segs if s["faces_detected"]]
+        expr = Counter(s["expr_top"] for s in faces if s["expr_top"]).most_common(1)
+        staff = sum(s["cls"] in STAFF for s in segs)
+        return {"people": people[0][0] if people else None,
+                "sounds": None if all(not a or all(v is None for v in a.values()) for a in audio) else
+                [display_label(lab, self.labels) for lab in sounds],
+                "speech": None if not speech else any(speech),
+                "expression": None if not segs or all(s["faces_detected"] is None for s in segs) else
+                (display_label(expr[0][0], self.labels) if expr else "no faces"),
+                "staff_led": bool(segs) and staff > len(segs) / 2}
+
+    def search(self, query: str, video_id=None, show_staff=False) -> dict:
+        """Local filter over moments in unlocked videos: label names (stored or readable), review status,
+        "needs review", and "solo" / "group" (indicator labels, else the usual person count). No transcript."""
+        from tpa_index.schema import read_reviews
+
+        state = review.latest_state(read_reviews(self.root), "review")
+        allowed = self._allowed()
+        words = (query or "").lower().replace("status:", " ").split()
+        text = " ".join(words)
+        want_review = "needs review" in text
+        if want_review:
+            text = text.replace("needs review", " ")
+        want_solo, want_group = "solo" in text.split(), "group" in text.split()
+        rest = [w for w in text.split() if w not in ("solo", "group", "performance")] if (want_solo or want_group) \
+            else text.split()
+        results, hidden = [], 0
+        for m in self.moments:
+            if m["video_id"] not in allowed or (video_id and m["video_id"] != video_id):
+                continue
+            labs = [lab for lab, _ in review.ai_labels(m)]
+            info = self.summary(m["moment_id"])
+            status = queue_status(m, state)
+            hay = " ".join([*labs, *(display_label(lab, self.labels).lower() for lab in labs), status.lower()])
+            people = info["people"]
+            ok = all(w in hay.replace("_", " ") or w in hay for w in rest)
+            ok &= not want_review or bool(m["needs_review"])
+            ok &= not want_solo or "solo_on_stage" in labs or people == 1
+            ok &= not want_group or "group_performance" in labs or (people is not None and people >= 2)
+            if not ok:
+                continue
+            if info["staff_led"] and not show_staff:
+                hidden += 1
+                continue
+            st = self.strength(m)
+            detail = [f"{people} {'person' if people == 1 else 'people'}" if people is not None else "people n/a",
+                      *(info["sounds"] or [])[:2], f"{st:.1f}×" if st is not None else ""]
+            results.append({"video_id": m["video_id"], "moment_id": m["moment_id"], "start_s": m["start_s"],
+                            "video": video_name(allowed[m["video_id"]], list(allowed.values())),
+                            "time": _fmt_time(m["start_s"], m["end_s"]),
+                            "label": display_label(m["primary_label"], self.labels),
+                            "detail": " · ".join(d for d in detail if d), "review_status": status})
+        return {"results": results, "hidden": hidden, "marks": self._marks(results, allowed, video_id)}
+
+    def _marks(self, results, allowed, video_id) -> list[float]:
+        """Where each match falls (0-1) along the shown videos laid end to end, early -> showcase."""
+        order = {"early": 0, "mid": 1, "showcase": 2}
+        vids = sorted((v for v in allowed.values() if not video_id or v["video_id"] == video_id),
+                      key=lambda v: (order.get(v["phase"], 3), v["video_id"]))
+        length = {v["video_id"]: max([m["end_s"] for m in self.moments if m["video_id"] == v["video_id"]] + [0.0])
+                  for v in vids}
+        offset, total = {}, 0.0
+        for v in vids:
+            offset[v["video_id"]], total = total, total + length[v["video_id"]]
+        return [(offset[r["video_id"]] + r["start_s"]) / total for r in results if total]
+
+
+QUEUE_STATUS = {"unreviewed": "Not reviewed", "deferred": "Second look", "partly": "Partly reviewed"}
+
+
+def queue_status(m: dict, state: dict) -> str:
+    """Not reviewed | Second look | Partly reviewed | Edited | Accepted (from 003's moment_status)."""
+    status = review.moment_status(m, state)
+    if status != "done":
+        return QUEUE_STATUS[status]
+    edited = any(state.get((m["moment_id"], lab), {}).get("action") == "edit" for lab, _ in review.ai_labels(m))
+    return "Edited" if edited else "Accepted"
+
+
+def strength_text(st: float | None) -> str:
+    if st is None:
+        return ""
+    return f"{st:.1f}× above its cut-off" if st >= 1 else f"{st:.1f}× its cut-off (below)"
+
 
 # ---- Insights tab: reads 005 result folders (contracts/results.md) by file only ----
 HEADLINE_COLUMNS = ("indicator", "phase", "value", "unit", "tag", "verified_share", "change_vs_early")
@@ -145,6 +248,7 @@ ABLATION_HEADERS = ["system", "segments", "primary accuracy (95% CI)", "macro-F1
                     "tag"]
 EMPTY = "Insights are not available yet. Run the insights step first."
 PHASE_ORDER = ("early", "mid", "showcase")
+PHASE_NAMES = {"early": "Early sessions", "mid": "Mid program", "showcase": "Showcase"}
 
 
 def _read_csv(path) -> list[dict]:
@@ -203,7 +307,11 @@ class InsightsController:
         extra = json.loads((folder / "indicators.json").read_text()) if (folder / "indicators.json").exists() else {}
         index = (_read_csv(folder / "expression_index.csv") if (folder / "expression_index.csv").exists() else [])
         ev = latest_result("evaluate", self.root)
+        inds = _read_csv(folder / "indicators.csv") if (folder / "indicators.csv").exists() else []
         self.state = {
+            "videos": sorted({r["scope"] for r in inds if r["scope_type"] == "video"}),
+            "coverage_reviewed": next((_num(r["value"]) for r in inds if r["indicator"] == "coverage_reviewed"
+                                       and r["scope_type"] == "all"), None),
             "status": "available", "created_at": manifest["created_at"], "limitations": manifest["limitations"],
             "folder": folder.name, "guideline_versions": manifest.get("guideline_versions", []),
             "headline": head, "model_tag": extra.get("model_tag", UNVALIDATED),
@@ -212,6 +320,79 @@ class InsightsController:
             "ablation": _read_csv(ev / "ablation.csv") if ev and (ev / "ablation.csv").exists() else [],
         }
         return self.state
+
+    # ---- Scorecard ----
+    def phases(self) -> list[str]:
+        found = {r["phase"] for r in self.state.get("headline", [])}
+        return [p for p in PHASE_ORDER if p in found]
+
+    def default_pair(self) -> tuple[str | None, str | None]:
+        ph = self.phases()
+        return (ph[0] if ph else None), (ph[-1] if len(ph) > 1 else None)
+
+    def compare(self, a: str, b: str) -> dict:
+        """Expression Index for phases a and b, and the four headline measures side by side (values as written)."""
+        idx = {r["scope"]: r for r in self.state.get("index", [])}
+        rows = []
+        for ind in dict.fromkeys(r["indicator"] for r in self.state.get("headline", [])):
+            by = {r["phase"]: r for r in self.state["headline"] if r["indicator"] == ind}
+            ra, rb = by.get(a), by.get(b)
+            va = _num(ra["value"]) if ra and ra.get("status", "ok") in ("", "ok") else None
+            vb = _num(rb["value"]) if rb and rb.get("status", "ok") in ("", "ok") else None
+            ratio = vb / va if va and vb is not None else None
+            unit = (rb or ra or {}).get("unit", "")
+            rows.append({"indicator": ind, "a": va, "b": vb, "unit": unit, "ratio": ratio,
+                         "a_status": ra["status"] if ra and va is None else "",
+                         "b_status": rb["status"] if rb and vb is None else "",
+                         "new": va == 0 and bool(vb), "tag": (rb if vb is not None else ra or {}).get("tag", "")})
+        ia, ib = idx.get(a), idx.get(b)
+        return {"a": a, "b": b, "rows": rows,
+                "index_a": _num(ia["value"]) if ia else None, "index_b": _num(ib["value"]) if ib else None,
+                "index_tag": (ib or ia or {}).get("tag", ""), "index_label": (ib or ia or {}).get("label", "")}
+
+    def agreement_row(self) -> dict | None:
+        """The ablation row for the AI version behind the insights numbers (learned when that was the fallback)."""
+        rows = self.state.get("ablation", [])
+        learned = self.state.get("model_tag") == "model estimate (learned)"
+        pick = [r for r in rows if r["system"].startswith("learned") == learned and
+                (learned or r["system"] == "zero-shot")]
+        return (pick or rows or [None])[0]
+
+    def facts(self) -> list[dict]:
+        out = []
+        r = self.agreement_row()
+        v = _num(r["primary_accuracy"]) if r else None
+        if v is None:
+            out.append({"cap": "AI agreed with staff", "value": "n/a", "note": "no comparison with staff labels yet"})
+        else:
+            lo, hi = _num(r["primary_accuracy_ci_low"]), _num(r["primary_accuracy_ci_high"])
+            rng = f", range {100 * lo:.0f}–{100 * hi:.0f}" if lo is not None and hi is not None else ""
+            out.append({"cap": "AI agreed with staff", "value": f"{100 * v:.0f}/100", "note": f"clips{rng}"})
+        out.append({"cap": "Checked on", "value": r["n_segments"] if r else "n/a",
+                    "note": "clips labeled blind, on videos the AI never tuned on" if r else "not available"})
+        t = self.state.get("time")
+        if t:
+            youth, staff = _num(t["youth_s"]) / 60, (_num(t["staff_led_verified_s"]) + _num(t["staff_led_model_s"])) / 60
+            out.append({"cap": "Youth time counted", "value": f"{youth:.0f} min",
+                        "note": f"{staff:.0f} min staff-led left out"})
+        cov = self.state.get("coverage_reviewed")
+        out.append({"cap": "Staff-verified", "value": f"{100 * cov:.0f}%" if cov is not None else "n/a",
+                    "note": "of clips have a staff-checked label"})
+        return out
+
+    def subtitle(self) -> str:
+        """`<camp> · N videos · youth time only`; the camp only when every counted video shares one cohort."""
+        from tpa_index.schema import read_official
+
+        vids = self.state.get("videos", [])
+        cohorts = {v["cohort"] for v in read_official("videos", root=self.root).to_pylist() if v["video_id"] in vids}
+        camp = f"{cohorts.pop()} · " if len(cohorts) == 1 and None not in cohorts else ""
+        return f"{camp}{len(vids)} video{'s' if len(vids) != 1 else ''} · youth time only"
+
+    def guideline_line(self) -> str:
+        versions = ", ".join(self.state.get("guideline_versions", [])) or \
+            f"{load_labels()['guideline_version']} (current vocabulary)"
+        return f"guideline v{versions}"
 
     @property
     def available(self) -> bool:

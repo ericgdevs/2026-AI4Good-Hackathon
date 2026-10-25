@@ -26,10 +26,10 @@ def test_new_observation_type(tmp_path, monkeypatch, labels, pipeline):
     with pytest.raises(ConfigError, match="without bumping guideline_version"):
         check_guideline(load_labels(_write(tmp_path, added)))
 
-    added["guideline_version"] = "0.6.0"
+    added["guideline_version"] = "0.7.0"
     new = load_labels(_write(tmp_path, added))
     line = check_guideline(new)
-    assert line.startswith("guideline: 0.6.0 not recorded") and guideline_fingerprint(new) in line
+    assert line.startswith("guideline: 0.7.0 not recorded") and guideline_fingerprint(new) in line
 
     before = json.dumps(review.checklist(labels, pipeline), sort_keys=True)
     assert json.dumps(review.checklist(new, pipeline), sort_keys=True) == before
@@ -87,7 +87,7 @@ def test_app_launch_refuses_unbumped_vocabulary(tmp_path, monkeypatch):
     from tpa_index import app
 
     history = tmp_path / "history.yaml"
-    history.write_text('"0.5.0": "000000000000"\n')
+    history.write_text(f'"{load_labels()["guideline_version"]}": "000000000000"\n')
     monkeypatch.setattr(config, "GUIDELINE_HISTORY", history)
     monkeypatch.setattr("tpa_index.clips.session_dir", lambda: pytest.fail("launch must stop before any setup"))
     with pytest.raises(ConfigError, match="without bumping"):

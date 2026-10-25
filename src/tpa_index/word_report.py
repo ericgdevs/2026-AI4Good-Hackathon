@@ -5,9 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tpa_index.config import ConfigError, load_labels, load_theme
-from tpa_index.demo import InsightsController, indicator_name
+from tpa_index.demo import PHASE_NAMES, InsightsController, indicator_name
 
-PHASE_NAMES = {"early": "Early sessions", "mid": "Mid program", "showcase": "Showcase"}
 # plain subject for key findings, unit words after a number, one-sentence explanation
 PLAIN = {
     "performance_share": ("Time spent performing", "of youth time",

@@ -180,8 +180,9 @@ def test_null_labels_never_become_results(clip_videos, pipeline, labels):
 
 
 def test_siglip_predict_scores_no_audio_or_expression_labels(clip_videos, pipeline, labels):
-    """004: the 0.5.0 labels (with audio singing_voice) never reach SigLIP predict."""
-    assert labels["guideline_version"] == "0.5.0"
+    """004: the shipped labels (0.5.0 added audio singing_voice; 0.6.0 only observation types) never send audio or
+    expression labels to SigLIP predict."""
+    assert labels["guideline_version"] == "0.6.0"
     out = run(clip_videos["t01"], pipeline, labels)
     assert not {p["label_group"] for p in out["predictions"]} & {"audio", "expression"}
     assert "singing_voice" not in {p["label"] for p in out["predictions"]}

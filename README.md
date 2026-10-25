@@ -108,12 +108,15 @@ uv run tpa-index benchmark --video-id <id>   # type the id at run time; never co
 
 Runs segment, predict, transcript, audio, people, expression and moments for one video on this machine (Mac model sizes from `pipeline.yaml`). Use a promo that already has every official stage, because the signal stages and moments work on the official segments. Each stage writes its usual runs row (`tpa-index runs`). The summary (`OUTPUT_DIR/benchmarks/benchmark-*.md/.json`) compares the Mac with the official HPC runs per hour of video, per stage and end to end. Processing time excludes model loading, which is shown once per stage. Benchmark runs never go into `config/official_runs.yaml`.
 
-## Demo tabs (006)
+## App tabs (006 redesign)
 
-The review app (`uv run tpa-index app`) has two more tabs for showing the work:
+The review app (`uv run tpa-index app`, 127.0.0.1 only) has five tabs under a deep-purple top bar. IBM Plex fonts come from Gradio's own bundled files, so nothing is fetched from the internet.
 
-- **Timeline**: pick a video (`Video 4 · showcase`). It shows the moments with readable labels, and for each segment: people (person detection, counts only), speech yes/no, sounds, the expression as "AI suggestion, unvalidated", and who led. The led-by class is 005's own (`indicators.segment_table` on the zero-shot view). Staff-led segments are hidden by default, with a count. Eval videos stay hidden until blind labeling is done, as in Review. No transcript text, filenames or segment IDs.
-- **Insights**: reads the newest complete `OUTPUT_DIR/results/insights-*` folder (run `tpa-index insights` first). It charts the headline indicators by phase, with every tag exactly as 005 wrote it, then shows staff-led and idle time (excluded from youth indicators), the limitations, the optional Expression Index with its caveats, and the ablation from the newest `evaluate-*` folder.
+- **Scorecard** (opens first): reads the newest complete `OUTPUT_DIR/results/insights-*` folder (run `tpa-index insights` first). Compare two phases (default early vs showcase). Shows the TPA Expression Index gauge (four measures, equal weights), the four headline measures with every tag exactly as 005 wrote it, and facts from the newest `evaluate-*` folder and the time breakdown. **Download report** writes the plain-English Word report.
+- **Search moments**: a local filter over moments (label names, review status, "needs review", solo or group). It never searches transcripts. The same eval lock applies, and staff-led moments are hidden unless you ask for them. Selecting a result opens it in the Review queue.
+- **Review queue**: the queue for one video, the clip with what the AI noticed (suggestions, unvalidated), and your review. Accept, Edit, Reject and Defer (keys A, E, R and D; ↓ moves to the next item) save the same records as before. Ticking or unticking activities rejects AI labels or adds staff labels. The five observation buttons save a staff observation (`expression_*`, guideline 0.6.0), and the note is saved as `reviewer_note`. The AI's suggestion is shown as a ratio to its cut-off, never as a percentage.
+- **Blind labels**: unchanged.
+- **Export**: writes the annotation export (JSON and CSV) and offers it for download.
 
 Screenshots for the deck come from mock data only (`tpa-index mock --clips` in a temporary `OUTPUT_DIR`).
 

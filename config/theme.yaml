@@ -8,5 +8,12 @@ text_secondary: "#6F717A"
 accent: "#7851B9"        # buttons, selected tabs, headline chart series
 accent_deep: "#4100AD"   # headers, emphasis
 muted: "#C9C4CF"         # neutral chart fill (idle time, "other" series); never text
+border: "#E6E3EA"          # 1px box borders
+border_strong: "#D9D5DE"   # input and dropdown borders
+track: "#F1EFF3"           # gauge track, table row dividers, empty bars; never text
+accent_soft: "#F1ECF9"     # selected item background (text on it: text or accent_deep only)
+header_text: "#E4DAF7"     # inactive tab labels on the accent_deep top bar
+header_text_muted: "#D3C6F2"   # secondary text on the top bar
+attention: "#A3122A"       # "Second look" status text
 chart_series: ["#7851B9", "#0099B3", "#FF4255"]
 credit: "Built for The Performance Academy"

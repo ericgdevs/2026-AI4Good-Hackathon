@@ -563,7 +563,8 @@ def effective_settings(pipeline: dict, video: dict) -> dict:
 
 # ---- 006: app theme (config/theme.yaml) --------------------------------------------------------------------------
 THEME = CONFIG_DIR / "theme.yaml"
-THEME_COLOURS = ("background", "surface", "text", "text_secondary", "accent", "accent_deep", "muted")
+THEME_COLOURS = ("background", "surface", "text", "text_secondary", "accent", "accent_deep", "muted", "border",
+                 "border_strong", "track", "accent_soft", "header_text", "header_text_muted", "attention")
 AA = 4.5  # WCAG AA, normal text
 
 
@@ -587,7 +588,10 @@ def load_theme(path=None) -> dict:
     if not isinstance(d.get("credit"), str) or not d["credit"].strip():
         raise ConfigError("theme: credit text required")
     pairs = [(fg, bg) for fg in ("text", "text_secondary", "accent", "accent_deep") for bg in ("background", "surface")]
-    for fg, bg in [*pairs, ("surface", "accent")]:  # surface on accent = primary button text
+    extra = [("surface", "accent"), ("surface", "accent_deep"), ("header_text", "accent_deep"),  # top bar and buttons
+             ("header_text_muted", "accent_deep"), ("attention", "surface"), ("text", "accent_soft"),
+             ("accent_deep", "accent_soft")]
+    for fg, bg in [*pairs, *extra]:
         ratio = contrast_ratio(d[fg], d[bg])
         if ratio < AA:
             raise ConfigError(f"theme: {fg} on {bg} has contrast {ratio:.2f}, below WCAG AA {AA}")

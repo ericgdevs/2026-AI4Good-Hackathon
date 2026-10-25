@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from tpa_index import export, review, schema
-from tpa_index.config import EXAMPLE_VIDEOS
+from tpa_index.config import EXAMPLE_VIDEOS, load_labels
 from tpa_index.export import FIELDS, build_records, write_export
 from tpa_index.paths import repo_root
 
@@ -96,7 +96,7 @@ def test_decision_table(labels):
     got = by_id(build_records(ms, rs + tie, labels), ms)
 
     assert (got["none"]["source"], got["none"]["review_decision"]) == ("ai", "pending")
-    assert got["none"]["reviewer_note"] == got["none"]["review_date"] == "" and got["none"]["guideline_version"] == "0.5.0"
+    assert got["none"]["reviewer_note"] == got["none"]["review_date"] == "" and got["none"]["guideline_version"] == load_labels()["guideline_version"]
     assert got["accept"]["review_decision"] == "accepted" and got["accept"]["source"] == "ai"
     assert (got["edit"]["review_decision"], got["edit"]["primary_label"], got["edit"]["source"]) == (
         "edited", "singing", "staff")
@@ -213,7 +213,7 @@ def test_export_official_cli(official_mock, labels, capsys):
     printed = capsys.readouterr().out
     assert str(output_dir()) not in printed and "records:" in printed
     exports = output_dir() / "exports"
-    assert len(list(exports.glob("annotations-*-g0.5.0.json"))) == 1
+    assert len(list(exports.glob(f"annotations-*-g{load_labels()['guideline_version']}.json"))) == 1
     records = json.loads((exports / "annotations-latest.json").read_text())
     assert len(records) == len(moments) and "rejected" in {r["review_decision"] for r in records}
     for p in exports.iterdir():

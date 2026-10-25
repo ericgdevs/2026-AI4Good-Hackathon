@@ -2,3 +2,4 @@
 # types; prompts, colours, descriptions and display names are left out). Written by hand from `tpa-index check`.
 # `check` and the app refuse a vocabulary change that keeps a recorded version: bump guideline_version first.
 "0.5.0": "ce8320c66ef3"
+"0.6.0": "f597d7d82585"  # + five staff expression observation types (review tab buttons)

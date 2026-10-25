@@ -7,6 +7,15 @@ This is one app (Constitution XII). The tabs are: Blind labeling, Review (both 0
 - shows no logo or image;
 - shows no filename, path or transcript text.
 
+## Redesign (Draft 3 · Scorecard)
+
+The tabs are, in order: **Scorecard** (opens first), **Search moments** (replaces the Timeline layout), **Review queue** (a three-pane layout), **Blind labels** and **Export**. The tables below for Timeline and Insights describe the data each one shows; the Scorecard and Search tabs show the same data through `demo.InsightsController` and `demo.DemoController`.
+
+- Top bar in `accent_deep` with the app name "This Is ME · TPA", white tab labels and an underlined active tab. White boxes have a 1px `border` and a 6px radius. Every colour comes from `config/theme.yaml`. IBM Plex Sans and Mono come from Gradio's bundled font files (`LocalFont`); there are no external font or CDN URLs.
+- Scorecard: compare two phases (default early vs showcase). The Expression Index gauge shows the second phase, with a tick for the first. "What drives it" shows the four headline measures with their tags exactly as written, and states the equal weights (25% each). Facts come from the ablation (the AI version behind the insights numbers) and the time breakdown. Download report runs `word_report.write_word_report(sample=False)`, or shows the empty-state text when there is no insights result.
+- Search moments: a local filter (label names, status, "needs review", solo or group from indicator labels, else the most common person count). No transcript. Same eval lock as Review. Staff-led moments (most clips staff-led) are hidden unless the toggle is on. Selecting a result opens it in the Review queue.
+- Review queue: the queue (`Not reviewed / Second look / Partly reviewed / Accepted / Edited`), the clip with "AI noticed · suggestions, unvalidated", and "AI suggests X · N× above its cut-off" (never a percentage). Activity checkboxes: unticking an AI label saves a reject, and ticking a new one saves a staff add. Accept or Edit also accepts the other ticked AI labels. Observation buttons save `expression_*` observations, and the note is saved as `reviewer_note`. Shortcuts A / E / R / D and ↓ work outside text fields. Element IDs `review-reminder`, `review-add-obs`, `review-obs` and `review-note` are kept.
+
 ## Header and footer
 
 - Header: `TPA video index (local only)` with the credit below it, in secondary text.

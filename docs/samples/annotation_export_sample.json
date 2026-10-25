@@ -14,7 +14,7 @@
     "confidence": 0.877,
     "source": "ai",
     "review_decision": "pending",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": ""
   },
@@ -34,7 +34,7 @@
     "confidence": 0.794,
     "source": "ai",
     "review_decision": "accepted",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": "2026-01-01"
   },
@@ -54,7 +54,7 @@
     "confidence": 0.623,
     "source": "staff",
     "review_decision": "edited",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "relabelled by staff",
     "review_date": "2026-01-01"
   },
@@ -74,7 +74,7 @@
     "confidence": 0.684,
     "source": "ai",
     "review_decision": "rejected",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "not this activity",
     "review_date": "2026-01-01"
   },
@@ -93,7 +93,7 @@
     "confidence": 0.693,
     "source": "ai",
     "review_decision": "deferred",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "unclear from this angle",
     "review_date": "2026-01-01"
   },
@@ -113,7 +113,7 @@
     "confidence": 0.8,
     "source": "ai",
     "review_decision": "rejected",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": "2026-01-01"
   },
@@ -132,7 +132,7 @@
     "confidence": 0.849,
     "source": "ai",
     "review_decision": "accepted",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": "2026-01-01"
   },
@@ -152,7 +152,7 @@
     "confidence": 0.831,
     "source": "ai",
     "review_decision": "accepted",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": "2026-01-01"
   },
@@ -173,7 +173,7 @@
     "confidence": 0.753,
     "source": "ai",
     "review_decision": "deferred",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": "2026-01-01"
   },
@@ -194,7 +194,7 @@
     "confidence": 0.506,
     "source": "staff",
     "review_decision": "accepted",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "added by staff",
     "review_date": "2026-01-01"
   },
@@ -212,7 +212,7 @@
     "confidence": 0.772,
     "source": "ai",
     "review_decision": "accepted",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "framing cuts off the left side",
     "review_date": "2026-01-01"
   },
@@ -231,7 +231,7 @@
     "confidence": 0.851,
     "source": "ai",
     "review_decision": "pending",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": ""
   },
@@ -252,7 +252,7 @@
     "confidence": 0.593,
     "source": "ai",
     "review_decision": "accepted",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": "2026-01-01"
   },
@@ -271,7 +271,7 @@
     "confidence": 0.735,
     "source": "staff",
     "review_decision": "edited",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "relabelled by staff",
     "review_date": "2026-01-01"
   },
@@ -291,7 +291,7 @@
     "confidence": 0.75,
     "source": "ai",
     "review_decision": "rejected",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": "2026-01-01"
   },
@@ -309,7 +309,7 @@
     "confidence": 0.669,
     "source": "ai",
     "review_decision": "deferred",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": "2026-01-01"
   },
@@ -329,7 +329,7 @@
     "confidence": 0.708,
     "source": "ai",
     "review_decision": "pending",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": ""
   },
@@ -349,7 +349,7 @@
     "confidence": 0.799,
     "source": "ai",
     "review_decision": "accepted",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "clear example",
     "review_date": "2026-01-01"
   },
@@ -369,7 +369,7 @@
     "confidence": 0.72,
     "source": "ai",
     "review_decision": "pending",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": ""
   },
@@ -389,7 +389,7 @@
     "confidence": 0.708,
     "source": "ai",
     "review_decision": "pending",
-    "guideline_version": "0.5.0",
+    "guideline_version": "0.6.0",
     "reviewer_note": "",
     "review_date": ""
   }

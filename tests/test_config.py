@@ -96,10 +96,10 @@ def test_vocabulary_has_no_banned_terms(labels):
     assert not words.findall(text)
 
 
-def test_shipped_labels_are_guideline_0_5_0(labels):
+def test_shipped_labels_are_guideline_0_6_0(labels):
     from tpa_index.config import model_labels, rules_labels
 
-    assert labels["guideline_version"] == "0.5.0"
+    assert labels["guideline_version"] == "0.6.0"
     assert {lab["name"] for lab in rules_labels(labels)} == {"uncertain_mixed", "needs_review"}
     assert not {"uncertain", "mixed"} & {lab["name"] for lab in labels["labels"]}
     assert all(lab["group"] != "status" for lab in model_labels(labels))

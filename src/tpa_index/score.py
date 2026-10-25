@@ -91,8 +91,9 @@ def sigmoid_scores(window_embeds: np.ndarray, label_matrix: np.ndarray, scale: f
 
 
 def predict_video(video: dict, pipeline: dict, labels: dict, embedder, run_id: str, device: str = "cpu",
-                  motion=None) -> dict[str, list[dict]]:
-    """Score one video. Returns {"videos", "segments", "predictions", "moments"} rows; writes nothing."""
+                  motion=None, preview=None) -> dict[str, list[dict]]:
+    """Score one video. Returns {"videos", "segments", "predictions", "moments"} rows; writes nothing.
+    `preview.window(segment, frames, activity_scores)` (Process tab, in memory) is called once per window."""
     from tpa_index.config import effective_settings, idle_threshold, model_labels
     from tpa_index.moments import merge_moments
     from tpa_index.paths import data_dir
@@ -131,6 +132,9 @@ def predict_video(video: dict, pipeline: dict, labels: dict, embedder, run_id: s
             predictions.extend({"segment_id": seg["segment_id"], "label": n, "label_group": group_of[n],
                                 "score": float(s), "model": embedder.name, "run_id": run_id}
                                for n, s in zip(names, row_scores))
+            if preview is not None:
+                primary = pipeline["moments"]["primary_group"]
+                preview.window(seg, w.frames, {n: float(s) for n, s in zip(names, row_scores) if group_of[n] == primary})
         buffer.clear()
 
     for window in segment_video(video, settings, with_audio=False):

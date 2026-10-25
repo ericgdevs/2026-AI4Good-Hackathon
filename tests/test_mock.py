@@ -3,6 +3,7 @@ import time
 
 import pytest
 
+from tpa_index.config import load_labels
 from tpa_index.mock import generate
 from tpa_index.schema import SCHEMAS, read_reviews, read_table, validate_dataset
 
@@ -62,8 +63,8 @@ def test_rules_rows_for_every_segment(mock_root):
     assert not {"uncertain_mixed", "needs_review"} & scored
 
 
-def test_reviews_use_guideline_0_5_0(mock_root):
-    assert set(read_reviews(mock_root)["guideline_version"].to_pylist()) == {"0.5.0"}
+def test_reviews_use_the_shipped_guideline(mock_root):
+    assert set(read_reviews(mock_root)["guideline_version"].to_pylist()) == {load_labels()["guideline_version"]}
 
 
 def test_clip_kind_uses_its_own_window(mock_root):

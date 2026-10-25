@@ -65,6 +65,10 @@ class WhisperTranscriber:
 
         # an array, not the path: faster-whisper 1.2.1's own decoder passes an argument PyAV 19 rejects
         audio, _ = sf.read(str(wav_path), dtype="float32", always_2d=False)
+        return self.transcribe_audio(audio)
+
+    def transcribe_audio(self, audio: np.ndarray) -> list[dict]:
+        """The same, from 16 kHz mono samples already in memory (no file)."""
         segments, info = self.model.transcribe(audio, vad_filter=True, word_timestamps=True,
                                                condition_on_previous_text=False)
         out = [{"start": s.start, "end": s.end, "text": s.text,
@@ -121,7 +125,8 @@ class ExpressionScorer(Protocol):
 
 
 class YoloPersonCounter:
-    """YOLO11, person class only, detection only (no tracking). Only the count per frame leaves this class."""
+    """YOLO11, person class only, detection only (no tracking). Runs keep only the count per frame; boxes reach the
+    Process tab's in-memory preview, never a file."""
 
     def __init__(self, weights_entry: dict, device: str, conf: float, min_box_height_frac: float):
         import os
@@ -139,9 +144,20 @@ class YoloPersonCounter:
         self.min_h = min_box_height_frac
         self.name = Path(weights_entry["file"]).stem
 
-    def count(self, frames: np.ndarray) -> list[int]:
+    def boxes(self, frames: np.ndarray) -> list[list[tuple[float, float, float, float]]]:
+        """Counted person boxes per frame as (x0, y0, x1, y1) in 0-1 of the frame; small/distant people are dropped."""
         results = self.model.predict(list(frames), classes=[0], conf=self.conf, verbose=False, device=self.device)
-        return [int((r.boxes.xywhn[:, 3] >= self.min_h).sum()) for r in results]  # small/distant people do not count
+        out = []
+        for r in results:
+            xywhn = r.boxes.xywhn
+            xywhn = xywhn.cpu().numpy() if hasattr(xywhn, "cpu") else xywhn  # a tensor on the model's device
+            x, y, w, h = np.asarray(xywhn, np.float32).reshape(-1, 4).T
+            out.append([(float(a - c / 2), float(b - d / 2), float(a + c / 2), float(b + d / 2))
+                        for a, b, c, d in zip(x, y, w, h) if d >= self.min_h])
+        return out
+
+    def count(self, frames: np.ndarray) -> list[int]:
+        return [len(b) for b in self.boxes(frames)]
 
 
 def usable_faces(detections, frame_shape, face_score: float, min_face_px: int) -> list[tuple[int, int, int, int]]:
@@ -170,6 +186,35 @@ def to_source_pixels(detections, scale: float):
     return out
 
 
+def yunet_file(entry: dict) -> str:
+    """Local path of the pinned YuNet ONNX file, checked against its sha256. Never downloads."""
+    from huggingface_hub import hf_hub_download
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    from tpa_index.config import check_sha256
+
+    try:
+        path = hf_hub_download(entry["repo"], entry["file"], revision=entry["revision"], local_files_only=True)
+    except LocalEntryNotFoundError:
+        raise ConfigError(f"model not found locally: {entry['repo']}") from None
+    check_sha256(Path(path), entry)
+    return path
+
+
+def detect_faces(detector, frame: np.ndarray, max_side: int):
+    """YuNet rows for an RGB frame, in source pixels. Detection runs on a copy whose longer side is at most
+    max_side; landmarks are in the rows but callers keep boxes only."""
+    import cv2
+
+    h, w = frame.shape[:2]
+    scale = min(1.0, max_side / max(h, w))
+    small = frame if scale == 1.0 else cv2.resize(
+        frame, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=cv2.INTER_AREA)
+    detector.setInputSize((small.shape[1], small.shape[0]))
+    _, detections = detector.detect(cv2.cvtColor(small, cv2.COLOR_RGB2BGR))
+    return to_source_pixels(detections, scale)
+
+
 class FaceExpression:
     """YuNet face detection, then EmotiEffLib (ONNX, CPU) on in-memory crops. Classes mapped to our expression
     labels in config (sum rule, no renormalization); valence/arousal outputs are dropped."""
@@ -177,18 +222,11 @@ class FaceExpression:
     def __init__(self, detector_entry: dict, model_entry: dict, mapping: dict[str, list[str]], face_score: float,
                  min_face_px: int, detect_max_side: int = 1280):
         import cv2
-        from huggingface_hub import hf_hub_download
-        from huggingface_hub.errors import LocalEntryNotFoundError
 
-        from tpa_index.config import check_sha256, pinned_weight
+        from tpa_index.config import pinned_weight
 
         path = pinned_weight(model_entry)  # before importing the library: it downloads missing files
-        try:
-            yunet = hf_hub_download(detector_entry["repo"], detector_entry["file"],
-                                    revision=detector_entry["revision"], local_files_only=True)
-        except LocalEntryNotFoundError:
-            raise ConfigError(f"model not found locally: {detector_entry['repo']}") from None
-        check_sha256(Path(yunet), detector_entry)
+        yunet = yunet_file(detector_entry)
         import emotiefflib.facial_analysis as fa
 
         import types
@@ -222,14 +260,9 @@ class FaceExpression:
     def faces(self, frame: np.ndarray) -> list[np.ndarray]:
         """Detect on a copy whose longer side is at most detect_max_side, map boxes back to source pixels, then apply
         the score and min_face_px rules in source pixels and cut crops from the original frame."""
-        h, w = frame.shape[:2]
-        scale = min(1.0, self.detect_max_side / max(h, w))
-        small = frame if scale == 1.0 else self.cv2.resize(
-            frame, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=self.cv2.INTER_AREA)
-        self.detector.setInputSize((small.shape[1], small.shape[0]))
-        _, detections = self.detector.detect(self.cv2.cvtColor(small, self.cv2.COLOR_RGB2BGR))
-        boxes = usable_faces(to_source_pixels(detections, scale), frame.shape, self.face_score, self.min_face_px)
-        del detections, small  # boxes only; landmarks dropped here
+        detections = detect_faces(self.detector, frame, self.detect_max_side)
+        boxes = usable_faces(detections, frame.shape, self.face_score, self.min_face_px)
+        del detections  # boxes only; landmarks dropped here
         return [frame[y0:y1, x0:x1].copy() for x0, y0, x1, y1 in boxes]
 
     def score(self, crops: list[np.ndarray]) -> np.ndarray:

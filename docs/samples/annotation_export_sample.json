@@ -1,0 +1,396 @@
+[
+  {
+    "video_id": "mock01",
+    "start_s": 0.0,
+    "end_s": 8.0,
+    "primary_label": "acting_theater",
+    "secondary_labels": [
+      "speech",
+      "instruction",
+      "applause"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.877,
+    "source": "ai",
+    "review_decision": "pending",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": ""
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 12.0,
+    "end_s": 20.0,
+    "primary_label": "acting_theater",
+    "secondary_labels": [
+      "upset",
+      "instruction",
+      "speech",
+      "actor_participant"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.794,
+    "source": "ai",
+    "review_decision": "accepted",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 24.0,
+    "end_s": 38.0,
+    "primary_label": "singing",
+    "secondary_labels": [
+      "upset",
+      "speech",
+      "instruction",
+      "actor_participant"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.623,
+    "source": "staff",
+    "review_decision": "edited",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "relabelled by staff",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 36.0,
+    "end_s": 50.0,
+    "primary_label": "singing",
+    "secondary_labels": [
+      "applause",
+      "performance",
+      "upset",
+      "actor_participant"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.684,
+    "source": "ai",
+    "review_decision": "rejected",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "not this activity",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 48.0,
+    "end_s": 62.0,
+    "primary_label": "modeling_runway",
+    "secondary_labels": [
+      "performance",
+      "applause",
+      "actor_staff_facilitation"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.693,
+    "source": "ai",
+    "review_decision": "deferred",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "unclear from this angle",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 60.0,
+    "end_s": 80.0,
+    "primary_label": "acting_theater",
+    "secondary_labels": [
+      "actor_staff_facilitation",
+      "applause",
+      "performance",
+      "confident"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.8,
+    "source": "ai",
+    "review_decision": "rejected",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 78.0,
+    "end_s": 98.0,
+    "primary_label": "dance",
+    "secondary_labels": [
+      "confident",
+      "music",
+      "actor_participant"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.849,
+    "source": "ai",
+    "review_decision": "accepted",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 96.0,
+    "end_s": 104.0,
+    "primary_label": "songwriting",
+    "secondary_labels": [
+      "performance",
+      "actor_participant",
+      "confident",
+      "music"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.831,
+    "source": "ai",
+    "review_decision": "accepted",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 114.0,
+    "end_s": 122.0,
+    "primary_label": "songwriting",
+    "secondary_labels": [
+      "creative_practice",
+      "actor_participant",
+      "music",
+      "speech",
+      "upset"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.753,
+    "source": "ai",
+    "review_decision": "deferred",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 120.0,
+    "end_s": 128.0,
+    "primary_label": "acting_theater",
+    "secondary_labels": [
+      "creative_practice",
+      "actor_participant",
+      "speech"
+    ],
+    "indicators": [
+      "solo_on_stage"
+    ],
+    "contextual_observation": "",
+    "confidence": 0.506,
+    "source": "staff",
+    "review_decision": "accepted",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "added by staff",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 138.0,
+    "end_s": 194.0,
+    "primary_label": "visual_arts",
+    "secondary_labels": [
+      "negative",
+      "music"
+    ],
+    "indicators": [],
+    "contextual_observation": "staging_issue: framing cuts off the left side",
+    "confidence": 0.772,
+    "source": "ai",
+    "review_decision": "accepted",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "framing cuts off the left side",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 198.0,
+    "end_s": 224.0,
+    "primary_label": "lyricism_spoken_word",
+    "secondary_labels": [
+      "performance",
+      "singing_voice",
+      "actor_staff_facilitation"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.851,
+    "source": "ai",
+    "review_decision": "pending",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": ""
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 222.0,
+    "end_s": 242.0,
+    "primary_label": "film_production",
+    "secondary_labels": [
+      "actor_staff_facilitation",
+      "upset",
+      "instruction",
+      "singing_voice",
+      "music"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.593,
+    "source": "ai",
+    "review_decision": "accepted",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 240.0,
+    "end_s": 266.0,
+    "primary_label": "singing",
+    "secondary_labels": [
+      "actor_staff_facilitation",
+      "instruction",
+      "music"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.735,
+    "source": "staff",
+    "review_decision": "edited",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "relabelled by staff",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 276.0,
+    "end_s": 320.0,
+    "primary_label": "modeling_runway",
+    "secondary_labels": [
+      "performance",
+      "confident",
+      "applause",
+      "actor_staff_facilitation"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.75,
+    "source": "ai",
+    "review_decision": "rejected",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 318.0,
+    "end_s": 344.0,
+    "primary_label": "songwriting",
+    "secondary_labels": [
+      "performance",
+      "confident"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.669,
+    "source": "ai",
+    "review_decision": "deferred",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 342.0,
+    "end_s": 350.0,
+    "primary_label": "dance",
+    "secondary_labels": [
+      "participation",
+      "confident",
+      "actor_staff_facilitation",
+      "music"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.708,
+    "source": "ai",
+    "review_decision": "pending",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": ""
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 348.0,
+    "end_s": 362.0,
+    "primary_label": "songwriting",
+    "secondary_labels": [
+      "neutral",
+      "participation",
+      "silence",
+      "actor_participant"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.799,
+    "source": "ai",
+    "review_decision": "accepted",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "clear example",
+    "review_date": "2026-01-01"
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 360.0,
+    "end_s": 392.0,
+    "primary_label": "lyricism_spoken_word",
+    "secondary_labels": [
+      "actor_participant",
+      "silence",
+      "neutral",
+      "participation"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.72,
+    "source": "ai",
+    "review_decision": "pending",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": ""
+  },
+  {
+    "video_id": "mock01",
+    "start_s": 390.0,
+    "end_s": 404.0,
+    "primary_label": "fashion_design",
+    "secondary_labels": [
+      "creative_practice",
+      "upset",
+      "actor_staff_facilitation",
+      "singing_voice"
+    ],
+    "indicators": [],
+    "contextual_observation": "",
+    "confidence": 0.708,
+    "source": "ai",
+    "review_decision": "pending",
+    "guideline_version": "0.6.0",
+    "reviewer_note": "",
+    "review_date": ""
+  }
+]

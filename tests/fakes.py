@@ -60,6 +60,13 @@ class FakeTranscriber:
         self.calls.append(str(wav_path))
         if any(f"-{v}.wav" in str(wav_path) for v in self.fail_for):
             raise RuntimeError(self.raise_with)
+        return self._segments()
+
+    def transcribe_audio(self, audio):
+        self.calls.append(f"<{len(audio)} samples in memory>")
+        return self._segments()
+
+    def _segments(self):
         ws = [{"start": a, "end": b, "word": f" {w}"} for a, b, w in self.words]
         return [{"start": ws[0]["start"], "end": ws[-1]["end"], "text": "".join(w["word"] for w in ws),
                  "words": ws}] if ws else []
@@ -89,6 +96,10 @@ class FakePersonCounter:
         if self.calls == self.fail_on_call:
             raise RuntimeError("counter broke")
         return [self.count_value] * len(frames)
+
+    def boxes(self, frames):
+        """Plain boxes (0-1 of the frame), one per counted person, side by side."""
+        return [[(0.05 + 0.3 * i, 0.2, 0.3 + 0.3 * i, 0.95) for i in range(n)] for n in self.count(frames)]
 
 
 class FakeExpressionScorer:

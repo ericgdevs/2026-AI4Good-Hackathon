@@ -1,6 +1,7 @@
 """004 signal stages: transcript, audio, people, expression. One immutable run per (video, stage), written to the
 existing contract tables. Per-segment aggregates only: no identity, no crops or frames on disk, and no transcript
-text outside the run's transcript.json."""
+text outside the run's transcript.json (written on HPC only; laptop runs keep speech yes/no and a character count).
+An optional `preview` (the Process tab's live view) gets in-memory values as they are computed; it never writes."""
 import logging
 import os
 import re
@@ -184,9 +185,10 @@ def _write_run_tables(run_id: str, video_row: dict, rows: list[dict], prediction
         write_table("predictions", predictions, run_id, root)
 
 
-def _transcript_stage(model, wav: Path, video_row: dict, official: list[dict], run_id: str, root) -> int:
+def _transcript_stage(model, wav: Path, video_row: dict, official: list[dict], run_id: str, root,
+                      keep_transcript: bool = True, preview=None) -> int:
     """Whole-file transcription. Any error leaves as TranscriptError(<type name>): text can never ride along in an
-    exception message, its context or a log line."""
+    exception message, its context or a log line. keep_transcript=False writes no text at all (laptop runs)."""
     import json
 
     from tpa_index.schema import _runs_root
@@ -194,11 +196,17 @@ def _transcript_stage(model, wav: Path, video_row: dict, official: list[dict], r
     failed = None
     try:
         segments = model.transcribe(wav)
-        _write_run_tables(run_id, video_row, transcript_rows(official, segments), root=root)
-        with open(_runs_root(root) / run_id / "transcript.json", "w") as f:
-            json.dump({"video_id": video_row["video_id"], "model": model.name,
-                       "language": getattr(model, "language", None), "segments": segments}, f, ensure_ascii=False)
+        rows = transcript_rows(official, segments)
+        _write_run_tables(run_id, video_row, rows, root=root)
+        if keep_transcript:
+            with open(_runs_root(root) / run_id / "transcript.json", "w") as f:
+                json.dump({"video_id": video_row["video_id"], "model": model.name,
+                           "language": getattr(model, "language", None), "segments": segments}, f,
+                          ensure_ascii=False)
         del segments
+        if preview is not None:
+            for r in rows:
+                preview.speech(r["segment_id"], r["has_speech"])
     except Exception as e:  # noqa: BLE001 (re-raised below, outside the handler, so no __context__ is kept)
         failed = type(e).__name__
     if failed:
@@ -207,7 +215,7 @@ def _transcript_stage(model, wav: Path, video_row: dict, official: list[dict], r
 
 
 def _audio_stage(model, wav: Path, video_row: dict, official: list[dict], run_id: str, batch: int, rate: int,
-                 root) -> int:
+                 root, preview=None) -> int:
     import numpy as np
 
     preds = []
@@ -217,6 +225,9 @@ def _audio_stage(model, wav: Path, video_row: dict, official: list[dict], run_id
         preds += [{"segment_id": s["segment_id"], "label": label, "label_group": "audio",
                    "score": float(np.clip(v, 0.0, 1.0)), "model": model.name, "run_id": run_id}
                   for s, row in zip(chunk, scores) for label, v in zip(model.labels, row)]
+        if preview is not None:
+            for s, row in zip(chunk, scores):
+                preview.audio(s["segment_id"], dict(zip(model.labels, map(float, row))))
     _write_run_tables(run_id, video_row, base_rows(official), preds, root)
     return len(official)
 
@@ -228,10 +239,12 @@ def _fail(put, key: tuple[str, str], e: BaseException) -> None:
 
 
 def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels: dict, force: bool = False,
-                root=None, device: str = "cpu", report=None) -> dict[tuple[str, str], str]:
+                root=None, device: str = "cpu", report=None, keep_transcript: bool = True, segments=None,
+                preview=None) -> dict[tuple[str, str], str]:
     """Run the selected stages per video; one run per (video, stage). Returns {(video_id, stage): status} with
     status "done:<run_id>", "skipped:<run_id>" or "failed:<ErrorType>". One pair failing never stops the others.
-    `report(key, status, n_segments, secs)` is called as soon as each pair ends."""
+    `report(key, status, n_segments, secs)` is called as soon as each pair ends. `segments` ({video_id:
+    (segment rows, video row)}) replaces the official segments for those videos (a laptop run of a new video)."""
     import time
 
     from tpa_index.config import effective_settings, stage_config_hash
@@ -253,7 +266,11 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
     for video in videos:
         vid = video["video_id"]
         try:
-            official, video_row = official_segments(vid, root), official_video(vid, root)
+            if segments and vid in segments:
+                official = sorted(segments[vid][0], key=lambda r: r["start_s"])
+                video_row = segments[vid][1]
+            else:
+                official, video_row = official_segments(vid, root), official_video(vid, root)
             check_windows(video_row, effective_settings(pipeline, video), official)
         except Exception as e:  # noqa: BLE001
             for stage in stages:
@@ -279,10 +296,10 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
                             extract_audio(video, video_row["duration_s"], wav, rate)
                         if stage == "transcript":
                             ctx.n_segments = _transcript_stage(models[stage], wav, video_row, official, ctx.run_id,
-                                                               root)
+                                                               root, keep_transcript, preview)
                         else:
                             ctx.n_segments = _audio_stage(models[stage], wav, video_row, official, ctx.run_id,
-                                                          batch, rate, root)
+                                                          batch, rate, root, preview)
                     put((vid, stage), f"done:{ctx.run_id}", ctx.n_segments, time.perf_counter() - t0)
                 except Exception as e:  # noqa: BLE001
                     _fail(put, (vid, stage), e)
@@ -291,7 +308,7 @@ def run_signals(videos: list[dict], stages, models: dict, pipeline: dict, labels
 
         frame_todo = [(s, c) for s, c in todo if s in FRAME_STAGES]
         if frame_todo:
-            _frame_stages(video, video_row, official, frame_todo, models, pipeline, root, device, put)
+            _frame_stages(video, video_row, official, frame_todo, models, pipeline, root, device, put, preview)
     return results
 
 
@@ -307,7 +324,7 @@ def _score_segment_faces(scorer, frames) -> list:
                     np.cumsum([len(cs) for cs in crops])[:-1])
 
 
-def _frame_stages(video, video_row, official, todo, models, pipeline, root, device, put) -> None:
+def _frame_stages(video, video_row, official, todo, models, pipeline, root, device, put, preview=None) -> None:
     """People and expression share one streaming pass over 002's frame sampling, one official segment at a time.
     Each stage fails on its own; frames and face crops stay in memory and are dropped as soon as they are scored.
     The pass is timed once, and both runs record that runtime and peak memory (overlapping: do not sum)."""
@@ -337,10 +354,15 @@ def _frame_stages(video, video_row, official, todo, models, pipeline, root, devi
                 if not active:
                     break
                 frames = _sample_frames(container, stream, seg["start_s"], seg["end_s"], n_frames)
+                boxes = None
                 for stage in list(active):
                     try:
                         if stage == "people":
-                            out[stage][seg["segment_id"]] = median_count(models["people"].count(frames))
+                            people = models["people"]
+                            # boxes only for the in-memory preview; the run keeps the count
+                            boxes = people.boxes(frames) if preview is not None and hasattr(people, "boxes") else None
+                            counts = [len(b) for b in boxes] if boxes is not None else people.count(frames)
+                            out[stage][seg["segment_id"]] = median_count(counts)
                         else:
                             scorer = models["expression"]
                             out[stage][seg["segment_id"]] = aggregate_expression(
@@ -348,7 +370,9 @@ def _frame_stages(video, video_row, official, todo, models, pipeline, root, devi
                     except Exception as e:  # noqa: BLE001
                         _fail(put, (vid, stage), e)
                         active.remove(stage)
-                del frames
+                if preview is not None:
+                    preview.frames(seg, frames, boxes, out.get("expression", {}).get(seg["segment_id"]))
+                del frames, boxes
     except Exception as e:  # noqa: BLE001 (the video could not be decoded: every remaining stage fails)
         for stage in active:
             _fail(put, (vid, stage), e)

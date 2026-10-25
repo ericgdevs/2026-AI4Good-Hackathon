@@ -117,3 +117,5 @@ app:
   indicator_groups: [indicator]    # labels in these groups are stored with role indicator
   uncertain_label: uncertain_mixed # the rules label offered as the uncertain/mixed option
   skip_observation: clip_unavailable   # observation type logged by Skip
+help:
+  model: "qwen2.5:1.5b"      # optional Help assistant via Ollama on 127.0.0.1:11434 only; answers from help.yaml

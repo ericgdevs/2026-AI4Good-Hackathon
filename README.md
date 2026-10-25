@@ -90,6 +90,38 @@ Enter a reviewer (first name or role, never a participant's name), then pick a t
 
 The app listens on 127.0.0.1 only, never creates a share link and sends no telemetry. Clips are cut on demand into a temporary folder outside the repo and deleted when the next clip is shown and when the app exits.
 
+## Annotation export (006)
+
+```bash
+uv run tpa-index export                   # official moments + review log -> OUTPUT_DIR/exports/
+uv run tpa-index export --verified-only   # leave out moments whose primary label was rejected
+uv run tpa-index export --sample          # Devpost sample from mock data only -> docs/samples/
+```
+
+One record per official moment, in the case's 13 fields (`specs/006-export-demo/contracts/export-format.md`), as JSON and CSV. Each label shows its latest review; `review_decision` follows the primary label. Each run writes `annotations-{time}-{hex}-g{guideline}.json/.csv` (never overwritten) and refreshes `annotations-latest.json/.csv`. No reviewer names, filenames or transcript text.
+
+## Mac benchmark (006)
+
+```bash
+uv run tpa-index benchmark --video-id <id>   # type the id at run time; never commit it
+```
+
+Runs segment, predict, transcript, audio, people, expression and moments for one video on this machine (Mac model sizes from `pipeline.yaml`). Use a promo that already has every official stage, because the signal stages and moments work on the official segments. Each stage writes its usual runs row (`tpa-index runs`). The summary (`OUTPUT_DIR/benchmarks/benchmark-*.md/.json`) compares the Mac with the official HPC runs per hour of video, per stage and end to end. Processing time excludes model loading, which is shown once per stage. Benchmark runs never go into `config/official_runs.yaml`.
+
+## App tabs (006 redesign)
+
+The review app (`uv run tpa-index app`, 127.0.0.1 only) has seven tabs under a deep-purple top bar: Scorecard, Search moments, Review queue, Process a video, Blind labels, Export and Help. IBM Plex fonts come from Gradio's own bundled files, so nothing is fetched from the internet.
+
+- **Scorecard** (opens first): reads the newest complete `OUTPUT_DIR/results/insights-*` folder (run `tpa-index insights` first). Compare two phases (default early vs showcase). Shows youth voice time large, the four headline measures with every tag exactly as 005 wrote it, and facts from the newest `evaluate-*` folder and the time breakdown. **Download report** writes the plain-English Word report.
+- **Search moments**: a local filter over moments (label names, review status, "needs review", solo or group). It never searches transcripts. The same eval lock applies, and staff-led moments are hidden unless you ask for them. Selecting a result opens it in the Review queue.
+- **Review queue**: the queue for one video, the clip with what the AI noticed (suggestions, unvalidated), and your review. Accept, Edit, Reject and Defer (keys A, E, R and D; ↓ moves to the next item) save the same records as before. Ticking or unticking activities rejects AI labels or adds staff labels. The five observation buttons save a staff observation (`expression_*`, guideline 0.6.0), and the note is saved as `reviewer_note`. The AI's suggestion is shown as a ratio to its cut-off, never as a percentage.
+- **Process a video**: runs the laptop models on one video, one at a time, with a live preview (faces and the head area of each person blurred, in memory only; no image when blurring or person detection is unavailable). The run is registered in `OUTPUT_DIR/local_runs.yaml`, never as official: its moments show in Search and Review marked as a local run, view only, and no result changes.
+- **Blind labels**: unchanged.
+- **Export**: writes the annotation export (JSON and CSV) and offers it for download.
+- **Help**: the questions from `config/help.yaml`, searchable. A Help drawer on every tab can ask an optional local model (Ollama on 127.0.0.1 only); it sees only the help text, the question and the tab name.
+
+Screenshots for the deck come from mock data only (`tpa-index mock --clips` in a temporary `OUTPUT_DIR`).
+
 ## Data rules
 
 See `.specify/memory/constitution.md`. In short: no footage, filenames, or metadata in git or in AI assistant context; no identity (faces, tracks, embeddings); no judgments about people; every AI label is a suggestion that staff review. Assistant read-deny rules are in `.claude/settings.json`.

@@ -1,0 +1,19 @@
+# App palette: the only place app colours are defined (The Performance Academy accents on a light theme).
+# Every text/background pair must meet WCAG AA (4.5:1); tpa_index.config.load_theme checks this on load.
+# Teal and coral are chart fills and borders only: they fail AA as small text on white.
+background: "#F8F7F8"
+surface: "#FFFFFF"
+text: "#201C25"
+text_secondary: "#6F717A"
+accent: "#7851B9"        # buttons, selected tabs, headline chart series
+accent_deep: "#4100AD"   # headers, emphasis
+muted: "#C9C4CF"         # neutral chart fill (idle time, "other" series); never text
+border: "#E6E3EA"          # 1px box borders
+border_strong: "#D9D5DE"   # input and dropdown borders
+track: "#F1EFF3"           # gauge track, table row dividers, empty bars; never text
+accent_soft: "#F1ECF9"     # selected item background (text on it: text or accent_deep only)
+header_text: "#E4DAF7"     # inactive tab labels on the accent_deep top bar
+header_text_muted: "#D3C6F2"   # secondary text on the top bar
+attention: "#A3122A"       # "Second look" status text
+chart_series: ["#7851B9", "#0099B3", "#FF4255"]
+credit: "Built for The Performance Academy"

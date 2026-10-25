@@ -13,6 +13,7 @@ def _check(args) -> int:
     videos = load_videos()
     print("guard: ok")
     print(f"configs: ok ({len(labels['labels'])} labels, guideline {labels['guideline_version']})")
+    print(config.check_guideline(labels))
     from tpa_index.segment import discover_videos
 
     mapped = {(data_dir() / v["filename"]).resolve() for v in videos}
@@ -120,12 +121,22 @@ def _make_motion(motion_cfg: dict, labels: dict, dev: str):
                        motion_cfg["other_prompt"], motion_cfg["frames_per_window"])
 
 
+def _predict_run(v: dict, run_id: str, pipeline: dict, labels: dict, embedder, dev: str, motion=None, root=None,
+                 preview=None) -> dict:
+    """Score one video and write its predict run tables (shared by `predict` and the app's Process tab)."""
+    from tpa_index.schema import write_table
+    from tpa_index.score import predict_video
+
+    out = predict_video(v, pipeline, labels, embedder, run_id, device=dev, motion=motion, preview=preview)
+    for table in ("videos", "segments", "predictions", "moments"):
+        write_table(table, out[table], run_id, root)
+    return out
+
+
 def _predict(args) -> int:
     import os
 
     from tpa_index.runs import device
-    from tpa_index.schema import write_table
-    from tpa_index.score import predict_video
 
     videos = _select_videos(args)
     pipeline, labels = load_pipeline(), load_labels()
@@ -137,10 +148,7 @@ def _predict(args) -> int:
     motion = _make_motion(motion_cfg, labels, dev) if motion_cfg.get("enabled") else None
 
     def work(v, run_id):
-        out = predict_video(v, pipeline, labels, embedder, run_id, device=dev, motion=motion)
-        for table in ("videos", "segments", "predictions", "moments"):
-            write_table(table, out[table], run_id)
-        return len(out["segments"])
+        return len(_predict_run(v, run_id, pipeline, labels, embedder, dev, motion)["segments"])
 
     return _per_video("predict", videos, embedder.name, work)
 
@@ -194,7 +202,9 @@ def _signals(args) -> int:
                  "skipped": f"skipped (done: {detail})"}.get(kind, f"failed {detail}")
         print(f"{key[1]} {key[0]}: {shown}", flush=True)
 
-    results = run_signals(videos, stages, models, pipeline, labels, force=args.force, device=dev, report=report)
+    # transcript text is written on HPC (cuda) only; laptop runs keep speech yes/no and a character count
+    results = run_signals(videos, stages, models, pipeline, labels, force=args.force, device=dev, report=report,
+                          keep_transcript=dev == "cuda")
     failed = [f"{stage} {vid}" for (vid, stage), status in sorted(results.items()) if status.startswith("failed:")]
     if failed:
         print(f"failed: {', '.join(failed)}", file=sys.stderr)
@@ -410,6 +420,38 @@ def _app(args) -> int:
     return 0
 
 
+def _export(args) -> int:
+    from tpa_index import export
+
+    if args.sample:
+        paths = export.write_sample()
+        print(f"sample written (mock data only): {', '.join(p.name for p in paths)}")
+        return 0
+    counts, paths = export.export_official(verified_only=args.verified_only)
+    print("records: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    print(f"written: {', '.join(p.name for p in paths)} (+ annotations-latest.json/.csv)")  # names only, no paths
+    return 0
+
+
+def _benchmark(args) -> int:
+    from tpa_index import benchmark
+
+    results = benchmark.run_benchmark(args.video_id, args.videos)
+    summary = benchmark.summarize(results)
+    paths = benchmark.write_summary(summary)
+    print(benchmark.markdown(summary))
+    print(f"summary written: {', '.join(p.name for p in paths)}")  # names only, no paths
+    return 0 if all(r["error"] is None and r["run_ids"] for r in results) else 1
+
+
+def _render_overlay(args) -> int:
+    from tpa_index.render import parse_time, render_overlay
+
+    path, secs = render_overlay(args.video_id, parse_time(args.start), args.duration, args.out)
+    print(f"{path} ({secs:.0f} s)")  # the output path and duration only
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="tpa-index")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -455,6 +497,22 @@ def main(argv=None) -> int:
     pred = sub.choices["predict"]
     pred.add_argument("--kind", action="append", help="only videos of this kind (repeatable), e.g. promo")
     pred.add_argument("--model", help="model id (default: models.main.hpc on cuda, models.main.mac otherwise)")
+    # ---- 006: export and benchmark ----
+    exp = sub.add_parser("export", help="official annotation export (JSON + CSV) to OUTPUT_DIR/exports")
+    exp.add_argument("--verified-only", action="store_true", help="leave out moments whose primary was rejected")
+    exp.add_argument("--sample", action="store_true", help="write the Devpost sample from mock data to docs/samples")
+    exp.set_defaults(func=_export)
+    bench = sub.add_parser("benchmark", help="run every stage for one video on this machine; Mac vs HPC summary")
+    bench.add_argument("--video-id", required=True, help="the video to time (typed at run time, never stored)")
+    bench.add_argument("--videos", help="videos YAML (default: config/videos.local.yaml)")
+    bench.set_defaults(func=_benchmark)
+    ren = sub.add_parser("render-overlay", help="side-by-side 'models at work' MP4 of one stretch (faces blurred, "
+                                                "laptop models, no audio)")
+    ren.add_argument("--video-id", required=True)
+    ren.add_argument("--start", required=True, help="MM:SS (or H:MM:SS, or seconds)")
+    ren.add_argument("--duration", type=float, default=60, help="seconds (default 60)")
+    ren.add_argument("--out", help="output .mp4 outside the repo (default: OUTPUT_DIR/renders/)")
+    ren.set_defaults(func=_render_overlay)
     args = parser.parse_args(argv)
 
     install_redaction()

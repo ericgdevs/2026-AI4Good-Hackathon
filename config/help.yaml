@@ -1,0 +1,231 @@
+# Help tab questions and answers. Plain text only, no links. TPA staff can edit this file without changing code:
+# each entry needs a topic, a question and an answer. Topics appear in the order they first appear here.
+# Optional `tabs:` (search, review, blind, scorecard, process, export, help) lets the help assistant prefer that
+# entry when a question is asked from that tab.
+help:
+  - topic: Getting started
+    question: What is this app?
+    answer: >-
+      It helps TPA staff find meaningful moments in long program videos, check what the AI suggests, and share
+      trusted results with funders. Everything runs on this computer.
+  - topic: Getting started
+    question: Does anything leave this computer?
+    answer: >-
+      No. Videos, results and reviews stay here. Nothing is sent to cloud services, no faces are stored, and no
+      transcript text is shown or saved.
+  - topic: Getting started
+    question: What is a clip? What is a moment?
+    answer: >-
+      A clip is an 8-second slice of a video. A moment is a run of neighbouring clips with the same activity, like
+      one song.
+
+  - topic: The tabs
+    question: What is the Scorecard?
+    answer: >-
+      A program-level summary: youth indicators by phase (early, mid camp, showcase), who was leading, and how much
+      has been checked by staff. It never shows anything about an individual young person.
+  - topic: The tabs
+    question: What is Search moments for?
+    tabs: [search]
+    answer: >-
+      Finding moments fast: search for an activity (for example "solo singing"), see how many there are and where
+      they happen, and click one to review it.
+  - topic: The tabs
+    question: What is the Review queue?
+    tabs: [review]
+    answer: >-
+      Where staff check the AI's suggestions: watch the clip, then accept, edit, reject or defer. Every decision is
+      saved with who made it and when.
+  - topic: The tabs
+    question: What is Process a video?
+    answer: >-
+      It runs all the models on one video on this computer. When it finishes, the new moments are ready to search
+      and look at (view only).
+  - topic: The tabs
+    question: What are Blind labels?
+    tabs: [blind]
+    answer: >-
+      A quality check: you label clips without seeing the AI's answers, so the AI's accuracy can be measured fairly.
+      Staff use it occasionally, not every day.
+  - topic: The tabs
+    question: What does Export do?
+    answer: >-
+      It creates the full annotation data (JSON and CSV) with every label, time, decision and reviewer. The Word
+      report on the Scorecard is the plain-English summary for funders.
+
+  - topic: Reviewing
+    question: What do Accept, Edit, Reject and Defer mean?
+    tabs: [review]
+    answer: >-
+      Accept: the AI was right. Edit: save your corrections. Reject: the AI was wrong. Defer: someone else should
+      take a second look.
+  - topic: Reviewing
+    question: Do I have to review everything?
+    tabs: [review]
+    answer: >-
+      No. Review the moments you plan to use in reports or stories, and the ones marked "Needs review". Every review
+      makes the numbers more trustworthy.
+  - topic: Reviewing
+    question: What does "Needs review" mean?
+    tabs: [review, search]
+    answer: >-
+      The AI isn't sure: no activity clearly passed its cut-off, or two were too close to call.
+  - topic: Reviewing
+    question: What does "× above its cut-off" mean?
+    tabs: [review, search]
+    answer: >-
+      How strongly the AI matched that activity compared with the level it needs before suggesting it. Higher means
+      a stronger match. It is not a percentage.
+  - topic: Reviewing
+    question: What are the observation buttons (Confident, Positive…)?
+    tabs: [review]
+    answer: >-
+      Your own optional read of the moment, saved as a staff observation. The AI never fills these in.
+  - topic: Reviewing
+    question: Are there keyboard shortcuts?
+    tabs: [review]
+    answer: >-
+      A accept, E edit, R reject, D defer, ↓ next moment (not while typing in a text box).
+
+  - topic: Understanding the numbers
+    question: What do "Staff-verified", "Partly verified" and "AI estimate" mean?
+    answer: >-
+      Staff-verified: a person confirmed it. Partly verified: some of it was confirmed by staff, and the rest is AI.
+      AI estimate: only the AI so far; "unchecked" means no person has looked at it.
+  - topic: Understanding the numbers
+    question: What is youth voice time?
+    answer: >-
+      Minutes of young people speaking or singing, per hour of youth footage. Staff-led time is not counted.
+  - topic: Understanding the numbers
+    question: Why is staff-led time left out?
+    answer: >-
+      The indicators are about the young people, so time when staff are teaching or leading isn't counted.
+  - topic: Understanding the numbers
+    question: How accurate is the AI?
+    tabs: [blind, scorecard]
+    answer: >-
+      The Scorecard shows how often the AI's main activity matched a blind human label: clips a person labelled
+      without seeing the AI's answers. That's why staff review matters: the AI finds the moments, and people confirm
+      them.
+  - topic: Understanding the numbers
+    question: Why are expressions marked "unvalidated"?
+    answer: >-
+      They are AI estimates from faces in the footage, never checked by staff and never a statement about how anyone
+      feels.
+
+  - topic: Search moments
+    question: How do I search for moments?
+    tabs: [search]
+    answer: >-
+      Type a few words, like "dance" or "spoken word", and press Enter, or click one of the quick searches under the
+      box. You can also pick one video from the list next to the search box. Words like "solo", "group" and "needs
+      review" narrow the results.
+  - topic: Search moments
+    question: What does the strip under the search show?
+    tabs: [search]
+    answer: >-
+      Each small tick is one matching moment. The videos are laid end to end in program order, early sessions first,
+      then mid camp, then the showcase, so you can see where in the program the matches happen.
+  - topic: Search moments
+    question: What does "staff-led moments hidden" mean?
+    tabs: [search]
+    answer: >-
+      Moments where the AI thinks staff were leading are hidden by default, because the indicators are about the
+      young people. Tick "Show staff-led moments" to see them too. The line under the search always says how many
+      were hidden.
+  - topic: Search moments
+    question: How do I open a moment in the Review queue?
+    tabs: [search, review]
+    answer: >-
+      Click its row in the results. The app switches to the Review queue with that video and moment already
+      selected.
+  - topic: Search moments
+    question: Why does my search return so few results?
+    tabs: [search]
+    answer: >-
+      The AI only marks a moment when it clearly sees an activity, and its people count can miss a solo when someone
+      else is nearby on screen. Try fewer words, a different video, or a related activity.
+
+  - topic: Review queue
+    question: What do the queue statuses mean?
+    tabs: [review]
+    answer: >-
+      Not reviewed: nobody has looked at it yet. Accepted: staff confirmed the AI's labels. Edited: staff corrected a
+      label. Second look: someone deferred it for another person to check. Partly reviewed: some of its labels have
+      a decision and some don't yet.
+  - topic: Review queue
+    question: What does "AI noticed" show?
+    tabs: [review]
+    answer: >-
+      What the AI picked up in that moment: how many people were in view (a count only, never who), the sounds it
+      heard, whether someone was speaking (yes or no, never the words), and an expression estimate that no one has
+      checked.
+  - topic: Review queue
+    question: What are the activity checkboxes, and what does "main" mean?
+    tabs: [review]
+    answer: >-
+      The ticked boxes are the labels for this moment. "Main" marks the AI's main activity, the one Accept, Edit,
+      Reject and Defer act on. The other boxes let you confirm or change the rest.
+  - topic: Review queue
+    question: What happens when I tick or untick a label?
+    tabs: [review]
+    answer: >-
+      When you press a decision button, an unticked AI label is saved as rejected, and a label you ticked that the
+      AI didn't suggest is saved as added by staff. On Accept or Edit, the other ticked AI labels are saved as
+      accepted.
+  - topic: Review queue
+    question: What is the note for?
+    tabs: [review]
+    answer: >-
+      Anything a colleague should know about your decision, for example why you changed a label. It is saved with
+      your decision and appears in the annotation export. Please don't write names or judgments about a person.
+  - topic: Review queue
+    question: What is under "More"?
+    tabs: [review]
+    answer: >-
+      Adding other labels and observations, the table of the AI's labels for this moment, and the review history:
+      who decided what, and when.
+  - topic: Review queue
+    question: Why can't I review a laptop-processed video?
+    tabs: [review, process]
+    answer: >-
+      Videos processed on this laptop use smaller models that haven't been tuned yet, so they are view only. You can
+      look at their moments, but decisions are saved only on the official results.
+  - topic: Review queue
+    question: Why are some videos locked?
+    tabs: [review, search, blind]
+    answer: >-
+      The test videos stay hidden until blind labelling is finished, so nobody sees the AI's answers on them first.
+      That keeps the accuracy check fair.
+
+  - topic: Blind labels
+    question: Why are the AI's answers hidden in Blind labels?
+    tabs: [blind]
+    answer: >-
+      So your labels are your own. If you could see what the AI suggested, it could sway you, and the accuracy check
+      would not be fair.
+  - topic: Blind labels
+    question: How do I label a clip?
+    tabs: [blind]
+    answer: >-
+      Watch the clip, pick the main activity you see, tick everything else on the checklist that applies, including
+      who is leading (young people or staff), then press Save & next. The keys shown next to each choice are
+      shortcuts.
+  - topic: Blind labels
+    question: When should I choose Uncertain?
+    tabs: [blind]
+    answer: >-
+      When you can't tell what is happening: for example only staff are on screen, several things happen at once, or
+      the clip is unclear. Choosing Uncertain is better than guessing. Use Skip only if the clip won't play.
+  - topic: Blind labels
+    question: What are "overlap segments without a second reviewer"?
+    tabs: [blind]
+    answer: >-
+      A small set of clips that two different people label separately, so we can see how often people agree. They
+      still need a second person to label them.
+  - topic: Blind labels
+    question: What are blind labels used for?
+    tabs: [blind, scorecard]
+    answer: >-
+      They are the fair answer key: comparing them with the AI's suggestions shows how accurate the AI is. They also
+      help train an improved version of the AI, which is always tested on clips it did not learn from.

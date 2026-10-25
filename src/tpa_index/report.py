@@ -8,6 +8,8 @@ import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tpa_index.config import load_theme
+
 SCHEMA_VERSION = 1
 COLUMNS = {
     "metrics.csv": ["system", "scope", "group", "label", "metric", "value", "ci_low", "ci_high", "support",
@@ -76,11 +78,7 @@ def insights_summary(p: dict) -> str:
     lines += ["", "Positive expression rate: observable, unvalidated; segments with faces only.", ""]
     idx = [r for r in p["expression_index"] if r["scope_type"] == "phase"]
     if idx:
-        lines += ["## TPA Expression Index (optional example)", "",
-                  "Equal-weight mean of the four headline indicators, each scaled to 0-100 (shares x 100; per-hour "
-                  "values against the cap in `insights.expression_index`). Program level only, not a ranking. "
-                  "Caveats: performance share rises partly by design as the program moves toward the showcase, and "
-                  "expressions are unvalidated model estimates.", "",
+        lines += ["## TPA Expression Index (optional example)", "", INDEX_CAVEAT, "",
                   "| phase | index | " + " | ".join(HEADLINE_NAMES) + " | label | weakest component tag |",
                   "|---|---|" + "---|" * len(HEADLINE_NAMES) + "---|---|"]
         for ph in dict.fromkeys(r["scope"] for r in idx):
@@ -97,6 +95,10 @@ def insights_summary(p: dict) -> str:
 
 
 UNVALIDATED_TAG = "model estimate (unvalidated)"
+INDEX_CAVEAT = ("Equal-weight mean of the four headline indicators, each scaled to 0-100 (shares x 100; per-hour "
+                "values against the cap in `insights.expression_index`). Program level only, not a ranking. "
+                "Caveats: performance share rises partly by design as the program moves toward the showcase, and "
+                "expressions are unvalidated model estimates.")
 HEADLINE_NAMES = ["performance share", "solo moments", "youth voice", "positive expression"]
 TABLES = {"metrics.csv": "metrics", "confusion.csv": "confusion", "signal_indicators.csv": "signal_indicators",
           "ablation.csv": "ablation", "topup.csv": "topup", "failure_gallery.csv": "failure_gallery",
@@ -192,8 +194,8 @@ def evaluate_summary(p: dict) -> str:
 
 
 # ---- charts (white background, TPA palette, tag in every title or footnote) ----------------------------------------
-PALETTE = ["#7851B9", "#0099B3", "#FF4255"]
-TEXT, GREY = "#201C25", "#C9C4CF"
+_THEME = load_theme()  # colours live only in config/theme.yaml
+PALETTE, TEXT, WHITE, GREY = _THEME["chart_series"], _THEME["text"], _THEME["surface"], _THEME["muted"]
 
 
 def _plt():
@@ -202,7 +204,7 @@ def _plt():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    plt.rcParams.update({"figure.facecolor": "white", "axes.facecolor": "white", "savefig.facecolor": "white",
+    plt.rcParams.update({"figure.facecolor": WHITE, "axes.facecolor": WHITE, "savefig.facecolor": WHITE,
                          "text.color": TEXT, "axes.labelcolor": TEXT, "xtick.color": TEXT, "ytick.color": TEXT,
                          "axes.edgecolor": TEXT, "axes.titlecolor": TEXT, "font.size": 10})
     return plt
@@ -273,7 +275,7 @@ def evaluate_charts(p: dict, out: Path) -> list[str]:
     for c in conf:
         grid[classes.index(c["human_primary"]), classes.index(c["model_primary"])] = c["count"]
     fig, ax = plt.subplots(figsize=(1.2 + 0.6 * len(classes), 1.2 + 0.55 * len(classes)))
-    ax.imshow(grid, cmap=LinearSegmentedColormap.from_list("tpa", ["#FFFFFF", PALETTE[0]]))
+    ax.imshow(grid, cmap=LinearSegmentedColormap.from_list("tpa", [WHITE, PALETTE[0]]))
     ax.set_xticks(range(len(classes)), classes, rotation=45, ha="right")
     ax.set_yticks(range(len(classes)), classes)
     ax.set_xlabel("model primary")
@@ -282,7 +284,7 @@ def evaluate_charts(p: dict, out: Path) -> list[str]:
         for j in range(len(classes)):
             if grid[i, j]:
                 ax.text(j, i, int(grid[i, j]), ha="center", va="center",
-                        color="white" if grid[i, j] > grid.max() / 2 else TEXT)
+                        color=WHITE if grid[i, j] > grid.max() / 2 else TEXT)
     ax.set_title(f"Primary activity confusion, {heads[0]['system']} (metric)")
     files.append(_save(fig, out, "confusion.png", f"Tag: metric · counts of labeled eval segments · n={n}"))
 

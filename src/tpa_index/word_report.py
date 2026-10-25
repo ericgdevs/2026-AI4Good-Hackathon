@@ -33,14 +33,14 @@ TAG_MEANINGS = {
     "Staff-verified": "Every clip behind this number was checked and confirmed by TPA staff.",
     "Partly verified": "Part of this number was confirmed by staff; the exact tag gives the percentage.",
     "AI estimate (trained)": "No clip behind this number was checked by staff; it comes from an AI model trained on "
-                             "staff labels.",
+                             "blind human labels.",
     "AI estimate (unchecked)": "No clip behind this number was checked by staff; it is an AI suggestion only.",
 }
 EXACT = {"Staff-verified": "staff-verified", "Partly verified": "mixed (NN% staff-verified)",
          "AI estimate (trained)": "model estimate (learned)", "AI estimate (unchecked)": "model estimate (unvalidated)"}
 PROTECTION = [
     "Everything runs on one private computer. Nothing is sent to cloud services.",
-    "No faces are stored, and no names are recorded.",
+    "No faces are stored, and no participant names are recorded.",
     "There are no individual scores. Results describe the footage, never a young person.",
 ]
 GOOD_TO_KNOW = [
@@ -286,13 +286,13 @@ def write_word_report(dest, root=None, sample: bool = False) -> Path:
     r = ins.agreement_row()
     v = _num(r["primary_accuracy"]) if r else None
     if v is None:
-        doc.add_paragraph("Accuracy check: not available yet. No comparison with staff labels has been run.")
+        doc.add_paragraph("Accuracy check: not available yet. No comparison with blind human labels has been run.")
     else:
         lo, hi = _num(r["primary_accuracy_ci_low"]), _num(r["primary_accuracy_ci_high"])
         m = round(_num(r["n_segments"]) or 0)
         rng = f" (likely range {100 * lo:.0f}–{100 * hi:.0f}%)" if lo is not None and hi is not None else ""
-        doc.add_paragraph(f"Accuracy check: a staff member labelled {m} clips without seeing the AI's suggestions. "
-                          f"The AI's main activity matched the staff label in {100 * v:.0f}% of them{rng}. AI "
+        doc.add_paragraph(f"Accuracy check: a reviewer labelled {m} clips without seeing the AI's suggestions. "
+                          f"The AI's main activity matched the blind human label in {100 * v:.0f}% of them{rng}. AI "
                           "suggestions are a starting point; staff review confirms them.")
 
     # (6) how the data is protected

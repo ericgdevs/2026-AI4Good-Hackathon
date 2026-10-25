@@ -48,24 +48,40 @@ def official_videos(root=None) -> set[str]:
     return set(_official_by_video(official, "predict", root)) | set(_official_by_video(official, "moments", root))
 
 
-def video_choices(root=None) -> tuple[list[tuple[str, str]], str]:
-    """(choices, note) from the video config: plain names with the phase insights uses, never filenames."""
+def _named(root=None) -> tuple[list[tuple[str, dict]], set[str]]:
+    """(plain name, video) in id order with the phase insights uses, and the ids with official results."""
     from tpa_index.config import load_videos
     from tpa_index.demo import video_name
     from tpa_index.schema import read_official
     from tpa_index.view import current_phases
 
-    try:
-        videos = load_videos()
-        official = official_videos(root)
-    except (ConfigError, GuardError) as e:
-        return [], redact(f"No videos to process: {e}")
+    videos = load_videos()
+    official = official_videos(root)
     stored = {v["video_id"]: v["phase"] for v in read_official("videos", root=root, include_local=True).to_pylist()}
     current = current_phases()
     shown = [{**v, "phase": current.get(v["video_id"]) or stored.get(v["video_id"]) or v["phase"]}
              for v in sorted(videos, key=lambda v: v["video_id"])]
-    return [(f"{video_name(v, shown)} · {'has official results' if v['video_id'] in official else 'new'}"
-             + (" · eval video" if v["split"] == "eval" else ""), v["video_id"]) for v in shown], ""
+    return [(video_name(v, shown), v) for v in shown], official
+
+
+def video_choices(root=None) -> tuple[list[tuple[str, str]], str]:
+    """(choices, note) from the video config: plain names with the phase insights uses, never filenames."""
+    from tpa_index.schema import SchemaError
+
+    try:
+        named, official = _named(root)
+    except (ConfigError, GuardError, SchemaError) as e:
+        return [], redact(f"No videos to process: {e}")
+    return [(f"{name} · {'has official results' if v['video_id'] in official else 'new'}"
+             + (" · eval video" if v["split"] == "eval" else ""), v["video_id"]) for name, v in named], ""
+
+
+def display_name(video_id: str, root=None) -> str:
+    """`Video 7 · showcase` for the Progress header; the id only if the video list cannot be read."""
+    try:
+        return next((name for name, v in _named(root)[0] if v["video_id"] == video_id), video_id)
+    except Exception:  # noqa: BLE001 - a name is cosmetic; never stop a run for it
+        return video_id
 
 
 def estimate(duration_s: float, root=None) -> float | None:
@@ -100,6 +116,7 @@ class Job:
         self.moments: list[dict] = []
         self.n_segments = self.duration_s = self.estimate_s = None
         self.message = ""
+        self.name = video["video_id"]  # the plain display name, set by start()
         self.done = threading.Event()
         self._lock = threading.Lock()
 
@@ -133,7 +150,7 @@ class Job:
         with self._lock:
             end = self.finished if self.finished is not None else self.clock()
             counts = self.live.view()["counts"] if self.live is not None else {"predict": 0, "frames": 0}
-            return {"video_id": self.video["video_id"], "status": dict(self.status), "errors": dict(self.errors),
+            return {"video_id": self.video["video_id"], "name": self.name, "status": dict(self.status), "errors": dict(self.errors),
                     "elapsed_s": end - self.started, "estimate_s": self.estimate_s, "n_segments": self.n_segments,
                     "counts": counts, "done": self.done.is_set(), "message": self.message}
 
@@ -150,14 +167,21 @@ def start(video_id: str, root=None, make_embedder=None, make_models=None, make_b
         if video is None:
             _LOCK.release()
             return "Pick a video from the list first."
+        from tpa_index import cli
+        from tpa_index.config import load_theme
+        from tpa_index.runs import device
+
         pipeline = load_pipeline()
         try:
             blur = (make_blur or FaceBlur.load)(pipeline)
         except Exception:  # noqa: BLE001 - fail closed: the preview shows no images, processing still runs
             blur = None
-        from tpa_index.config import load_theme
-
-        job = Job(video, Live(blur, box_colour=load_theme()["accent"]))
+        try:  # the head-area cover for faces the detector misses; also reused by the people step
+            people = (make_models or cli._make_signal_models)(["people"], pipeline, device())["people"]
+        except Exception:  # noqa: BLE001 - fail closed: no person detection, no preview image
+            people = None
+        job = Job(video, Live(blur, box_colour=load_theme()["accent"], people=people))
+        job.name = display_name(video_id, root)
         threading.Thread(target=_worker, args=(job, root, make_embedder, make_models), daemon=True,
                          name="tpa-process").start()
         return job
@@ -221,6 +245,9 @@ def run(job: Job, root=None, make_embedder=None, make_models=None) -> None:
     models = {}
     for stage in SIGNAL_ORDER:
         try:
+            if stage == "people" and job.live is not None and job.live.people is not None:
+                models["people"] = job.live.people  # loaded once in start()
+                continue
             models.update(make_models([stage], pipeline, dev))
         except Exception as e:  # noqa: BLE001
             job.set(stage, "failed", plain(stage, e))
@@ -235,6 +262,7 @@ def run(job: Job, root=None, make_embedder=None, make_models=None) -> None:
 
 
 LAPTOP_NOTE = "Laptop run · kept separate from the official results."
+OFFICIAL_NOTE = "This video has official results, so the laptop run is kept but not shown in the other tabs."
 
 
 def summary(job: Job, root=None) -> str:
@@ -244,7 +272,9 @@ def summary(job: Job, root=None) -> str:
 
     vid, n = job.video["video_id"], len(job.moments)
     lines = [f"{n} moment{'s' if n != 1 else ''} found."]
-    if vid not in official_videos(root):
+    if vid in official_videos(root):
+        lines.append(OFFICIAL_NOTE)
+    else:
         lines.append(f"It now appears in Search moments and Review queue, marked “{LOCAL_BADGE}”. Reviews can't be "
                      "saved on it.")
         if job.video["split"] == "eval":

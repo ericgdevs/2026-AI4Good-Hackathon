@@ -68,7 +68,7 @@ On top of the models:
 
 ## Human in the loop
 
-- **Blind labeling**: staff label a seeded random sample of eval-video windows with **no model output shown**, using the full label checklist. These labels are the ground truth for evaluation. A second-labeler overlap set exists, but nobody labeled it (see Limitations).
+- **Blind labeling**: a reviewer labels a seeded random sample of eval-video windows with **no model output shown**, using the full label checklist. These labels are the ground truth for evaluation. A second-labeler overlap set exists, but nobody labeled it (see Limitations).
 - **Review mode**: for each moment, staff can accept, edit, reject or defer each AI label, add a label the model missed, or add an observation from a staff-editable list (for example, an audio problem). An on-screen reminder says: no names, no judgments about a person.
 - **Audit log**: every action is one append-only row with reviewer, time and annotation **guideline version**. Nothing is overwritten; the current state of a label is its latest review.
 - **Guideline versions**: any change to the label vocabulary bumps the guideline version. The app refuses to start if the vocabulary changed without a bump. Adding a staff observation type never changes the blind checklist, so evaluation labels stay comparable. The blind labels and every evaluation number in this card were produced under guideline **0.4.0/0.5.0** (identical blind checklists). The review app now runs **0.6.0**, which only adds five optional staff observation buttons (Confident, Positive, Neutral, Negative, Upset) and changes no label used in the evaluation.

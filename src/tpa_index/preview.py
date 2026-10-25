@@ -1,6 +1,6 @@
 """Process tab live preview, in memory only. Every frame is pixelated inside detected faces (padded) and over the head
-area of each person box before it is shown; when blurring is unavailable or fails, no image is shown at all (fail
-closed). An image leaves this module only as a base64 JPEG string for an HTML <img>: nothing is written to disk or
+area of each person box before it is shown; when blurring or person detection is unavailable or fails, no image is
+shown at all (fail closed: a missed face is still covered by the head area of its person box). An image leaves this module only as a base64 JPEG string for an HTML <img>: nothing is written to disk or
 logged. Boxes are plain rectangles: no IDs, no numbers, no tracking."""
 import base64
 import threading
@@ -17,6 +17,7 @@ BLOCKS = 6  # pixelation blocks across the longer side of a region
 HEIGHT = 360  # preview height in pixels
 SOUNDS = ("singing_voice", "music", "speech", "applause")
 HIDDEN = "Preview image hidden: face blurring is not available on this laptop."
+HIDDEN_PEOPLE = "Preview image hidden: person detection is not available on this laptop."
 
 
 def pixelate(img: np.ndarray, box) -> None:
@@ -106,13 +107,16 @@ class Live:
     """Callbacks for predict_video and run_signals, and the latest values the Process tab shows. Thread-safe. Keeps
     only the newest preview image (a string) and per-clip numbers; frames are dropped as soon as they are encoded."""
 
-    def __init__(self, blur: FaceBlur | None, interval: float = 1.0, clock=time.monotonic, box_colour=None):
+    def __init__(self, blur: FaceBlur | None, interval: float = 1.0, clock=time.monotonic, box_colour=None,
+                 people=None):
+        """`people` (a person counter with .boxes) covers the head area when a stage passes no boxes."""
         self.blur, self.interval, self.clock, self.box_colour = blur, interval, clock, box_colour
+        self.people = people
         self._lock = threading.Lock()
         self._last = float("-inf")
         self.info: dict[str, dict] = {}
         self.counts = {"predict": 0, "frames": 0}
-        self.image, self.shown = None, None  # data URL, {"segment_id", "start_s", "end_s", "people_boxes"}
+        self.image, self.shown, self.hidden = None, None, None  # data URL, {"segment_id", "start_s", "end_s", "people_boxes"}
 
     def _seg(self, sid):
         return self.info.setdefault(sid, {"activity": None, "others": [], "sounds": None, "speech": None,
@@ -158,18 +162,25 @@ class Live:
                 return
             self._last = now
         i = len(frames) // 2
-        frame_boxes = boxes[i] if boxes else []
-        blurred = self.blur.apply(frames[i], frame_boxes) if self.blur is not None else None
+        frame_boxes = boxes[i] if boxes is not None else None
+        if frame_boxes is None and self.people is not None:
+            try:
+                frame_boxes = self.people.boxes(frames[i:i + 1])[0]
+            except Exception:  # noqa: BLE001 - no head-area cover: show no image
+                frame_boxes = None
+        ok = self.blur is not None and frame_boxes is not None
+        blurred = self.blur.apply(frames[i], frame_boxes) if ok else None
         url = None if blurred is None else to_data_url(blurred, frame_boxes, self.box_colour)
         del blurred
         with self._lock:
             self.image = url
+            self.hidden = None if url else HIDDEN if self.blur is None or frame_boxes is not None else HIDDEN_PEOPLE
             self.shown = {"segment_id": seg["segment_id"], "start_s": seg["start_s"], "end_s": seg["end_s"],
-                          "people_boxes": boxes is not None}
+                          "people_boxes": frame_boxes is not None}
 
     def view(self) -> dict:
         """What the panel shows: the latest image (or why there is none) and the shown clip's values."""
         with self._lock:
             info = dict(self.info.get(self.shown["segment_id"], {})) if self.shown else {}
-            return {"image": self.image, "hidden": None if self.image or not self.shown else HIDDEN,
+            return {"image": self.image, "hidden": None if self.image or not self.shown else self.hidden or HIDDEN,
                     "shown": dict(self.shown) if self.shown else None, "counts": dict(self.counts), **info}

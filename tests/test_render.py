@@ -137,8 +137,41 @@ def test_output_refused_inside_the_repo(world):
         assert not out.exists()
 
 
+def test_refuses_without_person_detection(world, tmp_path):
+    def no_people(stages, pipe, dev):
+        if "people" in stages:
+            raise ConfigError("weights not found")
+        return world["make_models"](stages, pipe, dev)
+
+    out = tmp_path / "elsewhere" / "clip.mp4"
+    with pytest.raises(ConfigError, match="person detection is not available"):
+        render.render_overlay("t01", 0.0, 1, out=str(out), make_blur=lambda pipe: MarkBlur(),
+                              make_embedder=world["make_embedder"], make_models=no_people)
+    assert not out.parent.exists()  # nothing written
+
+
+def test_frames_go_grey_when_person_detection_fails(world, pipeline):
+    expr = list(pipeline["signals"]["expression"]["mapping"])
+
+    class Broken(FakePersonCounter):
+        def boxes(self, frames):
+            raise RuntimeError("yolo broke")
+
+    models = {"transcript": FakeTranscriber(), "audio": FakeAudioTagger(AUDIO_LABELS), "people": Broken(),
+              "expression": FakeExpressionScorer(expr)}
+    blur = MarkBlur()
+    path, _ = render.render_overlay("t01", 0.0, 1, make_blur=lambda pipe: blur, make_embedder=world["make_embedder"],
+                                    make_models=lambda stages, pipe, dev: {s: models[s] for s in stages})
+    grey = np.array(render._rgb(load_theme()["muted"]))
+    assert blur.calls == 0  # no face-only blur
+    for f in _frames(path):
+        assert np.allclose(_panel_centre(f, render.PAD), grey, atol=12)
+
+
 def test_missing_models_show_not_available_and_inputs_are_checked(world, tmp_path):
     def none_load(stages, pipe, dev):
+        if stages == ["people"]:
+            return {"people": FakePersonCounter()}  # required, like the blur
         raise ConfigError("weights not found")
 
     def no_embedder(model_id, dev):

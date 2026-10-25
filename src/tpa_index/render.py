@@ -2,8 +2,9 @@
 slide. Laptop models, this machine only.
 
 Privacy: every frame is blurred with the Process preview's blur (padded YuNet faces plus the top of each person box)
-before anything else uses it, and only blurred frames go, from memory, to the encoder. If blurring fails for a frame,
-that frame is plain grey ("blur unavailable"): the raw frame is never written. No frame images, crops, audio or other
+before anything else uses it, and only blurred frames go, from memory, to the encoder. Face blurring and person
+detection are both required. If either fails for a frame, that frame is plain grey ("blur unavailable"): the raw frame
+is never written. No frame images, crops, audio or other
 temp files are written, no run is registered (local_runs.yaml and official results are untouched), nothing is logged,
 and transcript text is dropped as soon as speech yes/no is known. The output must be outside the repo."""
 import os
@@ -82,8 +83,8 @@ def _rgb(hex_colour: str) -> tuple[int, int, int]:
 
 # ---- models (laptop sizes; each optional except the blur) ----
 def load_models(pipeline: dict, labels: dict, dev: str, make_embedder=None, make_models=None, make_blur=None) -> dict:
-    """The blur is required (refuse rather than risk an unblurred frame); a model that fails to load shows as
-    "not available" on the right panel."""
+    """The blur and the person detector (its head-area cover catches faces YuNet misses) are required: refuse rather
+    than risk an unblurred face. Any other model that fails to load shows as "not available" on the right panel."""
     from tpa_index import cli
     from tpa_index.preview import FaceBlur
 
@@ -97,7 +98,11 @@ def load_models(pipeline: dict, labels: dict, dev: str, make_embedder=None, make
             pipeline["models"]["main"]["hpc" if dev == "cuda" else "mac"], dev)
     except Exception:  # noqa: BLE001
         models["activity"] = None
-    for stage in ("transcript", "audio", "people", "expression"):
+    try:
+        models["people"] = (make_models or cli._make_signal_models)(["people"], pipeline, dev)["people"]
+    except Exception:  # noqa: BLE001
+        raise ConfigError("person detection is not available on this computer; nothing was rendered") from None
+    for stage in ("transcript", "audio", "expression"):
         try:
             models[stage] = (make_models or cli._make_signal_models)([stage], pipeline, dev)[stage]
         except Exception:  # noqa: BLE001
@@ -401,14 +406,13 @@ def render_overlay(video_id: str, start_s: float, duration_s: float = 60, out=No
             pending: list[tuple[float, np.ndarray]] = []
 
             def flush():
-                people = models.get("people")
                 try:
-                    boxes = people.boxes(np.stack([f for _, f in pending])) if people is not None else None
-                except Exception:  # noqa: BLE001 - no boxes; faces are still blurred
+                    boxes = models["people"].boxes(np.stack([f for _, f in pending]))
+                except Exception:  # noqa: BLE001 - no head-area cover: these frames go out grey
                     boxes = None
                 for i, (t, frame) in enumerate(pending):
-                    frame_boxes = boxes[i] if boxes else []
-                    blurred = models["blur"].apply(frame, frame_boxes)
+                    frame_boxes = boxes[i] if boxes is not None else None
+                    blurred = None if frame_boxes is None else models["blur"].apply(frame, frame_boxes)
                     emit(painter.grey() if blurred is None else painter.frame(blurred, frame_boxes, current(t)))
                     del blurred
                 pending.clear()

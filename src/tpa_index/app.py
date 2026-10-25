@@ -249,11 +249,6 @@ class ReviewController:
         self.thresholds = {lab: threshold(self.pipeline, self.model, lab) for lab in self.group_of}
 
     # ---- choices ----
-    def video_choices(self) -> tuple[list[tuple[str, str]], str]:
-        _, reason = review.eval_unlocked(self.root)
-        videos = review.review_videos(self.root, include_local=True)
-        return [(f"{v['video_id']} ({v['split']})", v["video_id"]) for v in videos], reason
-
     def label_filter_choices(self) -> list[tuple[str, str]]:
         from tpa_index.demo import display_label
 
@@ -882,15 +877,19 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                       [current, reviewer, obs_pick, note_box], save_out).then(*after)
 
         def open_from_search(hits, evt: gr.SelectData):
+            """Opens the moment in an unfiltered queue, and resets the filters to match, so the next filter change
+            starts from what is shown."""
             if not hits or not 0 <= evt.index[0] < len(hits):
-                return [gr.update()] * 5
+                return [gr.update()] * 9
             video_id, moment_id = hits[evt.index[0]]
             _, rows_v, _ = rv.timeline(video_id)
             i = next((k for k, r in enumerate(rows_v) if r.get("moment_id") == moment_id), None)
             return [gr.Tabs(selected="review"), gr.update(value=video_id), rows_v,
-                    gr.update(choices=rv.queue_choices(rows_v), value=None if i is None else str(i)), "review"]
+                    gr.update(choices=rv.queue_choices(rows_v), value=None if i is None else str(i)), "review",
+                    ANY, ANY, ANY, False]
 
-        s_results.select(open_from_search, [s_hits], [app_tabs, video, rows, queue, help_tab_name]).then(
+        s_results.select(open_from_search, [s_hits],
+                         [app_tabs, video, rows, queue, help_tab_name, f_label, f_needs, f_status, f_idle]).then(
             lambda v, r: (rv.queue_head(video_label(v), r), ""), [video, rows], [q_head, q_empty])
 
         # ---- Blind handlers (one reviewer name, typed in either tab) ----

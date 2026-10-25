@@ -391,7 +391,9 @@ def local_only(root=None) -> dict[str, dict[str, str]]:
     run. Videos that have official results never take a local run."""
     official = load_official()
     taken = set(_official_by_video(official, "predict", root)) | set(_official_by_video(official, "moments", root))
-    local = load_official(local_runs_path(root))
+    # a deleted laptop run folder is skipped, never an error: laptop runs are a convenience, not results
+    local = {stage: [r for r in ids if (_runs_root(root) / r / "runs.parquet").exists()]
+             for stage, ids in load_official(local_runs_path(root)).items()}
     return {stage: {v: r for v, r in _official_by_video(local, stage, root).items() if v not in taken}
             for stage in local}
 

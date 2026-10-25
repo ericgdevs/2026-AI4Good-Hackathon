@@ -21,7 +21,7 @@ flowchart TD
         SIG & WH & AST & YOLO & EXPR --> TAB[("Per-clip signals<br/>numbers only")]
 
         TAB --> MOM["Moments<br/>clips merged by activity,<br/>confidence, needs-review flag"]
-        TAB --> LRN["Learned layer<br/>trained on staff blind labels"]
+        TAB --> LRN["Learned layer<br/>trained on blind human labels"]
         LRN --> MOM
 
         subgraph APP["Review app (local only)"]
@@ -66,7 +66,7 @@ flowchart TD
 - **People counts (YOLO11)**: counts how many people are visible. It never tracks or matches a person.
 - **Faces (YuNet) → Expressions (EmotiEffLib)**: finds faces only to suggest a visible expression, such as a smile. Faces are handled in memory and never saved, and expressions are always marked "unvalidated".
 - **Per-clip signals**: the numbers from every model, one row per clip, with no images.
-- **Learned layer**: a small model trained on staff's blind labels that combines the signals into better activity, category and youth-vs-staff labels.
+- **Learned layer**: a small model trained on blind human labels that combines the signals into better activity, category and youth-vs-staff labels.
 - **Moments**: neighbouring clips with the same activity are merged into moments with a confidence score and a "needs review" flag.
 - **Process a video**: staff run the same pipeline on a new video from the app.
 - **Search moments**: find moments by activity, video or review status.

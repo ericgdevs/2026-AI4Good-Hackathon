@@ -40,7 +40,7 @@ help:
     question: What is Process a video?
     answer: >-
       It runs all the models on one video on this computer. When it finishes, the new moments are ready to search
-      and review.
+      and look at (view only).
   - topic: The tabs
     question: What are Blind labels?
     tabs: [blind]
@@ -104,8 +104,9 @@ help:
     question: How accurate is the AI?
     tabs: [blind, scorecard]
     answer: >-
-      On clips a person labelled without seeing the AI's answers, the AI's main activity matched about 46% of the
-      time. That's why staff review matters: the AI finds the moments, and people confirm them.
+      The Scorecard shows how often the AI's main activity matched a blind human label: clips a person labelled
+      without seeing the AI's answers. That's why staff review matters: the AI finds the moments, and people confirm
+      them.
   - topic: Understanding the numbers
     question: Why are expressions marked "unvalidated"?
     answer: >-

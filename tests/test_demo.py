@@ -97,8 +97,6 @@ def test_timeline_never_shows_transcript(world):
 
 def test_names_and_eval_lock(world):
     """The Timeline uses the Review tab's eval lock: eval videos are not listed and their rows stay empty."""
-    from tpa_index.app import ReviewController
-
     tl = _tl(world)
     names = dict((v, n) for n, v in tl.video_choices()[0])
     assert names["d01"] == "Video 1 · early · live (d01)"  # e01 is also "Video 1 · early", same kind: the ID breaks the tie
@@ -106,8 +104,7 @@ def test_names_and_eval_lock(world):
 
     _lock_eval(world)
     choices, reason = tl.video_choices()
-    rv = ReviewController(labels=world["labels"], pipeline=world["pipeline"])
-    assert reason and reason == rv.video_choices()[1]
+    assert reason and reason == review.eval_unlocked()[1]  # the Review tab's lock message
     assert [v for _, v in choices] == [v["video_id"] for v in review.review_videos()] == ["d01", "x01"]
     assert [n for n, _ in choices] == ["Video 1 · early", "Video 1 · phase not set"]
     for vid in ("e01", "e02"):

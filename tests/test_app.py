@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from tpa_index import schema
+from tpa_index import review, schema
 from tpa_index.clips import ClipCutter, session_dir
 from tpa_index.mock import generate, write_clips
 
@@ -167,7 +167,8 @@ def _review(mock_env, labels, tmp_path):
 
     cutter = RecordingCutter(tmp_path)
     rv = ReviewController(cutter, labels=labels, pipeline=mock_env["pipeline"])
-    choices, reason = rv.video_choices()
+    choices = [(v["video_id"], v["video_id"]) for v in review.review_videos(include_local=True)]
+    reason = review.eval_unlocked()[1]
     assert reason  # blind labeling not done: eval videos hidden, with the reason
     vid = max((v for _, v in choices), key=lambda v: sum(m["video_id"] == v for m in rv.moments))
     return rv, cutter, vid
@@ -176,7 +177,7 @@ def _review(mock_env, labels, tmp_path):
 def test_review_timeline_sorted_and_filters_narrow(mock_env, labels, tmp_path):
     rv, _, vid = _review(mock_env, labels, tmp_path)
     eval_ids = {v["video_id"] for v in schema.read_official("videos").to_pylist() if v["split"] == "eval"}
-    assert vid not in eval_ids and not {v for _, v in rv.video_choices()[0]} & eval_ids
+    assert vid not in eval_ids and not {v["video_id"] for v in review.review_videos()} & eval_ids
     assert rv.timeline(next(iter(eval_ids)))[0] == []  # a locked video id is refused even if sent directly
     table, rows, _ = rv.timeline(vid)
     starts = [r["start_s"] for r in rows]
@@ -324,7 +325,7 @@ def test_note_cleared_after_save_kept_on_error(mock_env, labels, tmp_path):
     fn = next(f for f in demo.fns.values() if any(t[0] == obs_btn for t in f.targets)
               and note_id in [o._id for o in f.outputs])
     rv = demo.review
-    vid = rv.video_choices()[0][0][1]
+    vid = review.review_videos()[0]["video_id"]
     current = rv.open(rv.timeline(vid)[1], 0)[0]
     obs = observation_types(labels)[0]
     refused = fn.fn(current, "", obs, "keep me")  # no reviewer: nothing saved

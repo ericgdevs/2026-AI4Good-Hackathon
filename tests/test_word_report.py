@@ -92,8 +92,8 @@ def test_report_formatting(world, tmp_path):
 def test_report_with_evaluate_and_plain_words(world, tmp_path):
     _evaluate_folder(world["folder"].parent)
     text = document_text(word_report.write_word_report(tmp_path / "r.docx"))
-    assert ("a staff member labelled 30 clips without seeing the AI's suggestions. The AI's main activity matched the "
-            "staff label in 70% of them (likely range 50–85%).") in text
+    assert ("a reviewer labelled 30 clips without seeing the AI's suggestions. The AI's main activity matched the "
+            "blind human label in 70% of them (likely range 50–85%).") in text
     for word in JARGON:
         assert not re.search(rf"\b{re.escape(word)}", text, re.IGNORECASE), word
     assert SENTINEL not in text and SECRET not in text

@@ -110,13 +110,15 @@ Runs segment, predict, transcript, audio, people, expression and moments for one
 
 ## App tabs (006 redesign)
 
-The review app (`uv run tpa-index app`, 127.0.0.1 only) has five tabs under a deep-purple top bar. IBM Plex fonts come from Gradio's own bundled files, so nothing is fetched from the internet.
+The review app (`uv run tpa-index app`, 127.0.0.1 only) has seven tabs under a deep-purple top bar: Scorecard, Search moments, Review queue, Process a video, Blind labels, Export and Help. IBM Plex fonts come from Gradio's own bundled files, so nothing is fetched from the internet.
 
-- **Scorecard** (opens first): reads the newest complete `OUTPUT_DIR/results/insights-*` folder (run `tpa-index insights` first). Compare two phases (default early vs showcase). Shows the TPA Expression Index gauge (four measures, equal weights), the four headline measures with every tag exactly as 005 wrote it, and facts from the newest `evaluate-*` folder and the time breakdown. **Download report** writes the plain-English Word report.
+- **Scorecard** (opens first): reads the newest complete `OUTPUT_DIR/results/insights-*` folder (run `tpa-index insights` first). Compare two phases (default early vs showcase). Shows youth voice time large, the four headline measures with every tag exactly as 005 wrote it, and facts from the newest `evaluate-*` folder and the time breakdown. **Download report** writes the plain-English Word report.
 - **Search moments**: a local filter over moments (label names, review status, "needs review", solo or group). It never searches transcripts. The same eval lock applies, and staff-led moments are hidden unless you ask for them. Selecting a result opens it in the Review queue.
 - **Review queue**: the queue for one video, the clip with what the AI noticed (suggestions, unvalidated), and your review. Accept, Edit, Reject and Defer (keys A, E, R and D; ↓ moves to the next item) save the same records as before. Ticking or unticking activities rejects AI labels or adds staff labels. The five observation buttons save a staff observation (`expression_*`, guideline 0.6.0), and the note is saved as `reviewer_note`. The AI's suggestion is shown as a ratio to its cut-off, never as a percentage.
+- **Process a video**: runs the laptop models on one video, one at a time, with a live preview (faces and the head area of each person blurred, in memory only; no image when blurring or person detection is unavailable). The run is registered in `OUTPUT_DIR/local_runs.yaml`, never as official: its moments show in Search and Review marked as a local run, view only, and no result changes.
 - **Blind labels**: unchanged.
 - **Export**: writes the annotation export (JSON and CSV) and offers it for download.
+- **Help**: the questions from `config/help.yaml`, searchable. A Help drawer on every tab can ask an optional local model (Ollama on 127.0.0.1 only); it sees only the help text, the question and the tab name.
 
 Screenshots for the deck come from mock data only (`tpa-index mock --clips` in a temporary `OUTPUT_DIR`).
 

@@ -381,15 +381,15 @@ class InsightsController:
         r = self.agreement_row()
         v = _num(r["primary_accuracy"]) if r else None
         if v is None:
-            out.append({"cap": "AI agreed with staff", "value": "n/a", "note": "no comparison with staff labels yet"})
+            out.append({"cap": "AI agreed with human labels", "value": "n/a", "note": "no comparison with blind human labels yet"})
         else:
             lo, hi = _num(r["primary_accuracy_ci_low"]), _num(r["primary_accuracy_ci_high"])
             m = round(_num(r["n_segments"]) or 0)
             rng = f" · range {100 * lo:.0f}–{100 * hi:.0f}%" if lo is not None and hi is not None else ""
-            out.append({"cap": "AI agreed with staff", "value": f"{100 * v:.0f}%",
-                        "note": f"{round(v * m)} of {m} blind-labelled clips matched the staff label{rng}"})
+            out.append({"cap": "AI agreed with human labels", "value": f"{100 * v:.0f}%",
+                        "note": f"{round(v * m)} of {m} blind-labelled clips matched the blind human label{rng}"})
         out.append({"cap": "Checked on", "value": r["n_segments"] if r else "n/a",
-                    "note": "blind-labelled clips, on videos the AI never tuned on" if r else "not available"})
+                    "note": "blind-labelled clips (cross-validated for the trained AI)" if r else "not available"})
         t = self.state.get("time")
         if t:
             youth, staff = _num(t["youth_s"]) / 60, (_num(t["staff_led_verified_s"]) + _num(t["staff_led_model_s"])) / 60

@@ -11,7 +11,7 @@ import yaml
 from tests.fakes import FakeAudioTagger, FakeEmbedder, FakeExpressionScorer, FakePersonCounter, FakeTranscriber
 from tests.test_cli import _predict_yaml
 from tpa_index import config, process, schema
-from tpa_index.preview import BLOCKS, HIDDEN, FaceBlur, Live, to_data_url
+from tpa_index.preview import BLOCKS, HIDDEN, HIDDEN_PEOPLE, FaceBlur, Live, to_data_url
 
 AUDIO_LABELS = ["singing_voice", "music", "speech", "applause", "silence"]
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".npy", ".webp", ".gif", ".tif", ".tiff"}
@@ -135,6 +135,28 @@ def test_choices_show_plain_names_phase_and_official_status_only(world, tmp_path
     choices, note = process.video_choices()
     assert note == "" and [v for _, v in choices] == ["t01", "t02", "t03"]
     assert all(".mp4" not in name for name, _ in choices) and choices[0][0] == "Video 1 · early · new"
+    assert process.display_name("t01") == "Video 1 · early" and process.display_name("zz9") == "zz9"
+
+
+def test_progress_header_shows_the_plain_name(world):
+    from tpa_index import ui_html
+
+    makers, _ = world
+    snap = _run("t01", makers).snapshot()
+    html = ui_html.process_status(snap)
+    assert snap["name"] == "Video 1 · early" and "Progress · Video 1 · early" in html
+
+
+def test_deleted_local_run_folder_is_skipped(world):
+    import shutil
+
+    makers, _ = world
+    job = _run("t01", makers)
+    shutil.rmtree(schema._runs_root(None) / job.run_ids["predict"][0])  # someone tidies the runs folder
+    assert "t01" not in schema.read_official("moments", include_local=True)["video_id"].to_pylist()
+    assert "t01" not in schema.read_official("videos", include_local=True)["video_id"].to_pylist()
+    choices, note = process.video_choices()
+    assert note == "" and [v for _, v in choices] == ["t01", "t02", "t03"]
 
 
 # ---- failures ----------------------------------------------------------------------------------------------------
@@ -201,7 +223,8 @@ def test_local_runs_never_change_official_reads(world, clip_videos, tmp_path):
     t01 = [r for r in schema.read_official("moments", include_local=True).to_pylist() if r["video_id"] == "t01"]
     assert {r["run_id"] for r in t01} <= {official}
     job = _run("t01", makers)
-    assert job.message.endswith(process.LAPTOP_NOTE) and "already has official results" not in job.message
+    assert job.message.endswith(process.LAPTOP_NOTE) and process.OFFICIAL_NOTE in job.message
+    assert "Search moments and Review queue" not in job.message
 
 
 def test_registry_replaces_older_local_run_and_refuses_official(world, clip_videos, tmp_path):
@@ -307,7 +330,7 @@ def test_preview_fails_closed():
     frame = _noise()
     assert FaceBlur(FakeDetector(fail=True)).apply(frame) is None
     for blur in (FaceBlur(FakeDetector(fail=True)), None):
-        live = Live(blur, interval=0.0)
+        live = Live(blur, interval=0.0, people=FakePersonCounter())
         live.window({"segment_id": "t01_0", "start_s": 0.0, "end_s": 8.0}, frame[None], {"dance": 0.4})
         view = live.view()
         assert view["image"] is None and view["hidden"] == HIDDEN
@@ -320,7 +343,11 @@ def test_shown_image_is_the_blurred_frame():
         def apply(self, frame, boxes=None):
             return np.full_like(frame, 128)
 
-    live = Live(Grey(), interval=0.0)
+    class Nobody:
+        def boxes(self, frames):
+            return [[] for _ in frames]  # no rectangles drawn: the image is only the blurred frame
+
+    live = Live(Grey(), interval=0.0, people=Nobody())
     live.window({"segment_id": "t01_0", "start_s": 0.0, "end_s": 8.0}, _noise()[None], {"dance": 0.4, "singing": 0.2})
     url = live.view()["image"]
     assert url.startswith("data:image/jpeg;base64,")
@@ -328,6 +355,60 @@ def test_shown_image_is_the_blurred_frame():
     assert abs(int(img.mean()) - 128) <= 2 and img.std() < 2  # the raw noise frame never reaches the page
     view = live.view()
     assert view["activity"] == "dance" and view["others"] == [("singing", pytest.approx(0.5))]
+
+
+class OnePerson:
+    """Person counter stand-in: one person filling the left quarter of every frame, bottom half."""
+
+    def __init__(self):
+        self.calls = []
+
+    def boxes(self, frames):
+        self.calls.append(len(frames))
+        return [[(0.0, 0.5, 0.25, 1.0)] for _ in frames]
+
+
+def test_preview_covers_the_head_area_when_the_stage_passes_no_boxes():
+    """The activity stage passes no person boxes: the preview runs person detection on the one shown frame, so a face
+    the detector misses (none here) is still covered by the head area."""
+    frame = _noise()
+    people = OnePerson()
+
+    class Keep:
+        def apply(self, img, boxes=None):
+            self.out = FaceBlur(FakeDetector()).apply(img, boxes)  # no face found
+            return self.out
+
+    blur = Keep()
+    live = Live(blur, interval=0.0, people=people)
+    live.window({"segment_id": "t01_0", "start_s": 0.0, "end_s": 8.0}, frame[None], {"dance": 0.4})
+    assert people.calls == [1] and live.view()["image"] and live.view()["shown"]["people_boxes"]
+    assert not np.array_equal(blur.out[60:74, 0:40], frame[60:74, 0:40])  # top 22% of the person box
+    assert np.array_equal(blur.out[80:, 60:], frame[80:, 60:])
+
+
+def test_preview_shows_no_image_without_person_detection():
+    calls = []
+
+    class Spy:
+        def apply(self, frame, boxes=None):
+            calls.append(1)
+            return frame
+
+    class Broken:
+        def boxes(self, frames):
+            raise RuntimeError("yolo broke")
+
+    seg = {"segment_id": "t01_0", "start_s": 0.0, "end_s": 8.0}
+    for people in (None, Broken()):
+        live = Live(Spy(), interval=0.0, people=people)
+        live.window(seg, _noise()[None], {"dance": 0.4})
+        view = live.view()
+        assert view["image"] is None and view["hidden"] == HIDDEN_PEOPLE
+    assert calls == []  # face-only blur is never shown
+    live = Live(Spy(), interval=0.0)
+    live.frames(seg, _noise()[None], [[(0.0, 0.5, 0.25, 1.0)]], None)  # the frame pass brings its own boxes
+    assert live.view()["image"] and calls == [1]
 
 
 def test_preview_boxes_are_plain_rectangles():
@@ -345,7 +426,7 @@ def test_preview_throttles_to_about_once_a_second():
             calls.append(1)
             return frame
 
-    live = Live(Spy(), interval=1.0, clock=lambda: t[0])
+    live = Live(Spy(), interval=1.0, clock=lambda: t[0], people=FakePersonCounter())
     seg = {"segment_id": "s", "start_s": 0.0, "end_s": 8.0}
     for step in (0.0, 0.3, 0.6, 1.1, 1.5, 2.2):
         t[0] = step

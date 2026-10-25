@@ -83,13 +83,21 @@ def test_no_app_data_in_the_prompt(fake, tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("error", [urllib.error.URLError(ConnectionRefusedError()),  # Ollama not running
-                                   urllib.error.HTTPError(assistant.OLLAMA_URL, 404, "model not found", {}, None),
+                                   urllib.error.HTTPError(assistant.OLLAMA_URL, 500, "server error", {}, None),
                                    TimeoutError()])
 def test_not_available_message(monkeypatch, error):
     monkeypatch.setattr(assistant, "_OPENER", FakeOllama(error=error))
     assert assistant.ask("What is a clip?", ITEMS) == (assistant.UNAVAILABLE, [])
     assert assistant.UNAVAILABLE == ("The help assistant isn't available on this computer (start Ollama to use it). "
                                      "You can still browse the Help tab.")
+
+
+def test_missing_model_names_the_model(monkeypatch):
+    error = urllib.error.HTTPError(assistant.OLLAMA_URL, 404, "model not found", {}, None)
+    monkeypatch.setattr(assistant, "_OPENER", FakeOllama(error=error))
+    assert assistant.ask("What is a clip?", ITEMS, model="qwen2.5:1.5b") == (
+        "The help assistant isn't available on this computer (start Ollama and make sure the model qwen2.5:1.5b is "
+        "installed). You can still browse the Help tab.", [])
 
 
 def test_no_match_or_empty_needs_no_model(fake):

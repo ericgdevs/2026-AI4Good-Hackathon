@@ -7,6 +7,7 @@ entries). Nothing is logged. The only network call is to Ollama on 127.0.0.1:114
 import json
 import math
 import re
+import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
@@ -16,6 +17,8 @@ MAX_QUESTION = 300
 TIMEOUT_S = 20
 UNAVAILABLE = ("The help assistant isn't available on this computer (start Ollama to use it). "
                "You can still browse the Help tab.")
+NO_MODEL = ("The help assistant isn't available on this computer (start Ollama and make sure the model {model} is "
+            "installed). You can still browse the Help tab.")
 DONT_KNOW = "I don't know that one — try the questions below."
 SYSTEM = ("You answer questions from TPA staff about this app. Answer ONLY from the help entries below, in 1-3 plain "
           "sentences. Never invent numbers, names or features. If the entries do not answer the question, reply "
@@ -78,6 +81,8 @@ def ask(question: str, items: list[dict], model: str = DEFAULT_MODEL, tab: str |
                "options": {"temperature": 0.2, "num_predict": 120}}
     try:
         answer = _post(OLLAMA_URL, payload)["message"]["content"].strip()
+    except urllib.error.HTTPError as e:  # Ollama is running; 404 means the model is not installed
+        return (NO_MODEL.format(model=model) if e.code == 404 else UNAVAILABLE), []
     except (OSError, ValueError, KeyError, TypeError):  # refused, timeout, HTTP 404 (no model), bad reply
         return UNAVAILABLE, []
     return answer or DONT_KNOW, [it["question"] for it in entries]

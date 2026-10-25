@@ -74,13 +74,13 @@ def test_compare_dropdowns(world):
 def test_scorecard_facts(world):
     ins = demo.InsightsController()
     facts = {f["cap"]: f for f in ins.facts()}
-    assert facts["AI agreed with staff"]["value"] == "n/a"  # no evaluate result yet
+    assert facts["AI agreed with human labels"]["value"] == "n/a"  # no evaluate result yet
     _evaluate_folder(report.latest_result("insights").parent)
     ins.load()
     facts = {f["cap"]: f for f in ins.facts()}
-    agreed = facts["AI agreed with staff"]
+    agreed = facts["AI agreed with human labels"]
     assert agreed["value"] == "70%"
-    assert agreed["note"] == "21 of 30 blind-labelled clips matched the staff label · range 50–85%"  # 0.7 x 30
+    assert agreed["note"] == "21 of 30 blind-labelled clips matched the blind human label · range 50–85%"  # 0.7 x 30
     assert facts["Checked on"]["value"] == "30"
     assert "staff-led left out" in facts["Youth time counted"]["note"]
     clips = read_official("segments").num_rows  # every official clip in the mock world

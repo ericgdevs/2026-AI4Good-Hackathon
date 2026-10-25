@@ -207,7 +207,7 @@ def process_status(snap: dict | None) -> str:
         timing = (f"Elapsed {_mins(snap['elapsed_s'])} · about {_mins(max(est - snap['elapsed_s'], 0))} left "
                   "(estimate from earlier runs on this laptop; model loading not included).")
     return f"""<section class="tpa-box" aria-label="Progress" style="padding:4px 0 0">
-<div class="tpa-row-between" style="padding:20px 20px 8px"><p class="tpa-cap">Progress · {escape(snap["video_id"])}</p>
+<div class="tpa-row-between" style="padding:20px 20px 8px"><p class="tpa-cap">Progress · {escape(snap.get("name") or snap["video_id"])}</p>
 <span class="tpa-small tpa-mono">{escape(timing)}</span></div>
 <div style="overflow-x:auto"><table class="tpa-table"><tbody>{"".join(rows)}</tbody></table></div></section>"""
 
@@ -246,7 +246,7 @@ def preview_panel(view: dict | None, labels: dict) -> str:
 <div class="tpa-preview"><div>{image}{people}</div><div class="tpa-col" style="gap:10px;font-size:14px">
 {activity}<div><p class="tpa-label">Sounds</p>{meter}</div><span>Speech: {speech}</span>
 <span>Expression (unvalidated): {expression}</span></div></div>
-<p class="tpa-small">In memory only: frames are blurred inside face boxes and never saved.</p></section>"""
+<p class="tpa-small">In memory only: frames are blurred over faces and the head area of each person, and never saved.</p></section>"""
 
 
 def filter_help(items: list[dict], query: str) -> list[dict]:

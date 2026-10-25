@@ -116,18 +116,33 @@ def facts(items: list[dict]) -> str:
     return f'<section class="tpa-box tpa-facts" aria-label="Confidence in these numbers">{cells}</section>'
 
 
-def strip(count: int, marks: list[float], hidden: int = 0) -> str:
-    """'N moments match' and where they fall along the shown videos, early -> showcase."""
+def staff_line(found: dict) -> str:
+    """Always says what the staff-led toggle did."""
+    n, hidden = found["staff"], found["hidden"]
+    if not n:
+        return f"No staff-led moments found by the AI in {'these videos' if found['all_videos'] else 'this video'}."
+    plural = "s" if n != 1 else ""
+    return f"{n} staff-led moment{plural} hidden." if hidden else f"{n} staff-led moment{plural} shown."
+
+
+def strip(found: dict) -> str:
+    """'N moments match', the staff-led line, and where matches fall along the videos in phase order."""
     p = _p()
+    count = len(found["results"])
     ticks = "".join(f'<div style="position:absolute;top:4px;bottom:4px;width:4px;border-radius:2px;'
-                    f'background:{p["accent"]};left:calc({100 * m:.2f}% - 2px)"></div>' for m in marks)
-    more = f" · {hidden} staff-led moment{'s' if hidden != 1 else ''} hidden" if hidden else ""
+                    f'background:{p["accent"]};left:calc({100 * m:.2f}% - 2px)"></div>' for m in found["marks"])
+    edges = "".join(f'<div style="position:absolute;top:0;bottom:0;width:1px;background:{p["border_strong"]};'
+                    f'left:{100 * lo:.2f}%"></div>' for _, lo, _ in found["spans"][1:])
+    labels = "".join(f'<span class="tpa-small" style="position:absolute;left:{100 * lo:.2f}%;'
+                     f'width:{100 * (hi - lo):.2f}%;text-align:center;white-space:nowrap;overflow:hidden;'
+                     f'text-overflow:ellipsis">{escape(phase_name(ph) if ph != "unknown" else "Phase not set")}</span>'
+                     for ph, lo, hi in found["spans"])
     return f"""<section class="tpa-box tpa-pad tpa-col" aria-label="Where the results are">
-<div class="tpa-row-between" style="font-size:14px"><span><strong class="tpa-mono">{count}</strong> moment{'s' if count != 1 else ''} match{'' if count != 1 else 'es'}{more}</span>
-<span class="tpa-muted">across the shown videos, early → showcase</span></div>
+<div class="tpa-row-between" style="font-size:14px"><span><strong class="tpa-mono">{count}</strong> moment{'s' if count != 1 else ''} match{'' if count != 1 else 'es'}</span>
+<span class="tpa-muted">{escape(staff_line(found))}</span></div>
 <div style="position:relative;height:28px;border-radius:4px;background:{p["track"]}" role="img"
- aria-label="Positions of matching moments">{ticks}</div>
-<div class="tpa-row-between tpa-small"><span>Early sessions</span><span>Mid program</span><span>Showcase</span></div>
+ aria-label="Positions of matching moments, early sessions to showcase">{edges}{ticks}</div>
+<div style="position:relative;height:18px">{labels}</div>
 </section>"""
 
 
@@ -322,8 +337,28 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
   font-size: 14px; }}
 #scorecard-title h1 {{ margin: 0; font-size: 26px; font-weight: 700; color: {p['text']}; }}
 #scorecard-subtitle p, #review-queue-head p {{ margin: 0; font-size: 14px; color: {p['text_secondary']}; }}
-#review-queue label {{ border-radius: 6px; }}
-#review-queue label.selected {{ background: {p['accent_soft']}; color: {p['accent_deep']}; }}
+/* review queue: its own scrolling box, capped to the window; one line per item plus a smaller status line */
+#review-queue-box {{ height: min(calc(100vh - 220px), 760px); overflow-y: auto; border: 1px solid {p['border']};
+  border-radius: 6px; background: {p['surface']}; padding: 6px; flex: none; }}
+#review-queue-box:not(:has(label)) {{ display: none; }}
+#review-queue-box .form {{ background: transparent !important; border: 0 !important; box-shadow: none !important; }}
+#review-queue {{ border: 0 !important; padding: 0 !important; background: transparent !important; }}
+#review-queue .wrap {{ flex-direction: column; gap: 4px; }}
+#review-queue label {{ width: 100%; box-sizing: border-box; border-radius: 6px; padding: 8px 10px; margin: 0;
+  border: 0 !important; background: transparent !important; box-shadow: none !important; align-items: flex-start; }}
+#review-queue label span {{ display: block; min-width: 0; white-space: pre; overflow: hidden; text-overflow: ellipsis;
+  font-size: 12px; line-height: 1.45; color: {p['text_secondary']}; }}
+#review-queue label span::first-line {{ font-size: 14px; font-weight: 600; color: {p['text']}; }}
+#review-queue label.selected {{ background: {p['accent_soft']} !important; }}
+#review-queue label.selected span::first-line {{ color: {p['accent_deep']}; }}
+#review-queue-head, #review-queue-head > div {{ padding: 0 !important; border: 0 !important;
+  background: transparent !important; }}
+.tpa-qhead {{ display: flex; gap: 4px; font-size: 14px; white-space: nowrap; min-width: 0; color: {p['text']}; }}
+.tpa-qname {{ overflow: hidden; text-overflow: ellipsis; min-width: 0; }}
+.tpa-qcount {{ flex: none; color: {p['text_secondary']}; }}
+#review-queue-empty p {{ font-size: 14px; color: {p['text_secondary']}; margin: 0; }}
+#review-lock p, #search-lock p {{ font-size: 12px; color: {p['text_secondary']}; margin: 0; }}
+#review-suggest p {{ font-size: 18px; margin: 0; }}
 .tpa-hint {{ font-size: 12px; color: {p['text_secondary']}; }}
 .tpa-hint kbd {{ font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border-radius: 4px;
   background: {p['track']}; border: 1px solid {p['border']}; color: {p['text']}; }}

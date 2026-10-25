@@ -228,3 +228,85 @@ def test_header_is_one_bar(world):
     assert by["app-credit-footer"]["props"]["visible"] is not False
     assert by["app-credit-header"]["props"]["visible"] is False
     assert "logo" not in css.lower() and not [c for c in _app(world).config["components"] if c["type"] == "image"]
+
+
+def _local_phases(tmp_path, monkeypatch, phases):
+    """A live video config (as staff edit it) that sets phases differently from the stored runs."""
+    import yaml
+
+    from tpa_index import config
+
+    videos = [{"video_id": v, "filename": f"mock/{v}.mp4", "orientation": "landscape", "kind": "live",
+               "phase": ph, "cohort": None, "split": "eval" if v.startswith("e") else "dev"} for v, ph in phases.items()]
+    path = tmp_path / "videos.live.yaml"
+    path.write_text(yaml.safe_dump({"videos": videos}))
+    monkeypatch.setattr(config, "LOCAL_VIDEOS", path)
+
+
+def test_live_phase_in_every_dropdown(world, tmp_path, monkeypatch):
+    """Item 1: a phase set in the video config shows in Search, Review and Process, as insights reads it."""
+    from tpa_index import process
+    from tpa_index.app import build_app
+
+    _local_phases(tmp_path, monkeypatch, {"d01": "mid", "e01": "early", "e02": "showcase", "x01": "showcase"})
+    tl = demo.DemoController(labels=world["labels"], pipeline=world["pipeline"])
+    names = {v: n for n, v in tl.video_choices()[0]}
+    assert names["x01"].startswith("Video 1 · showcase") and names["d01"].startswith("Video 1 · mid")
+    assert not any("phase not set" in n for n in names.values())
+    by = _by_id(build_app(labels=world["labels"], pipeline=world["pipeline"]))
+    for dd in ("search-video", "review-video"):
+        shown = {v: n for n, v in by[dd]["props"]["choices"]}
+        assert shown["x01"].startswith("Video 1 · showcase") and shown["d01"].startswith("Video 1 · mid"), dd
+    proc = {v: n for n, v in process.video_choices()[0]}
+    assert proc["x01"].startswith("Video 1 · showcase") and proc["d01"].startswith("Video 1 · mid")
+    spans = [ph for ph, _, _ in tl.search("")["spans"]]
+    assert spans == ["early", "mid", "showcase"]  # lanes in phase order
+
+
+def test_staff_led_toggle_and_line(world):
+    """Item 2: the toggle really filters, and a line always says what happened."""
+    tl = demo.DemoController(labels=world["labels"], pipeline=world["pipeline"])
+    none = tl.search("")
+    assert none["staff"] == 0 and ui_html.staff_line(none) == "No staff-led moments found by the AI in these videos."
+    one = tl.search("", video_id="d01")
+    assert ui_html.staff_line(one) == "No staff-led moments found by the AI in this video."
+    target = one["results"][0]["moment_id"]
+    for s in tl.segments:  # plant a staff-led moment: every clip in it classed staff-led
+        if s["moment_id"] == target:
+            s["cls"] = "staff_model"
+    hidden, shown = tl.search("", video_id="d01"), tl.search("", video_id="d01", show_staff=True)
+    assert target not in [r["moment_id"] for r in hidden["results"]] and hidden["hidden"] == 1
+    assert target in [r["moment_id"] for r in shown["results"]] and shown["hidden"] == 0
+    assert ui_html.staff_line(hidden) == "1 staff-led moment hidden."
+    assert ui_html.staff_line(shown) == "1 staff-led moment shown."
+    assert "1 staff-led moment hidden." in ui_html.strip(hidden)
+
+
+def test_review_queue_details(world, monkeypatch):
+    """Items 4, 7-11: compact queue items, More collapsed, readable sorted pickers, nothing to decide until a moment
+    is picked, and a plain message for a video without moments."""
+    from tpa_index.app import EMPTY_QUEUE, PICK_MOMENT, ReviewController, build_app
+    from tpa_index.demo import display_label
+
+    rv = ReviewController(labels=world["labels"], pipeline=world["pipeline"])
+    rows = rv.timeline("d01")[1]
+    first = rv.queue_choices(rows)[0][0]
+    assert first.split("\n") == [f"0:00–0:32 · {display_label(rows[0]['primary_label'], world['labels'])}", "Not reviewed"]
+    head = rv.queue_head("Video 1 · early", rows)
+    assert "To review · Video 1 · early" in head and "0 / 3 done" in head
+    assert rv.suggestion(None) == PICK_MOMENT
+
+    by = _by_id(build_app(labels=world["labels"], pipeline=world["pipeline"]))
+    assert by["review-suggest"]["props"]["value"] == PICK_MOMENT
+    for b in ("accept", "edit", "reject", "defer"):
+        assert by[f"review-{b}"]["props"]["interactive"] is False
+    assert by["review-more"]["props"]["open"] is False
+    for dd in ("review-add-label", "review-add-obs"):
+        names = [n for n, _ in by[dd]["props"]["choices"]]
+        assert names == sorted(names, key=str.lower) and not any("_" in n for n in names), dd
+    assert "Performance" in [n for n, _ in by["review-add-label"]["props"]["choices"]]
+    assert "Staging issue" in [n for n, _ in by["review-add-obs"]["props"]["choices"]]
+
+    assert rv.queue_empty("d01", rows) == ""
+    rv.moments = [m for m in rv.moments if m["video_id"] != "x01"]  # a video where the AI found no moment
+    assert rv.queue_empty("x01", rv.timeline("x01")[1]) == EMPTY_QUEUE

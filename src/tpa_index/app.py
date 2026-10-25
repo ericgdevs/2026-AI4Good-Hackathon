@@ -243,7 +243,15 @@ class ReviewController:
         return [(f"{v['video_id']} ({v['split']})", v["video_id"]) for v in videos], reason
 
     def label_filter_choices(self) -> list[tuple[str, str]]:
-        return [(ANY, ANY)] + [(n, n) for n in self.vocab + self.observations]
+        from tpa_index.demo import display_label
+
+        return [(ANY, ANY)] + [(display_label(n, self.labels), n) for n in self.vocab + self.observations]
+
+    def named(self, names) -> list[tuple[str, str]]:
+        """(readable name, stored name) pairs, sorted by the readable name (the Add and Edit pickers)."""
+        from tpa_index.demo import display_label
+
+        return sorted(((display_label(n, self.labels), n) for n in names), key=lambda c: c[0].lower())
 
     def edit_choices(self, current, label) -> list[str]:
         group = self.group_of.get(label)
@@ -362,9 +370,15 @@ class ReviewController:
         from tpa_index.demo import display_label, queue_status
 
         state = self._state()
-        return [(f"{_fmt_time(r['start_s'], r['end_s'])} · {display_label(r['primary_label'], self.labels)} — "
+        return [(f"{_fmt_time(r['start_s'], r['end_s'])} · {display_label(r['primary_label'], self.labels)}\n"
                  f"{queue_status(r, state)}" if r["kind"] == "moment" else
-                 f"{_fmt_time(r['start_s'], r['end_s'])} · idle", str(i)) for i, r in enumerate(rows)]
+                 f"{_fmt_time(r['start_s'], r['end_s'])} · Idle\nno labels", str(i)) for i, r in enumerate(rows)]
+
+    def queue_empty(self, video_id, rows, msg="") -> str:
+        """The line shown instead of an empty queue: no moments at all in the video, or none match the filters."""
+        if not video_id or rows:
+            return ""
+        return EMPTY_QUEUE if not self.timeline(video_id)[1] else msg
 
     def queue_head(self, video_name: str, rows) -> str:
         from tpa_index.demo import queue_status
@@ -372,13 +386,19 @@ class ReviewController:
         state = self._state()
         moments = [r for r in rows if r["kind"] == "moment"]
         done = sum(queue_status(r, state) in ("Accepted", "Edited") for r in moments)
-        return f"**To review · {video_name}** · {done} / {len(moments)} done" if video_name else "Pick a video."
+        if not video_name:
+            return "Pick a video."
+        from html import escape
+
+        # the video name may shorten with "…"; the done count always stays visible on the same line
+        return (f'<div class="tpa-qhead"><strong class="tpa-qname">To review · {escape(video_name)}</strong>'
+                f'<span class="tpa-qcount">· {done} / {len(moments)} done</span></div>')
 
     def suggestion(self, current) -> str:
         from tpa_index.demo import display_label, strength_text
 
         if current is None:
-            return ""
+            return PICK_MOMENT
         if current["video_id"] in self.local:
             return (f"AI suggests **{display_label(current['primary_label'], self.labels)}** · {LOCAL_BADGE} · "
                     "view only")
@@ -529,6 +549,8 @@ def process_video(video_id, root=None, labels=None, poll=0.5, **makers):
            gr.update(value=rows, visible=bool(rows)))
 
 
+PICK_MOMENT = "Pick a moment from the queue."
+EMPTY_QUEUE = "No moments found in this video. The AI didn't find a clear activity here."
 QUICK_SEARCHES = {"Solo singing": "solo singing", "Spoken word": "spoken word", "Group performance": "group performance",
                   "Needs review": "needs review"}
 SEARCH_HEADERS = ["video · time", "label", "details", "review status"]
@@ -563,7 +585,7 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
         found = tl.search(query, video_id or None, show_staff)
         rows = [[f"{r['video']} · {r['time']}", r["label"], r["detail"], r["review_status"]] for r in found["results"]]
         hits = [(r["video_id"], r["moment_id"]) for r in found["results"]]
-        return ui_html.strip(len(rows), found["marks"], found["hidden"]), rows, hits
+        return ui_html.strip(found), rows, hits
 
     with gr.Blocks(analytics_enabled=False, title="This Is ME · TPA") as demo:
         demo.blind, demo.review, demo.timeline, demo.insights = blind, rv, tl, ins
@@ -620,10 +642,12 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                     reviewer = gr.Textbox(label="Reviewer", placeholder=REVIEWER_HINT, elem_id="reviewer", scale=2)
                 lock_note = gr.Markdown(s_reason, elem_id="review-lock")
                 rows, current = gr.State([]), gr.State(None)
-                with gr.Row(equal_height=False):
-                    with gr.Column(scale=1, min_width=220):
-                        q_head = gr.Markdown("Pick a video.", elem_id="review-queue-head")
-                        queue = gr.Radio([], show_label=False, elem_id="review-queue")
+                with gr.Row(equal_height=False, elem_id="review-panes"):
+                    with gr.Column(scale=1, min_width=260):
+                        q_head = gr.HTML("Pick a video.", elem_id="review-queue-head")
+                        q_empty = gr.Markdown("", elem_id="review-queue-empty")
+                        with gr.Column(elem_id="review-queue-box"):
+                            queue = gr.Radio([], show_label=False, elem_id="review-queue")
                         with gr.Accordion("Filter the queue", open=False, elem_id="review-filters"):
                             f_label = gr.Dropdown(rv.label_filter_choices(), value=ANY, label="Label",
                                                   elem_id="review-f-label")
@@ -632,13 +656,13 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                             f_status = gr.Dropdown([ANY, *review.STATUSES], value=ANY, label="Status",
                                                    elem_id="review-f-status")
                             f_idle = gr.Checkbox(False, label="Show idle", elem_id="review-f-idle")
-                    with gr.Column(scale=3, min_width=420):
-                        r_clip = gr.Video(autoplay=True, interactive=False, label="Moment (with context)",
+                    with gr.Column(scale=4, min_width=420):
+                        r_clip = gr.Video(autoplay=True, interactive=False, label="Moment (with context)", height=340,
                                           elem_id="review-clip")
                         r_noticed = gr.HTML(ui_html.noticed(None), elem_id="review-noticed")
                         r_msg = gr.Markdown(elem_id="review-msg")
-                    with gr.Column(scale=2, min_width=300, elem_id="review-decide"):
-                        r_suggest = gr.Markdown(elem_id="review-suggest")
+                    with gr.Column(scale=2, min_width=320, elem_id="review-decide"):
+                        r_suggest = gr.Markdown(PICK_MOMENT, elem_id="review-suggest")
                         r_acts = gr.CheckboxGroup([], label="Activities in this clip", elem_id="review-activities")
                         gr.Markdown("**Your observation** (optional)", elem_id="review-obs-title")
                         with gr.Row(elem_classes="tpa-pills"):
@@ -650,10 +674,14 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                                               max_lines=2, elem_id="review-note")
                         gr.Markdown(REMINDER, elem_id="review-reminder")
                         with gr.Row(elem_classes="tpa-decide"):
-                            accept_btn = gr.Button("Accept", variant="primary", min_width=0, elem_id="review-accept")
-                            edit_btn = gr.Button("Edit", min_width=0, elem_id="review-edit")
-                            reject_btn = gr.Button("Reject", min_width=0, elem_id="review-reject")
-                            defer_btn = gr.Button("Defer", min_width=0, elem_id="review-defer")
+                            accept_btn = gr.Button("Accept", variant="primary", min_width=0, interactive=False,
+                                                   elem_id="review-accept")
+                            edit_btn = gr.Button("Edit", min_width=0, interactive=False,
+                                                   elem_id="review-edit")
+                            reject_btn = gr.Button("Reject", min_width=0, interactive=False,
+                                                   elem_id="review-reject")
+                            defer_btn = gr.Button("Defer", min_width=0, interactive=False,
+                                                   elem_id="review-defer")
                         edit_to = gr.Dropdown([], label="Edit main label to", elem_id="review-edit-to")
                         with gr.Row(equal_height=True):
                             gr.HTML(SHORTCUT_HINT, elem_id="review-hint")
@@ -662,10 +690,11 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                         with gr.Accordion("More: other labels, observations and history", open=False,
                                           elem_id="review-more"):
                             with gr.Row():
-                                add_pick = gr.Dropdown(rv.vocab, label="Add label", elem_id="review-add-label")
+                                add_pick = gr.Dropdown(rv.named(rv.vocab), label="Add label",
+                                                       elem_id="review-add-label")
                                 add_btn = gr.Button("Add label", elem_id="review-add")
                             with gr.Row():
-                                obs_pick = gr.Dropdown(rv.observations, label="Add observation",
+                                obs_pick = gr.Dropdown(rv.named(rv.observations), label="Add observation",
                                                        elem_id="review-add-obs")
                                 obs_btn = gr.Button("Add observation", elem_id="review-obs")
                             panel = gr.Dataframe(headers=PANEL_HEADERS, interactive=False, label="AI labels",
@@ -748,7 +777,8 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
 
         # ---- Review handlers ----
         filters = [video, f_label, f_needs, f_status, f_idle]
-        pane = [current, r_clip, panel, history, m_status, r_msg, r_suggest, r_acts, r_noticed, edit_to]
+        decide_btns = [accept_btn, edit_btn, reject_btn, defer_btn]
+        pane = [current, r_clip, panel, history, m_status, r_msg, r_suggest, r_acts, r_noticed, edit_to, *decide_btns]
 
         def video_label(video_id):
             return next((n for n, v in tl.video_choices()[0] if v == video_id), "")
@@ -756,23 +786,27 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
         def refresh(video_id, label, needs, status_v, idle, keep=None):
             _, rows_v, msg = rv.timeline(video_id, label, needs, status_v, idle)
             value = keep if keep is not None and keep in {str(i) for i in range(len(rows_v))} else None
+            empty = rv.queue_empty(video_id, rows_v, msg)
             return [rows_v, gr.update(choices=rv.queue_choices(rows_v), value=value),
-                    rv.queue_head(video_label(video_id), rows_v) if video_id else msg]
+                    rv.queue_head(video_label(video_id), rows_v) if video_id else msg, empty]
 
         def open_item(rows_v, value):
             if value in (None, "") or not rows_v:
-                return [None, None, [], [], "", "", "", gr.update(choices=[], value=[]), ui_html.noticed(None),
-                        gr.update(choices=[], value=None)]
+                return [None, None, [], [], "", "", PICK_MOMENT, gr.update(choices=[], value=[]),
+                        ui_html.noticed(None), gr.update(choices=[], value=None),
+                        *[gr.update(interactive=False)] * len(decide_btns)]
             m, clip_path, panel_v, _, history_v, status_v, msg = rv.open(rows_v, int(value))
             choices, ticked = rv.activities(m)
             info = tl.summary(m["moment_id"]) if m else None
             edit_choices = rv.edit_choices(m, m["primary_label"]) if m else []
+            can_decide = m is not None and m["video_id"] not in rv.local  # laptop-only videos are view only
             return [m, clip_path, panel_v, history_v, status_v, msg, rv.suggestion(m),
                     gr.update(choices=choices, value=ticked), ui_html.noticed(info),
-                    gr.update(choices=edit_choices, value=None)]
+                    gr.update(choices=rv.named(edit_choices), value=None),
+                    *[gr.update(interactive=can_decide)] * len(decide_btns)]
 
         for comp in filters:
-            comp.input(refresh, filters, [rows, queue, q_head])
+            comp.input(refresh, filters, [rows, queue, q_head, q_empty])
         queue.change(open_item, [rows, queue], pane)
 
         def next_item(rows_v, value):
@@ -789,7 +823,7 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
 
         save_out = [panel, history, m_status, r_msg, note_box]
         after = (lambda v, lab, nd, st, idl, keep: refresh(v, lab, nd, st, idl, keep), [*filters, queue],
-                 [rows, queue, q_head])
+                 [rows, queue, q_head, q_empty])
         for btn, action in ((accept_btn, "accept"), (edit_btn, "edit"), (reject_btn, "reject"), (defer_btn, "defer")):
             btn.click(lambda c, who, ticked, to, n, a=action: saved(rv.decide(c, who, a, ticked, to, n)),
                       [current, reviewer, r_acts, edit_to, note_box], save_out).then(*after)
@@ -811,7 +845,7 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                     gr.update(choices=rv.queue_choices(rows_v), value=None if i is None else str(i))]
 
         s_results.select(open_from_search, [s_hits], [app_tabs, video, rows, queue]).then(
-            lambda v, r: rv.queue_head(video_label(v), r), [video, rows], q_head)
+            lambda v, r: (rv.queue_head(video_label(v), r), ""), [video, rows], [q_head, q_empty])
 
         # ---- Blind handlers (one reviewer name, typed in either tab) ----
         reviewer.input(lambda v: v, reviewer, blind_reviewer)

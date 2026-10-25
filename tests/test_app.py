@@ -288,7 +288,9 @@ def test_review_tab_reminder_and_observation_choices(mock_env, labels):
     demo = build_app(cutter=mock_env["cutter"], pipeline=mock_env["pipeline"], labels=labels)
     by_id = {c["props"].get("elem_id"): c["props"] for c in _components(demo)}
     assert by_id["review-reminder"]["value"] == REMINDER and "No names. No judgments about a person." in REMINDER
-    assert [v for _, v in by_id["review-add-obs"]["choices"]] == observation_types(labels)
+    choices = by_id["review-add-obs"]["choices"]  # every observation type, readable names, sorted by them
+    assert sorted(v for _, v in choices) == sorted(observation_types(labels))
+    assert [n for n, _ in choices] == sorted((n for n, _ in choices), key=str.lower) and "Staging issue" in dict(choices)
 
 
 def test_reviewer_names_are_case_insensitive(mock_env, labels):

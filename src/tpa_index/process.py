@@ -49,17 +49,23 @@ def official_videos(root=None) -> set[str]:
 
 
 def video_choices(root=None) -> tuple[list[tuple[str, str]], str]:
-    """(choices, note) from the video config: video IDs only, never filenames."""
+    """(choices, note) from the video config: plain names with the phase insights uses, never filenames."""
     from tpa_index.config import load_videos
+    from tpa_index.demo import video_name
+    from tpa_index.schema import read_official
+    from tpa_index.view import current_phases
 
     try:
         videos = load_videos()
         official = official_videos(root)
     except (ConfigError, GuardError) as e:
         return [], redact(f"No videos to process: {e}")
-    return [(f"{v['video_id']} · {'has official results' if v['video_id'] in official else 'new'}"
-             + (" · eval video" if v["split"] == "eval" else ""), v["video_id"])
-            for v in sorted(videos, key=lambda v: v["video_id"])], ""
+    stored = {v["video_id"]: v["phase"] for v in read_official("videos", root=root, include_local=True).to_pylist()}
+    current = current_phases()
+    shown = [{**v, "phase": current.get(v["video_id"]) or stored.get(v["video_id"]) or v["phase"]}
+             for v in sorted(videos, key=lambda v: v["video_id"])]
+    return [(f"{video_name(v, shown)} · {'has official results' if v['video_id'] in official else 'new'}"
+             + (" · eval video" if v["split"] == "eval" else ""), v["video_id"]) for v in shown], ""
 
 
 def estimate(duration_s: float, root=None) -> float | None:

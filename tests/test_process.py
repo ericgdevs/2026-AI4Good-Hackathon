@@ -129,10 +129,10 @@ def test_one_run_at_a_time(world):
         process._LOCK.release()
 
 
-def test_choices_show_ids_and_official_status_only(world, tmp_path):
+def test_choices_show_plain_names_phase_and_official_status_only(world, tmp_path):
     choices, note = process.video_choices()
     assert note == "" and [v for _, v in choices] == ["t01", "t02", "t03"]
-    assert all(".mp4" not in name for name, _ in choices) and choices[0][0] == "t01 · new"
+    assert all(".mp4" not in name for name, _ in choices) and choices[0][0] == "Video 1 · early · new"
 
 
 # ---- failures ----------------------------------------------------------------------------------------------------

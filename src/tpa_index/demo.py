@@ -191,7 +191,7 @@ class DemoController:
         want_solo, want_group = "solo" in text.split(), "group" in text.split()
         rest = [w for w in text.split() if w not in ("solo", "group", "performance")] if (want_solo or want_group) \
             else text.split()
-        results, hidden = [], 0
+        results, hidden, staff = [], 0, 0
         for m in self.moments:
             if m["video_id"] not in allowed or (video_id and m["video_id"] != video_id):
                 continue
@@ -206,6 +206,7 @@ class DemoController:
             ok &= not want_group or "group_performance" in labs or (people is not None and people >= 2)
             if not ok:
                 continue
+            staff += info["staff_led"]
             if info["staff_led"] and not show_staff:
                 hidden += 1
                 continue
@@ -217,10 +218,13 @@ class DemoController:
                             "time": _fmt_time(m["start_s"], m["end_s"]),
                             "label": display_label(m["primary_label"], self.labels),
                             "detail": " · ".join(d for d in detail if d), "review_status": status})
-        return {"results": results, "hidden": hidden, "marks": self._marks(results, allowed, video_id)}
+        marks, spans = self._marks(results, allowed, video_id)
+        return {"results": results, "hidden": hidden, "staff": staff, "marks": marks, "spans": spans,
+                "all_videos": not video_id}
 
-    def _marks(self, results, allowed, video_id) -> list[float]:
-        """Where each match falls (0-1) along the shown videos laid end to end, early -> showcase."""
+    def _marks(self, results, allowed, video_id) -> tuple[list[float], list[tuple[str, float, float]]]:
+        """Where each match falls (0-1) along the shown videos laid end to end in phase order (early -> mid ->
+        showcase, then phase not set), and each phase's span on that line."""
         order = {"early": 0, "mid": 1, "showcase": 2}
         vids = sorted((v for v in allowed.values() if not video_id or v["video_id"] == video_id),
                       key=lambda v: (order.get(v["phase"], 3), v["video_id"]))
@@ -229,7 +233,15 @@ class DemoController:
         offset, total = {}, 0.0
         for v in vids:
             offset[v["video_id"]], total = total, total + length[v["video_id"]]
-        return [(offset[r["video_id"]] + r["start_s"]) / total for r in results if total]
+        if not total:
+            return [], []
+        spans: dict[str, list[float]] = {}
+        for v in vids:
+            ph = v["phase"] if v["phase"] in order else "unknown"
+            lo, hi = offset[v["video_id"]] / total, (offset[v["video_id"]] + length[v["video_id"]]) / total
+            spans.setdefault(ph, [lo, hi])[1] = hi
+        return ([(offset[r["video_id"]] + r["start_s"]) / total for r in results],
+                [(ph, lo, hi) for ph, (lo, hi) in spans.items() if hi > lo])
 
 
 QUEUE_STATUS = {"unreviewed": "Not reviewed", "deferred": "Second look", "partly": "Partly reviewed"}

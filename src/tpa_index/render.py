@@ -17,9 +17,9 @@ from tpa_index.config import ConfigError, load_labels, load_pipeline, load_theme
 from tpa_index.paths import GuardError, repo_root
 
 FPS, WIDTH, HEIGHT = 12, 1920, 1080
-PAD, GAP, TOP = 40, 40, 100  # outer margin, gap between panels, top of the panel images
+PAD, GAP, TOP = 40, 40, 96  # outer margin, gap between panels, top of the panel images
 PANEL_W = (WIDTH - 2 * PAD - GAP) // 2
-IMG_H = round(PANEL_W * 9 / 16)
+IMG_H = 440  # leaves room under the image for the three sections at sizes readable from the back of a room
 SOUND_NAMES = {"singing_voice": "Singing", "music": "Music", "speech": "Speech", "applause": "Applause"}
 BLUR_UNAVAILABLE = "blur unavailable"
 NA = "not available"
@@ -54,18 +54,19 @@ def output_path(out, video_id: str, start_s: float, duration_s: float) -> Path:
 
 def has_letters(font) -> bool:
     """False for a font that would draw boxes: some bundled web fonts are subsets without basic Latin letters."""
-    return font.getmask("V").getbbox() != font.getmask("W").getbbox()
+    return bytes(font.getmask("V")) != bytes(font.getmask("W"))  # a missing glyph draws the same box for both
 
 
-def _font(size: int, bold: bool = False):
-    """IBM Plex Sans from Gradio's bundled fonts when it can be read and has the letters, else Pillow's own font."""
+def _font(size: int, bold: bool = False, family: str = "IBMPlexSans"):
+    """IBM Plex (Sans or Mono) from Gradio's bundled fonts when it can be read and has the letters, else Pillow's
+    own font."""
     from PIL import ImageFont
 
     try:
         import gradio
 
-        folder = Path(gradio.__file__).parent / "templates/frontend/static/fonts/IBMPlexSans"
-        for name in (["IBMPlexSans-Bold.woff2"] if bold else []) + ["IBMPlexSans-Regular.woff2"]:
+        folder = Path(gradio.__file__).parent / "templates/frontend/static/fonts" / family
+        for name in ([f"{family}-Bold.woff2"] if bold else []) + [f"{family}-Regular.woff2"]:
             font = ImageFont.truetype(str(folder / name), size)
             if has_letters(font):
                 return font
@@ -194,13 +195,26 @@ def clip_info(video: dict, path: Path, clips: list[tuple[float, float]], pipelin
 
 
 # ---- drawing ----
+def _mix(a: str, b: str, f: float) -> tuple[int, int, int]:
+    """Theme colour a moved a share f towards theme colour b (a lighter accent without a new colour)."""
+    return tuple(round(x + (y - x) * f) for x, y in zip(_rgb(a), _rgb(b)))
+
+
+def _mmss(secs: float) -> str:
+    return f"{int(secs // 60)}:{int(secs % 60):02d}"
+
+
 class Painter:
-    """Lays out one 1920x1080 frame: blurred video left, the same blurred frame with person boxes and the current
-    clip's AI notes right. Colours from config/theme.yaml."""
+    """Lays out one 1920x1080 frame: blurred video left; right, the same blurred frame with plain person boxes and
+    the current clip's AI notes in three sections. Colours from config/theme.yaml, IBM Plex."""
+
+    BAR_W = 420  # activity bar length
 
     def __init__(self, labels: dict):
         self.labels, self.theme = labels, load_theme()
-        self.h1, self.body, self.small, self.bold = _font(34, True), _font(26), _font(21), _font(26, True)
+        self.h1, self.mono = _font(34, True), _font(26, family="IBMPlexMono")
+        self.label, self.label_b, self.head = _font(26), _font(26, True), _font(19)
+        self.value, self.note = _font(32, True), _font(19)
 
     def _fit(self, img: np.ndarray) -> np.ndarray:
         import cv2
@@ -223,64 +237,91 @@ class Painter:
         import cv2
         from PIL import Image, ImageDraw
 
-        from tpa_index.demo import display_label
-
         t = self.theme
         canvas = Image.new("RGB", (WIDTH, HEIGHT), _rgb(t["background"]))
         draw = ImageDraw.Draw(canvas)
         left_x, right_x = PAD, PAD + PANEL_W + GAP
         for x, title in ((left_x, "Video"), (right_x, "What the AI notices")):
-            draw.text((x, TOP - 54), title, fill=_rgb(t["accent_deep"]), font=self.h1)
+            draw.text((x, TOP - 18), title, fill=_rgb(t["accent_deep"]), font=self.h1, anchor="ls")
             draw.rectangle((x, TOP, x + PANEL_W - 1, TOP + IMG_H - 1), fill=_rgb(t["text"]))
+        if item:
+            draw.text((right_x + PANEL_W, TOP - 18), f"clip {_mmss(item['start_s'])}–{_mmss(item['end_s'])}",
+                      fill=_rgb(t["text_secondary"]), font=self.mono, anchor="rs")
         small = self._fit(blurred)
         h, w = small.shape[:2]
         oy = TOP + (IMG_H - h) // 2
         canvas.paste(Image.fromarray(small), (left_x + (PANEL_W - w) // 2, oy))
         boxed = np.array(small, copy=True)
-        for x0, y0, x1, y1 in boxes or []:
+        for x0, y0, x1, y1 in boxes or []:  # plain rectangles: no IDs, no per-person labels
             cv2.rectangle(boxed, (round(x0 * w), round(y0 * h)), (round(x1 * w), round(y1 * h)), _rgb(t["accent"]), 3)
         canvas.paste(Image.fromarray(boxed), (right_x + (PANEL_W - w) // 2, oy))
         del small, boxed
-
-        below = TOP + IMG_H + 24
-        draw.text((left_x, below), "Faces blurred · nothing saved", fill=_rgb(t["text_secondary"]), font=self.small)
-        n = len(boxes or [])
-        draw.text((right_x, below), f"person detection (counts only): {n} {'person' if n == 1 else 'people'}",
-                  fill=_rgb(t["text_secondary"]), font=self.small)
-        self._notes(draw, right_x, below + 44, item, display_label)
+        draw.text((left_x, TOP + IMG_H + 22), "Faces blurred · nothing saved", fill=_rgb(t["text_secondary"]),
+                  font=self.head)
+        self._notes(draw, right_x, TOP + IMG_H + 20, item or {}, len(boxes or []))
         return np.asarray(canvas)
 
-    def _notes(self, draw, x, y, item, display_label) -> None:
-        t, name = self.theme, (lambda lab: display_label(lab, self.labels))  # noqa: E731
-        item = item or {}
-        act = item.get("activity")
-        draw.text((x, y), "AI suggestion (uncalibrated): " + (name(act) if act else NA), fill=_rgb(t["text"]),
-                  font=self.bold)
-        others = " · ".join(f"{name(lab)} {r:.2f}×" for lab, r in item.get("others") or [])
-        if others:
-            draw.text((x, y + 36), "next: " + others, fill=_rgb(t["text_secondary"]), font=self.small)
-        y += 84
-        sounds = item.get("sounds")
+    def _section(self, draw, x: int, y: int, title: str) -> int:
+        """A thin divider and a small grey heading; returns where the content starts."""
+        draw.line((x, y, x + PANEL_W, y), fill=_rgb(self.theme["border"]), width=2)
+        draw.text((x, y + 12), title, fill=_rgb(self.theme["text_secondary"]), font=self.head)
+        return y + 48
+
+    def _notes(self, draw, x: int, y: int, item: dict, n_people: int) -> None:
+        from tpa_index.demo import display_label
+
+        t = self.theme
+        name = lambda lab: display_label(lab, self.labels)  # noqa: E731
+        grey, text = _rgb(t["text_secondary"]), _rgb(t["text"])
+
+        # 1. activity: the top suggestion and the next two, as bars relative to the top (never percentages)
+        y = self._section(draw, x, y, "Activity (SigLIP2 · uncalibrated)")
+        bar_x = x + 330
+        if item.get("activity") is None:
+            draw.text((x, y), NA, fill=grey, font=self.label)
+        else:
+            rows = [(item["activity"], 1.0, True)] + [(lab, r, False) for lab, r in item.get("others") or []]
+            for i, (lab, ratio, top) in enumerate(rows[:3]):
+                row = y + i * 40
+                draw.text((x, row + 15), name(lab), fill=text if top else grey, font=self.label_b if top else self.label,
+                          anchor="lm")
+                draw.rectangle((bar_x, row + 5, bar_x + self.BAR_W, row + 25), fill=_rgb(t["track"]))
+                colour = _rgb(t["accent"]) if top else _mix(t["accent"], t["surface"], 0.55)
+                draw.rectangle((bar_x, row + 5, bar_x + round(self.BAR_W * max(0.0, min(ratio, 1.0))), row + 25),
+                               fill=colour)
+                draw.text((x + PANEL_W, row + 15), "top" if top else f"{ratio:.2f}×", fill=text if top else grey,
+                          font=self.label_b if top else self.label, anchor="rm")
+        y += 3 * 40 + 8
+
+        # 2. sounds: four bars, labels in one column
+        y = self._section(draw, x, y, "Sounds (AST)")
+        sounds, sx = item.get("sounds"), x + 170
         for i, (key, label) in enumerate(SOUND_NAMES.items()):
-            row = y + i * 34
-            draw.text((x, row), label, fill=_rgb(t["text"]), font=self.small)
-            draw.rectangle((x + 130, row + 6, x + 130 + 300, row + 24), fill=_rgb(t["track"]))
+            row = y + i * 36
+            draw.text((x, row + 14), label, fill=text, font=self.label, anchor="lm")
+            draw.rectangle((sx, row + 5, x + PANEL_W, row + 23), fill=_rgb(t["track"]))
             if sounds is not None and key in sounds:
-                draw.rectangle((x + 130, row + 6, x + 130 + round(300 * sounds[key]), row + 24),
+                draw.rectangle((sx, row + 5, sx + round((x + PANEL_W - sx) * sounds[key]), row + 23),
                                fill=_rgb(t["chart_series"][1]))
         if sounds is None:
-            draw.text((x + 450, y), "sounds " + NA, fill=_rgb(t["text_secondary"]), font=self.small)
-        y += 4 * 34 + 16
-        speech = item.get("speech")
-        draw.text((x, y), "Speech: " + (NA if speech is None else "yes" if speech else "no"), fill=_rgb(t["text"]),
-                  font=self.body)
-        expr = item.get("expression")
-        draw.text((x, y + 40), "Expression (unvalidated): " + (NA if expr is None else expr if expr == "no faces"
-                                                              else name(expr)), fill=_rgb(t["text"]), font=self.body)
-        if item:
-            mmss = lambda s: f"{int(s // 60)}:{int(s % 60):02d}"  # noqa: E731
-            draw.text((x, y + 84), f"8-second clip {mmss(item['start_s'])}–{mmss(item['end_s'])}",
-                      fill=_rgb(t["text_secondary"]), font=self.small)
+            draw.text((x + PANEL_W, y - 36), NA, fill=grey, font=self.head, anchor="ra")
+        y += 4 * 36 + 8
+
+        # 3. three equal blocks: speech present, people, expression
+        draw.line((x, y, x + PANEL_W, y), fill=_rgb(t["border"]), width=2)
+        speech, expr = item.get("speech"), item.get("expression")
+        blocks = [("Speech present", "Whisper · no text", NA if speech is None else "Yes" if speech else "No", None),
+                  ("People", "YOLO11 · counts only", f"{n_people} {'person' if n_people == 1 else 'people'}", None),
+                  ("Expression", "EmotiEffLib", NA if expr is None else expr if expr == "no faces" else name(expr),
+                   "unvalidated")]
+        width = PANEL_W // 3
+        for i, (title, model, value, note) in enumerate(blocks):
+            bx = x + i * width
+            draw.text((bx, y + 12), title, fill=grey, font=self.head)
+            draw.text((bx, y + 34), model, fill=grey, font=self.note)
+            draw.text((bx, y + 64), value, fill=text, font=self.value)
+            if note:
+                draw.text((bx, y + 104), note, fill=grey, font=self.note)
 
 
 def _decode(path: Path, start_s: float, n: int):

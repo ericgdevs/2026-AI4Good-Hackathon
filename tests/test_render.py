@@ -1,4 +1,5 @@
 """006 render-overlay: synthetic clips and fakes only (no real footage, no real model)."""
+import re
 import tempfile
 from pathlib import Path
 
@@ -95,8 +96,12 @@ def test_both_panels_blurred_video_only_and_nothing_else_written(world, tmp_path
 
     text = " | ".join(drawn)
     assert SENTINEL not in text  # transcript text is never drawn
-    assert "Speech: yes" in text and "AI suggestion (uncalibrated): " in text and "Expression (unvalidated): " in text
-    assert "person detection (counts only): 2 people" in text and "What the AI notices" in text
+    for heading in ("What the AI notices", "Activity (SigLIP2 · uncalibrated)", "Sounds (AST)", "Speech present",
+                    "Whisper · no text", "People", "YOLO11 · counts only", "Expression", "EmotiEffLib", "unvalidated"):
+        assert heading in drawn, heading
+    assert "Yes" in drawn and "2 people" in drawn and "top" in drawn and any(re.fullmatch(r"\d\.\d\d×", d) for d in drawn)
+    assert any(re.fullmatch(r"clip \d+:\d\d–\d+:\d\d", d) for d in drawn)
+    assert not any("%" in d for d in drawn)  # activity is shown as ratios to the top, never percentages
 
 
 def test_fails_closed_to_a_grey_frame(world):

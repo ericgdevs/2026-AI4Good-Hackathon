@@ -290,7 +290,7 @@ class ReviewController:
         """Outputs: table values, rows (state), message."""
         allowed = {v["video_id"] for v in review.review_videos(self.root, include_local=True)}
         if not video_id or video_id not in allowed:
-            return [], [], "Pick a video." if not video_id else review.eval_unlocked(self.root)[1]
+            return [], [], "Pick a video."  # a locked eval video is simply not offered; no lock message is shown
         state = self._state()
         found = review.filter_moments([m for m in self.moments if m["video_id"] == video_id], state,
                                       label=None if label in (None, ANY) else label,
@@ -518,16 +518,6 @@ PROCESS_INTRO = ("Runs the laptop versions of the models on one video, on this m
 PROCESS_HEADERS = ["time", "activity (AI suggestion, uncalibrated)", "needs review"]
 
 
-def local_note(root=None) -> str:
-    """Scorecard line: how many videos have laptop runs (never part of these numbers)."""
-    from tpa_index.schema import load_official, local_runs_path, read_table
-
-    ids = load_official(local_runs_path(root)).get("predict", [])
-    n = len({v for v in read_table("videos", root, run_ids=ids)["video_id"].to_pylist()}) if ids else 0
-    return (f"{n} video{'s' if n != 1 else ''} processed on this laptop {'are' if n != 1 else 'is'} not in these "
-            "numbers.") if n else ""
-
-
 def process_rows(moments: list[dict], labels: dict) -> list[list]:
     from tpa_index.demo import display_label
 
@@ -645,7 +635,6 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                     with gr.Column(scale=3, min_width=480):
                         sc_drives = gr.HTML(d0, elem_id="scorecard-drives")
                 sc_facts = gr.HTML(f0, elem_id="scorecard-facts")
-                sc_local = gr.Markdown(local_note(root), elem_id="scorecard-local")
             # ---- Search moments (same data and eval lock as Review) ----
             with gr.Tab("Search moments", id="search", elem_id="search-tab"):
                 s_choices, s_reason = tl.video_choices()
@@ -654,7 +643,6 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                                        show_label=False, elem_id="search-box", scale=4)
                     s_video = gr.Dropdown([("All videos", "")] + s_choices, value="", label="Video",
                                           elem_id="search-video", scale=1)
-                s_lock = gr.Markdown(s_reason, elem_id="search-lock")
                 with gr.Row(elem_classes="tpa-quick"):
                     gr.HTML('<p class="tpa-cap">Try</p>', elem_id="search-try")
                     quick = [gr.Button(name, size="sm", scale=0, min_width=0, elem_id=f"search-q-{i}")
@@ -672,7 +660,6 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                 with gr.Row():
                     video = gr.Dropdown(s_choices, value=None, label="Video", elem_id="review-video", scale=2)
                     reviewer = gr.Textbox(label="Reviewer", placeholder=REVIEWER_HINT, elem_id="reviewer", scale=2)
-                lock_note = gr.Markdown(s_reason, elem_id="review-lock")
                 rows, current = gr.State([]), gr.State(None)
                 with gr.Row(equal_height=False, elem_id="review-panes"):
                     with gr.Column(scale=1, min_width=260):
@@ -933,15 +920,15 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
             g, d, f = scorecard(a, b)
             strip_v, rows_v, hits_v = search("", "", False)
             p_choices_v, p_note_v = proc.video_choices(root)
-            return (gr.update(choices=names), note, gr.update(choices=choices), reason,
-                    gr.update(choices=[("All videos", "")] + choices, value=""), reason,
+            return (gr.update(choices=names), note, gr.update(choices=choices),
+                    gr.update(choices=[("All videos", "")] + choices, value=""),
                     gr.update(choices=phase_choices(), value=a), gr.update(choices=phase_choices(), value=b),
                     ins.subtitle() if ins.available else "", ins.message(), gr.update(visible=ins.available),
-                    g, d, f, strip_v, rows_v, hits_v, local_note(root),
+                    g, d, f, strip_v, rows_v, hits_v,
                     gr.update(choices=p_choices_v), p_note_v)
 
-        reload_outputs = [queue_pick, topup_note, video, lock_note, s_video, s_lock, sc_a, sc_b, sc_sub, sc_empty, sc_dl,
-                          sc_hero, sc_drives, sc_facts, s_strip, s_results, s_hits, sc_local,
+        reload_outputs = [queue_pick, topup_note, video, s_video, sc_a, sc_b, sc_sub, sc_empty, sc_dl,
+                          sc_hero, sc_drives, sc_facts, s_strip, s_results, s_hits,
                           p_video, p_note_md]
         reload_btn.click(reload, None, reload_outputs)
 

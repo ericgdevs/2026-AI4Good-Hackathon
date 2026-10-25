@@ -312,3 +312,20 @@ def test_review_queue_details(world, monkeypatch):
     assert rv.queue_empty("d01", rows) == ""
     rv.moments = [m for m in rv.moments if m["video_id"] != "x01"]  # a video where the AI found no moment
     assert rv.queue_empty("x01", rv.timeline("x01")[1]) == EMPTY_QUEUE
+
+
+def test_eval_lock_holds_without_showing_its_message(world):
+    """The lock is unchanged (eval videos stay out of Search and Review); only its message is no longer shown."""
+    from tpa_index.app import ReviewController, build_app
+    from tpa_index.review import eval_unlocked
+
+    _lock_eval(world)
+    assert not eval_unlocked()[0]
+    app = build_app(labels=world["labels"], pipeline=world["pipeline"])
+    page = json.dumps([c for c in app.config["components"] if c["props"].get("elem_id") != "help-list"], default=str)
+    assert "Eval videos are hidden" not in page and "without a second reviewer" not in page  # (the Help list explains it)
+    by = _by_id(app)
+    for dd in ("search-video", "review-video"):
+        assert not {"e01", "e02"} & {v for _, v in by[dd]["props"]["choices"]}, dd
+    rv = ReviewController(labels=world["labels"], pipeline=world["pipeline"])
+    assert rv.timeline("e01") == ([], [], "Pick a video.")

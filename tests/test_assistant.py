@@ -88,7 +88,8 @@ def test_no_app_data_in_the_prompt(fake, tmp_path, monkeypatch):
 def test_not_available_message(monkeypatch, error):
     monkeypatch.setattr(assistant, "_OPENER", FakeOllama(error=error))
     assert assistant.ask("What is a clip?", ITEMS) == (assistant.UNAVAILABLE, [])
-    assert "The questions below still work." in assistant.UNAVAILABLE
+    assert assistant.UNAVAILABLE == ("The help assistant isn't available on this computer (start Ollama to use it). "
+                                     "You can still browse the Help tab.")
 
 
 def test_no_match_or_empty_needs_no_model(fake):

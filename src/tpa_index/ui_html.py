@@ -406,7 +406,6 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
 .tpa-qname {{ overflow: hidden; text-overflow: ellipsis; min-width: 0; }}
 .tpa-qcount {{ flex: none; color: {p['text_secondary']}; }}
 #review-queue-empty p {{ font-size: 14px; color: {p['text_secondary']}; margin: 0; }}
-#review-lock p, #search-lock p {{ font-size: 12px; color: {p['text_secondary']}; margin: 0; }}
 #review-suggest p {{ font-size: 18px; margin: 0; }}
 .tpa-hint {{ font-size: 12px; color: {p['text_secondary']}; }}
 .tpa-hint kbd {{ font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border-radius: 4px;

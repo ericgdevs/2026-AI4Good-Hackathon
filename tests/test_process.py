@@ -1,6 +1,7 @@
 """Process a video tab (007): background run, progress, failures, the local-runs registry, transcripts and the live
 preview. Synthetic clips and fakes only; no real model is loaded."""
 import base64
+import json
 import logging
 
 import numpy as np
@@ -234,13 +235,17 @@ def test_search_and_review_badge_local_videos_and_refuse_reviews(world, labels, 
     assert tl.strength(moment) is None  # no calibrated cut-off for the laptop model
 
 
-def test_scorecard_note_counts_laptop_videos(world):
-    from tpa_index.app import local_note
+def test_scorecard_shows_no_laptop_note_and_still_leaves_laptop_runs_out(world):
+    from tpa_index.app import build_app
 
     makers, _ = world
-    assert local_note() == ""
     _run("t01", makers)
-    assert local_note() == "1 video processed on this laptop is not in these numbers."
+    scorecard = [c for c in build_app().config["components"]
+                 if str(c["props"].get("elem_id") or "").startswith("scorecard-")]
+    assert scorecard and not any(c["props"].get("elem_id") == "scorecard-local" for c in scorecard)
+    assert "processed on this laptop" not in json.dumps(scorecard, default=str)
+    assert schema.read_official("videos").num_rows == 0  # the default reads (Scorecard, insights) skip laptop runs
+    assert "t01" in schema.read_official("videos", include_local=True)["video_id"].to_pylist()
 
 
 # ---- transcripts: never written on a laptop run ------------------------------------------------------------------

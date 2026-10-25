@@ -15,7 +15,7 @@ DEFAULT_MODEL = "qwen2.5:1.5b"
 MAX_QUESTION = 300
 TIMEOUT_S = 20
 UNAVAILABLE = ("The help assistant isn't available on this computer (start Ollama to use it). "
-               "The questions below still work.")
+               "You can still browse the Help tab.")
 DONT_KNOW = "I don't know that one — try the questions below."
 SYSTEM = ("You answer questions from TPA staff about this app. Answer ONLY from the help entries below, in 1-3 plain "
           "sentences. Never invent numbers, names or features. If the entries do not answer the question, reply "

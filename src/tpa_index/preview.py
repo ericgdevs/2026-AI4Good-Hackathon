@@ -8,6 +8,8 @@ import time
 
 import numpy as np
 
+from tpa_index.config import load_theme
+
 FACE_SCORE = 0.5  # looser than the expression stage (0.8): a missed face here would be shown
 FACE_PAD = 0.25  # each side, as a share of the face box
 HEAD_FRAC = 0.22  # top share of a person box pixelated as well, for faces the detector misses
@@ -72,7 +74,7 @@ def _rgb(hex_colour: str) -> tuple[int, int, int]:
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def to_data_url(img: np.ndarray, person_boxes=None, box_colour: str = "#7851B9") -> str:
+def to_data_url(img: np.ndarray, person_boxes=None, box_colour: str | None = None) -> str:
     """Plain person rectangles on an already blurred RGB frame, scaled to HEIGHT, as a JPEG data URL (memory only)."""
     import cv2
 
@@ -81,7 +83,7 @@ def to_data_url(img: np.ndarray, person_boxes=None, box_colour: str = "#7851B9")
     small = cv2.resize(img, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=cv2.INTER_AREA)
     sh, sw = small.shape[:2]
     bgr = cv2.cvtColor(small, cv2.COLOR_RGB2BGR)
-    colour = _rgb(box_colour)[::-1]
+    colour = _rgb(box_colour or load_theme()["accent"])[::-1]  # theme accent unless the caller picks one
     for x0, y0, x1, y1 in person_boxes or []:
         cv2.rectangle(bgr, (round(x0 * sw), round(y0 * sh)), (round(x1 * sw), round(y1 * sh)), colour, 2)
     ok, jpeg = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -104,7 +106,7 @@ class Live:
     """Callbacks for predict_video and run_signals, and the latest values the Process tab shows. Thread-safe. Keeps
     only the newest preview image (a string) and per-clip numbers; frames are dropped as soon as they are encoded."""
 
-    def __init__(self, blur: FaceBlur | None, interval: float = 1.0, clock=time.monotonic, box_colour="#7851B9"):
+    def __init__(self, blur: FaceBlur | None, interval: float = 1.0, clock=time.monotonic, box_colour=None):
         self.blur, self.interval, self.clock, self.box_colour = blur, interval, clock, box_colour
         self._lock = threading.Lock()
         self._last = float("-inf")

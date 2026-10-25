@@ -34,13 +34,6 @@ def tag_dot(tag: str) -> str:
             f'{escape(tag)}</span>')
 
 
-def header() -> str:
-    p = _p()
-    return (f'<div class="tpa-topbar"><span class="tpa-appname">{APP_NAME} '
-            f'<span style="font-weight:400;color:{p["header_text_muted"]}">{APP_TAG}</span></span>'
-            f'<span class="tpa-topnote">Local only · no faces stored</span></div>')
-
-
 def _fmt(v, unit) -> str:
     if v is None:
         return "n/a"
@@ -246,19 +239,55 @@ def page_css() -> str:
 h1, h2, h3 {{ color: {p['accent_deep']}; }}
 .gradio-container {{ background: {p['background']}; }}
 .tpa-mono, .tpa-mono * {{ font-family: var(--font-mono); }}
-.tpa-topbar {{ background: {p['accent_deep']}; display: flex; flex-wrap: wrap; align-items: center;
-  justify-content: space-between; gap: 0 36px; padding: 0 32px; border-radius: 6px 6px 0 0; }}
-.tpa-appname {{ font-size: 17px; font-weight: 700; color: {p['surface']}; padding: 16px 0; }}
-.tpa-topnote {{ font-size: 13px; color: {p['header_text_muted']}; }}
-#app-tabs > .tab-wrapper {{ background: {p['accent_deep']}; padding: 0 32px; height: auto; margin-top: -16px;
-  border-radius: 0 0 6px 6px; }}
-#app-tabs > .tab-wrapper .tab-container {{ height: auto; gap: 28px; }}
+/* page: full width, content centred at 1200px like the mockups */
+.gradio-container {{ max-width: none !important; padding: 0 !important; margin: 0 !important; }}
+.gradio-container main, .gradio-container .main {{ padding: 0 !important; max-width: none !important; }}
+.gradio-container .contain > div {{ gap: 0; }}
+/* one full-width top bar: the tab bar, with the app name before the tabs and the note pushed right */
+#app-tabs {{ gap: 0; }}
+#app-tabs > .tab-wrapper {{ background: {p['accent_deep']}; height: auto; margin: 0; padding: 0 max(32px, calc((100% - 1136px) / 2));
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 36px; border-radius: 0; }}
+#app-tabs > .tab-wrapper::before {{ content: "{APP_NAME} {APP_TAG}"; color: {p['surface']}; font-size: 17px;
+  font-weight: 700; padding: 16px 0; white-space: nowrap; }}
+#app-tabs > .tab-wrapper::after {{ content: "Local only · no faces stored"; color: {p['header_text_muted']};
+  font-size: 13px; margin-left: auto; padding: 8px 0; white-space: nowrap; }}
+#app-tabs > .tab-wrapper .tab-container {{ width: auto; flex: 0 1 auto; height: auto; gap: 0 28px; flex-wrap: wrap;
+  overflow: visible; }}
 #app-tabs > .tab-wrapper .tab-container::after {{ display: none; }}
 #app-tabs > .tab-wrapper button {{ color: {p['header_text']}; font-size: 15px; font-weight: 500;
   padding: 18px 4px 15px; height: auto; background: transparent; }}
 #app-tabs > .tab-wrapper button:hover {{ color: {p['surface']}; }}
 #app-tabs > .tab-wrapper button.selected {{ color: {p['surface']}; }}
 #app-tabs > .tab-wrapper button.selected::after {{ background-color: {p['surface']}; height: 3px; }}
+#app-tabs > .tabitem {{ max-width: 1200px; margin: 0 auto; padding: 32px 32px 24px; box-sizing: border-box;
+  border: 0; background: transparent; }}
+#app-footer {{ max-width: 1200px; margin: 0 auto; padding: 8px 32px 32px; box-sizing: border-box;
+  align-items: center; }}
+#app-footer p {{ font-size: 12px; color: {p['text_secondary']}; margin: 0; }}
+/* our HTML pieces draw their own boxes: no extra block padding or border around them */
+#scorecard-gauge, #scorecard-drives, #scorecard-facts, #search-strip, #review-noticed, #search-try,
+#review-hint, #process-status, #process-preview {{ padding: 0 !important; border: 0 !important;
+  background: transparent !important; }}
+#scorecard-gauge > div, #scorecard-drives > div, #scorecard-facts > div, #search-strip > div,
+#review-noticed > div, #process-status > div, #process-preview > div {{ padding: 0 !important; }}
+#scorecard-gauge, #scorecard-drives, #scorecard-gauge > div, #scorecard-drives > div, #scorecard-gauge .prose,
+#scorecard-drives .prose, #scorecard-gauge .tpa-box, #scorecard-drives .tpa-box {{ height: 100%; }}
+.tpa-table th, .tpa-table td {{ border-left: 0 !important; border-right: 0 !important; border-top: 0 !important;
+  background: transparent !important; }}
+.tpa-table, .tpa-table tr, .tpa-table thead, .tpa-table tbody {{ border: 0 !important; margin: 0 !important;
+  box-shadow: none !important; }}
+#search-results {{ --font-mono: var(--font); }}
+.tpa-quick {{ align-items: center; gap: 6px; flex-wrap: wrap; }}
+#search-try {{ flex: 0 0 auto !important; width: auto !important; min-width: 0 !important; margin-right: 6px; }}
+.tpa-pills {{ gap: 6px; flex-wrap: wrap; }}
+.tpa-pills button, .tpa-quick button {{ background: {p['surface']}; border: 1px solid {p['border_strong']};
+  font-size: 14px; font-weight: 500; padding: 8px 12px; flex: 0 0 auto !important; width: auto !important;
+  min-width: max-content !important; white-space: nowrap; min-height: 40px; }}
+.tpa-quick, .tpa-pills {{ justify-content: flex-start; }}
+#search-try p {{ margin: 0; }}
+#review-next {{ align-self: center; max-height: 44px; }}
+.tpa-decide {{ gap: 6px; flex-wrap: nowrap; }}
+.tpa-decide button {{ flex: 1 1 0; min-height: 48px; }}
 .tpa-box {{ background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 6px; box-sizing: border-box;
   min-width: 0; color: {p['text']}; }}
 .tpa-pad {{ padding: 24px; }}
@@ -273,11 +302,12 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
 .tpa-tag {{ display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: {p['text_secondary']}; }}
 .tpa-dot {{ width: 8px; height: 8px; border-radius: 50%; flex: none; }}
 .tpa-legend {{ display: inline-flex; align-items: center; gap: 8px; }}
-.tpa-table {{ width: 100%; border-collapse: collapse; min-width: 520px; }}
+.tpa-table {{ width: 100%; border-collapse: collapse; }}
 .tpa-table th {{ font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
-  color: {p['text_secondary']}; text-align: left; padding: 12px 16px; border-bottom: 1px solid {p['border']};
-  white-space: nowrap; }}
-.tpa-table td {{ font-size: 15px; padding: 16px; border-bottom: 1px solid {p['track']}; vertical-align: middle; }}
+  color: {p['text_secondary']}; text-align: left; padding: 12px; border-bottom: 1px solid {p['border']}; }}
+.tpa-table td {{ font-size: 15px; padding: 14px 12px; border-bottom: 1px solid {p['track']}; vertical-align: middle; }}
+.tpa-table td:last-child {{ width: 26%; }}
+.tpa-table td:last-child .tpa-tag {{ align-items: flex-start; }}
 .tpa-bar {{ width: 70px; height: 8px; border-radius: 2px; background: {p['track']}; overflow: hidden; }}
 .tpa-bar > div {{ height: 100%; }}
 .tpa-facts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }}
@@ -288,7 +318,6 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
 #scorecard-subtitle p, #review-queue-head p {{ margin: 0; font-size: 14px; color: {p['text_secondary']}; }}
 #review-queue label {{ border-radius: 6px; }}
 #review-queue label.selected {{ background: {p['accent_soft']}; color: {p['accent_deep']}; }}
-.tpa-quick button {{ border: 1px solid {p['border_strong']}; }}
 .tpa-hint {{ font-size: 12px; color: {p['text_secondary']}; }}
 .tpa-hint kbd {{ font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border-radius: 4px;
   background: {p['track']}; border: 1px solid {p['border']}; color: {p['text']}; }}

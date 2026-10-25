@@ -563,7 +563,7 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
         return "\n".join(f"- {x}" for x in ins.state.get("limitations", [])) if ins.available else ""
 
     def footer_line():
-        return f"{palette['credit']} · {ins.guideline_line()}" if ins.available else palette["credit"]
+        return ins.guideline_line().capitalize() if ins.available else ""
 
     def search(query, video_id, show_staff):
         found = tl.search(query, video_id or None, show_staff)
@@ -573,9 +573,7 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
 
     with gr.Blocks(analytics_enabled=False, title="This Is ME · TPA") as demo:
         demo.blind, demo.review, demo.timeline, demo.insights = blind, rv, tl, ins
-        with gr.Row(elem_id="app-top", equal_height=True):
-            gr.HTML(ui_html.header(), elem_id="app-header")
-            gr.Markdown(palette["credit"], elem_id="app-credit-header")
+        # the tab bar itself is the single top bar: app name and note are drawn around the tabs by page_css()
         with gr.Tabs(elem_id="app-tabs") as app_tabs:
             # ---- Scorecard (opens first) ----
             with gr.Tab("Scorecard", id="scorecard", elem_id="scorecard-tab"):
@@ -594,8 +592,10 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                 sc_file = gr.File(label="Word report", visible=False, interactive=False, elem_id="scorecard-file")
                 g0, d0, f0 = scorecard(a0, b0)
                 with gr.Row(equal_height=True):
-                    sc_gauge = gr.HTML(g0, elem_id="scorecard-gauge")
-                    sc_drives = gr.HTML(d0, elem_id="scorecard-drives")
+                    with gr.Column(scale=2, min_width=340):
+                        sc_gauge = gr.HTML(g0, elem_id="scorecard-gauge")
+                    with gr.Column(scale=3, min_width=480):
+                        sc_drives = gr.HTML(d0, elem_id="scorecard-drives")
                 sc_facts = gr.HTML(f0, elem_id="scorecard-facts")
                 sc_local = gr.Markdown(local_note(root), elem_id="scorecard-local")
                 sc_foot = gr.Markdown(footer_line(), elem_id="scorecard-footer")
@@ -611,7 +611,8 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                                           elem_id="search-video", scale=1)
                 s_lock = gr.Markdown(s_reason, elem_id="search-lock")
                 with gr.Row(elem_classes="tpa-quick"):
-                    quick = [gr.Button(name, size="sm", elem_id=f"search-q-{i}")
+                    gr.HTML('<p class="tpa-cap">Try</p>', elem_id="search-try")
+                    quick = [gr.Button(name, size="sm", scale=0, min_width=0, elem_id=f"search-q-{i}")
                              for i, name in enumerate(QUICK_SEARCHES)]
                 s_staff = gr.Checkbox(False, label="Show staff-led moments", elem_id="search-show-staff")
                 strip0, rows0, hits0 = search("", "", False)
@@ -649,22 +650,23 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                         r_suggest = gr.Markdown(elem_id="review-suggest")
                         r_acts = gr.CheckboxGroup([], label="Activities in this clip", elem_id="review-activities")
                         gr.Markdown("**Your observation** (optional)", elem_id="review-obs-title")
-                        with gr.Row():
+                        with gr.Row(elem_classes="tpa-pills"):
                             obs_btns = {o: gr.Button(o.removeprefix(OBSERVATION_PREFIX).capitalize(), size="sm",
+                                                     scale=0, min_width=0,
                                                      elem_id=f"review-obs-{o.removeprefix(OBSERVATION_PREFIX)}")
                                         for o in rv.observations if o.startswith(OBSERVATION_PREFIX)}
                         note_box = gr.Textbox(label="Note (optional)", placeholder="Add a note or your own label",
                                               max_lines=2, elem_id="review-note")
                         gr.Markdown(REMINDER, elem_id="review-reminder")
-                        with gr.Row():
-                            accept_btn = gr.Button("Accept", variant="primary", elem_id="review-accept")
-                            edit_btn = gr.Button("Edit", elem_id="review-edit")
-                            reject_btn = gr.Button("Reject", elem_id="review-reject")
-                            defer_btn = gr.Button("Defer", elem_id="review-defer")
+                        with gr.Row(elem_classes="tpa-decide"):
+                            accept_btn = gr.Button("Accept", variant="primary", min_width=0, elem_id="review-accept")
+                            edit_btn = gr.Button("Edit", min_width=0, elem_id="review-edit")
+                            reject_btn = gr.Button("Reject", min_width=0, elem_id="review-reject")
+                            defer_btn = gr.Button("Defer", min_width=0, elem_id="review-defer")
                         edit_to = gr.Dropdown([], label="Edit main label to", elem_id="review-edit-to")
-                        with gr.Row():
+                        with gr.Row(equal_height=True):
                             gr.HTML(SHORTCUT_HINT, elem_id="review-hint")
-                            next_btn = gr.Button("Next ↓", size="sm", elem_id="review-next")
+                            next_btn = gr.Button("Next ↓", size="sm", scale=0, min_width=90, elem_id="review-next")
                         m_status = gr.Markdown(elem_id="review-status")
                         with gr.Accordion("More: other labels, observations and history", open=False,
                                           elem_id="review-more"):
@@ -729,9 +731,11 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                 ex_msg = gr.Markdown(elem_id="export-msg")
                 ex_files = gr.File(label="Export files", file_count="multiple", interactive=False,
                                    elem_id="export-files")
-        with gr.Row():
+        with gr.Row(elem_id="app-footer", equal_height=True):
             gr.Markdown(palette["credit"], elem_id="app-credit-footer")
-            reload_btn = gr.Button("Reload data", size="sm", elem_id="app-reload")
+            # the credit lives in the footer; this hidden copy keeps the header credit ID for existing checks
+            gr.Markdown(palette["credit"], elem_id="app-credit-header", visible=False)
+            reload_btn = gr.Button("Reload data", size="sm", scale=0, min_width=130, elem_id="app-reload")
 
         # ---- Scorecard handlers ----
         for comp in (sc_a, sc_b):

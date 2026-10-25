@@ -199,3 +199,20 @@ def test_review_shortcuts_in_page_js():
     assert "ArrowDown" in PAGE_JS and "#review-next" in PAGE_JS
     guard = PAGE_JS.index("t.tagName === 'TEXTAREA'")
     assert guard < PAGE_JS.index("#review-decide")  # text fields are checked before any shortcut
+
+
+def test_header_is_one_bar(world):
+    """The tab bar is the only top bar: no separate header block; app name before the tabs and the note pushed right
+    are drawn on that one element; the credit is in the footer (the header credit ID stays, hidden)."""
+    from tpa_index.app import page_css
+
+    by = _by_id(_app(world))
+    assert "app-header" not in by and "app-top" not in by
+    css = page_css()
+    bar = "#app-tabs > .tab-wrapper"
+    assert f'{bar}::before {{ content: "{ui_html.APP_NAME} {ui_html.APP_TAG}"' in css
+    assert f'{bar}::after {{ content: "Local only · no faces stored"' in css
+    assert "flex-wrap: wrap" in css.split(f"{bar} {{", 1)[1].split("}", 1)[0]
+    assert by["app-credit-footer"]["props"]["visible"] is not False
+    assert by["app-credit-header"]["props"]["visible"] is False
+    assert "logo" not in css.lower() and not [c for c in _app(world).config["components"] if c["type"] == "image"]

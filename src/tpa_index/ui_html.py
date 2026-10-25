@@ -269,6 +269,27 @@ def help_html(items: list[dict], query: str = "") -> str:
     return f'<div class="tpa-col" style="gap:16px">{"".join(parts)}</div>'
 
 
+HELP_FAB = ('<button id="help-fab-btn" type="button" aria-controls="help-drawer" aria-label="Open the help assistant">'
+            '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/>'
+            '<path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4"/><path d="M12 17.5h.01"/></svg><span>Help</span></button>')
+HELP_DRAWER_HEAD = ('<div class="tpa-drawer-head"><span><strong>Help assistant</strong> · runs on this computer</span>'
+                    '<button id="help-close" type="button" aria-label="Close the help assistant">×</button></div>')
+HELP_EMPTY = ("Ask anything about the app. Answers come only from the Help questions, and nothing from your videos or "
+              "reviews is used.")
+
+
+def help_chat_html(turns) -> str:
+    """The drawer's conversation: each question, then its answer with the help.yaml questions it was based on."""
+    if not turns:
+        return f'<div class="tpa-chat"><p class="tpa-muted">{escape(HELP_EMPTY)}</p></div>'
+    parts = []
+    for question, answer, based in turns:
+        parts.append(f'<div class="tpa-chat-q">{escape(question)}</div>')
+        parts.append(help_answer_html(answer, list(based or [])))
+    return f'<div class="tpa-chat" aria-live="polite">{"".join(parts)}</div>'
+
+
 def help_answer_html(answer: str, based_on: list[str]) -> str:
     """The Help assistant's answer box, with the help.yaml questions it was grounded on."""
     if not answer:
@@ -401,6 +422,38 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
 .tpa-qa summary {{ cursor: pointer; font-size: 15px; font-weight: 600; color: {p['text']}; }}
 .tpa-qa p {{ margin: 8px 0 0; font-size: 14px; line-height: 1.6; color: {p['text']}; }}
 #help-list {{ padding: 0 !important; border: 0 !important; background: transparent !important; }}
+/* help: an edge tab on every page and a slide-out drawer that overlays the page (layout underneath never moves) */
+#help-fab {{ position: fixed !important; right: 0; top: 50%; transform: translateY(-50%); z-index: 1000;
+  width: auto !important; min-width: 0 !important; padding: 0 !important; border: 0 !important;
+  background: transparent !important; transition: right .2s ease; }}
+#help-fab-btn {{ display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 10px;
+  background: {p['surface']}; color: {p['accent_deep']}; border: 1px solid {p['border']}; border-right: 0;
+  border-radius: 8px 0 0 8px; box-shadow: -2px 2px 8px rgba(0, 0, 0, .08); cursor: pointer; font-size: 12px;
+  font-weight: 600; }}
+#help-fab-btn:hover {{ background: {p['accent_soft']}; }}
+#help-drawer {{ position: fixed !important; top: 0; right: 0; height: 100vh; width: 400px; max-width: 100vw;
+  z-index: 1001; margin: 0 !important; padding: 0 !important; gap: 0 !important; background: {p['surface']};
+  border-left: 1px solid {p['border']}; box-shadow: -8px 0 24px rgba(0, 0, 0, .10); display: flex;
+  flex-direction: column; transform: translateX(100%); visibility: hidden;
+  transition: transform .2s ease, visibility .2s; }}
+#help-drawer.tpa-help-open {{ transform: none; visibility: visible; }}
+#help-fab.tpa-help-open {{ right: 400px; }}
+@media (max-width: 640px) {{ #help-drawer {{ width: 100vw; }} #help-fab.tpa-help-open {{ display: none; }} }}
+#help-drawer-head, #help-chat {{ padding: 0 !important; border: 0 !important; background: transparent !important; }}
+.tpa-drawer-head {{ display: flex; justify-content: space-between; align-items: center; padding: 16px 18px;
+  border-bottom: 1px solid {p['border']}; font-size: 15px; color: {p['text']}; }}
+.tpa-drawer-head strong {{ color: {p['accent_deep']}; }}
+#help-close {{ background: transparent; border: 0; font-size: 26px; line-height: 1; cursor: pointer;
+  color: {p['text_secondary']}; padding: 0 4px; }}
+#help-chat {{ flex: 1 1 auto; overflow-y: auto; min-height: 0; }}
+.tpa-chat {{ display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; }}
+.tpa-chat-q {{ align-self: flex-end; max-width: 85%; background: {p['accent_soft']}; color: {p['text']};
+  padding: 8px 12px; border-radius: 10px 10px 2px 10px; font-size: 14px; }}
+.tpa-chat .tpa-box {{ font-size: 14px; }}
+#help-drawer-input .block, #help-drawer-input .form {{ border: 0 !important; box-shadow: none !important;
+  background: transparent !important; padding: 0 !important; }}
+#help-drawer-input {{ flex: none; align-items: center; padding: 12px 18px 16px !important; border-top: 1px solid {p['border']};
+  background: {p['surface']}; margin: 0 !important; }}
 #process-msg p:last-child {{ font-size: 12px; color: {p['text_secondary']}; }}
 #process-intro p {{ margin: 0; font-size: 14px; color: {p['text_secondary']}; }}
 """

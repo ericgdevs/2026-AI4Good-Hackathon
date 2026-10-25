@@ -22,11 +22,22 @@ PAGE_JS = """
   if (url.searchParams.get('__theme') !== 'light') { url.searchParams.set('__theme', 'light'); window.location.replace(url); return; }
   document.body.classList.remove('dark');
   const click = (sel) => { const el = document.querySelector(sel); if (el) { el.click(); return true; } return false; };
+  // help drawer: the edge tab and the close button toggle 'tpa-help-open' on the drawer and the edge tab (Gradio
+  // scopes custom CSS inside its container, so the class goes on those elements); the drawer overlays the page
+  const helpOpen = () => !!document.querySelector('#help-drawer.tpa-help-open');
+  const setHelp = (open) => {
+    for (const el of document.querySelectorAll('#help-drawer, #help-fab')) el.classList.toggle('tpa-help-open', open);
+    if (open) { const box = document.querySelector('#help-ask textarea, #help-ask input'); if (box) box.focus(); } };
+  document.addEventListener('click', (e) => {
+    if (e.target.closest && e.target.closest('#help-fab-btn')) setHelp(!helpOpen());
+    else if (e.target.closest && e.target.closest('#help-close')) setHelp(false);
+  });
   document.addEventListener('keydown', (e) => {
     const t = e.target;
+    if (e.key === 'Escape' && helpOpen()) { setHelp(false); e.preventDefault(); return; }
+    if (t && t.closest && t.closest('#help-drawer, #help-fab')) return;  // keys in the help drawer never act on the page
     if (t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !['radio', 'checkbox'].includes(t.type)))) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (t && t.closest && t.closest('.tpa-assistant')) return;  // the help panel: its keys never act on the page
     const review = document.querySelector('#review-decide');
     if (review && review.offsetParent !== null) {  // review queue: A / E / R / D and down arrow for the next item
       const k = { a: '#review-accept', e: '#review-edit', r: '#review-reject', d: '#review-defer' }[e.key.toLowerCase()];
@@ -579,28 +590,19 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
     help_items = load_help()
     help_model = (blind.pipeline.get("help") or {}).get("model", assistant.DEFAULT_MODEL)
 
-    def ask_handler(tab: str):
-        """The assistant's handler for one tab. Its only input is the question box: the tab name is fixed here, and
-        no other app state (moment, clip, labels, AI suggestions, reviewer, statuses, numbers) can reach it."""
-        def ask_help(q):
-            if not (q or "").strip():
-                yield ""
-                return
-            yield ui_html.help_answer_html("Thinking…", [])
-            yield ui_html.help_answer_html(*assistant.ask(q, help_items, help_model, tab=tab))
-        return ask_help
-
-    def assistant_panel(tab: str, example: str):
-        """The collapsed "Ask for help" panel (Search, Review, Blind): the Help tab's assistant, wired the same way."""
-        with gr.Accordion("Ask for help · runs on this computer", open=False, elem_id=f"{tab}-assistant",
-                          elem_classes="tpa-assistant"):
-            with gr.Row(equal_height=True):
-                box = gr.Textbox(placeholder=f"Ask a question about this tab, for example: {example}",
-                                 show_label=False, max_length=assistant.MAX_QUESTION, scale=4, elem_id=f"{tab}-ask")
-                btn = gr.Button("Ask", variant="primary", scale=0, min_width=100, elem_id=f"{tab}-ask-btn")
-            out = gr.HTML(elem_id=f"{tab}-answer")
-        for trigger in (btn.click, box.submit):
-            trigger(ask_handler(tab), box, out)
+    def ask_drawer(question, tab, turns):
+        """The drawer's one handler. Inputs: the question, the selected tab's name and the conversation shown so far
+        (display only: each question is answered on its own, and no earlier turn is sent to the model). No other app
+        state (moment, clip, labels, AI suggestions, reviewer, statuses, numbers) can reach it."""
+        question = (question or "").strip()[:assistant.MAX_QUESTION]
+        turns = list(turns or [])
+        if not question:
+            yield ui_html.help_chat_html(turns), turns, gr.update()
+            return
+        yield ui_html.help_chat_html(turns + [(question, "Thinking…", [])]), turns, ""
+        answer, based = assistant.ask(question, help_items, help_model, tab=tab)
+        turns.append((question, answer, based))
+        yield ui_html.help_chat_html(turns), turns, ""
 
     def phase_choices():
         return [(ui_html.phase_name(ph), ph) for ph in ins.phases()]
@@ -665,7 +667,6 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                                          elem_id="search-results")
                 s_hits = gr.State(hits0)
                 gr.Markdown(tabs.NOTE, elem_id="search-note")
-                assistant_panel("search", "why are staff-led moments hidden?")
             # ---- Review queue: queue | clip and what the AI noticed | your review ----
             with gr.Tab("Review queue", id="review", elem_id="review-tab"):
                 with gr.Row():
@@ -732,7 +733,6 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                                                  elem_id="review-panel")
                             history = gr.Dataframe(headers=HISTORY_HEADERS, interactive=False, label="Review history",
                                                    elem_id="review-history")
-                        assistant_panel("review", "what does Partly reviewed mean?")
             # ---- Process a video (laptop models; runs register as local, never official) ----
             with gr.Tab("Process a video", id="process", elem_id="process-tab"):
                 from tpa_index import process as proc
@@ -773,7 +773,6 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                     replay_btn = gr.Button("Replay [Space]", elem_id="blind-replay")
                     skip_btn = gr.Button("Skip: clip unavailable", elem_id="blind-skip")
                     save_btn = gr.Button("Save & next [Enter]", variant="primary", elem_id="blind-save")
-                assistant_panel("blind", "when should I choose Uncertain?")
             # ---- Export ----
             with gr.Tab("Export", id="export", elem_id="export-tab"):
                 gr.Markdown("### Annotation export\nOne record per moment, as JSON and CSV, in the case format. The "
@@ -784,30 +783,38 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                 ex_msg = gr.Markdown(elem_id="export-msg")
                 ex_files = gr.File(label="Export files", file_count="multiple", interactive=False,
                                    elem_id="export-files")
-            # ---- Help: questions from config/help.yaml, plus an optional local assistant (Ollama on 127.0.0.1) ----
+            # ---- Help: the searchable questions from config/help.yaml ----
             with gr.Tab("Help", id="help", elem_id="help-tab"):
                 gr.Markdown("# Help", elem_id="help-title")
-                # optional: a local model (Ollama on 127.0.0.1) answers from help.yaml only; sees no app data
-                with gr.Group(elem_id="help-assistant", elem_classes="tpa-assistant"):
-                    gr.Markdown("**Help assistant** · runs on this computer", elem_id="help-assistant-title")
-                    with gr.Row(equal_height=True):
-                        ask_box = gr.Textbox(placeholder="Ask a question, for example: how do I export?",
-                                             show_label=False, max_length=assistant.MAX_QUESTION, scale=4,
-                                             elem_id="help-ask")
-                        ask_btn = gr.Button("Ask", variant="primary", scale=0, min_width=100, elem_id="help-ask-btn")
-                    ask_out = gr.HTML(elem_id="help-answer")
                 help_box = gr.Textbox(placeholder="Search the questions, for example: review, cut-off, export",
                                       show_label=False, elem_id="help-search")
                 help_list = gr.HTML(ui_html.help_html(help_items), elem_id="help-list")
                 help_box.change(lambda q: ui_html.help_html(help_items, q), help_box, help_list)
-
-                for trigger in (ask_btn.click, ask_box.submit):
-                    trigger(ask_handler("help"), ask_box, ask_out)
         with gr.Row(elem_id="app-footer", equal_height=True):
             gr.Markdown(palette["credit"], elem_id="app-credit-footer")
             # the credit lives in the footer; this hidden copy keeps the header credit ID for existing checks
             gr.Markdown(palette["credit"], elem_id="app-credit-header", visible=False)
             reload_btn = gr.Button("Reload data", size="sm", scale=0, min_width=130, elem_id="app-reload")
+        # ---- Help assistant: one slide-out drawer for every tab (Ollama on 127.0.0.1; answers from help.yaml only) ----
+        gr.HTML(ui_html.HELP_FAB, elem_id="help-fab")
+        help_tab_name = gr.State("scorecard")  # the selected tab's name: the only app state the assistant gets
+        help_turns = gr.State([])
+        with gr.Column(elem_id="help-drawer", elem_classes="tpa-drawer"):
+            gr.HTML(ui_html.HELP_DRAWER_HEAD, elem_id="help-drawer-head")
+            help_chat = gr.HTML(ui_html.help_chat_html([]), elem_id="help-chat")
+            with gr.Row(equal_height=True, elem_id="help-drawer-input"):
+                ask_box = gr.Textbox(placeholder="Ask a question, for example: how do I export?", show_label=False,
+                                     max_length=assistant.MAX_QUESTION, scale=4, elem_id="help-ask")
+                ask_btn = gr.Button("Ask", variant="primary", scale=0, min_width=80, elem_id="help-ask-btn")
+        for trigger in (ask_btn.click, ask_box.submit):
+            trigger(ask_drawer, [ask_box, help_tab_name, help_turns], [help_chat, help_turns, ask_box])
+        tab_ids = {"Scorecard": "scorecard", "Search moments": "search", "Review queue": "review",
+                   "Process a video": "process", "Blind labels": "blind", "Export": "export", "Help": "help"}
+
+        def on_tab(evt: gr.SelectData):
+            return tab_ids.get(evt.value, "scorecard")
+
+        app_tabs.select(on_tab, None, help_tab_name)
 
         # ---- Scorecard handlers ----
         for comp in (sc_a, sc_b):
@@ -889,14 +896,14 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
 
         def open_from_search(hits, evt: gr.SelectData):
             if not hits or not 0 <= evt.index[0] < len(hits):
-                return [gr.update()] * 4
+                return [gr.update()] * 5
             video_id, moment_id = hits[evt.index[0]]
             _, rows_v, _ = rv.timeline(video_id)
             i = next((k for k, r in enumerate(rows_v) if r.get("moment_id") == moment_id), None)
             return [gr.Tabs(selected="review"), gr.update(value=video_id), rows_v,
-                    gr.update(choices=rv.queue_choices(rows_v), value=None if i is None else str(i))]
+                    gr.update(choices=rv.queue_choices(rows_v), value=None if i is None else str(i)), "review"]
 
-        s_results.select(open_from_search, [s_hits], [app_tabs, video, rows, queue]).then(
+        s_results.select(open_from_search, [s_hits], [app_tabs, video, rows, queue, help_tab_name]).then(
             lambda v, r: (rv.queue_head(video_label(v), r), ""), [video, rows], [q_head, q_empty])
 
         # ---- Blind handlers (one reviewer name, typed in either tab) ----

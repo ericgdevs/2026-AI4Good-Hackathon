@@ -83,7 +83,8 @@ def test_run_reaches_every_stage_and_registers_local_runs(world):
     assert all(len(ids) == 1 for ids in local.values())
     assert local == job.run_ids
     assert schema.load_official() == {}  # official_runs.yaml is never written
-    assert "Search moments and Review queue" in job.message and "never counted" in job.message
+    assert "Search moments and Review queue" in job.message
+    assert job.message.endswith(process.LAPTOP_NOTE) and "never counted" not in job.message
 
 
 def test_stages_advance_in_order_and_frame_stages_run_together(world):
@@ -199,7 +200,7 @@ def test_local_runs_never_change_official_reads(world, clip_videos, tmp_path):
     t01 = [r for r in schema.read_official("moments", include_local=True).to_pylist() if r["video_id"] == "t01"]
     assert {r["run_id"] for r in t01} <= {official}
     job = _run("t01", makers)
-    assert "already has official results" in job.message
+    assert job.message.endswith(process.LAPTOP_NOTE) and "already has official results" not in job.message
 
 
 def test_registry_replaces_older_local_run_and_refuses_official(world, clip_videos, tmp_path):

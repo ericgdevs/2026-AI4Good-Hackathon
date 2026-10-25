@@ -234,23 +234,17 @@ def run(job: Job, root=None, make_embedder=None, make_models=None) -> None:
     job.message = summary(job, root)
 
 
+LAPTOP_NOTE = "Laptop run · kept separate from the official results."
+
+
 def summary(job: Job, root=None) -> str:
-    """The plain-English result: moments found (with the uncalibrated caveat), where the run shows, what failed."""
+    """The plain-English result: moments found, where a new video shows, what failed, then one short note (the app
+    shows the last line small and grey)."""
     from tpa_index.app import LOCAL_BADGE
 
     vid, n = job.video["video_id"], len(job.moments)
-    lines = []
-    if n == 0:
-        lines.append("No clear moments were found in this video. The laptop's activity model has no calibrated "
-                     "cut-offs yet, so it rarely marks a moment. The clip-by-clip suggestions in the preview are AI "
-                     "suggestions only.")
-    else:
-        lines.append(f"{n} moment{'s' if n != 1 else ''} found. The laptop's activity model is uncalibrated, so "
-                     "expect fewer and less reliable moments than in the official results.")
-    if vid in official_videos(root):
-        lines.append("This video already has official results. They are unchanged; this laptop run is shown only "
-                     "here.")
-    else:
+    lines = [f"{n} moment{'s' if n != 1 else ''} found."]
+    if vid not in official_videos(root):
         lines.append(f"It now appears in Search moments and Review queue, marked “{LOCAL_BADGE}”. Reviews can't be "
                      "saved on it.")
         if job.video["split"] == "eval":
@@ -258,5 +252,5 @@ def summary(job: Job, root=None) -> str:
     failed = [job.errors[s] for s, *_ in STAGES if s in job.errors]
     if failed:
         lines.append("Some steps did not finish: " + " ".join(failed))
-    lines.append("Laptop runs are never counted in the Scorecard or the export.")
+    lines.append(LAPTOP_NOTE)
     return "\n\n".join(lines)

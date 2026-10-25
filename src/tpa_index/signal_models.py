@@ -65,6 +65,10 @@ class WhisperTranscriber:
 
         # an array, not the path: faster-whisper 1.2.1's own decoder passes an argument PyAV 19 rejects
         audio, _ = sf.read(str(wav_path), dtype="float32", always_2d=False)
+        return self.transcribe_audio(audio)
+
+    def transcribe_audio(self, audio: np.ndarray) -> list[dict]:
+        """The same, from 16 kHz mono samples already in memory (no file)."""
         segments, info = self.model.transcribe(audio, vad_filter=True, word_timestamps=True,
                                                condition_on_previous_text=False)
         out = [{"start": s.start, "end": s.end, "text": s.text,

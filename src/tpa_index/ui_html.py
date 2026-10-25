@@ -368,5 +368,6 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
   margin-top: 6px; }}
 .tpa-meter .tpa-bar {{ width: 100%; }}
 #process-title h1 {{ margin: 0; font-size: 26px; font-weight: 700; color: {p['text']}; }}
+#process-msg p:last-child {{ font-size: 12px; color: {p['text_secondary']}; }}
 #process-intro p {{ margin: 0; font-size: 14px; color: {p['text_secondary']}; }}
 """

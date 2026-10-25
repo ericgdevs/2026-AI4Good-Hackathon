@@ -444,6 +444,14 @@ def _benchmark(args) -> int:
     return 0 if all(r["error"] is None and r["run_ids"] for r in results) else 1
 
 
+def _render_overlay(args) -> int:
+    from tpa_index.render import parse_time, render_overlay
+
+    path, secs = render_overlay(args.video_id, parse_time(args.start), args.duration, args.out)
+    print(f"{path} ({secs:.0f} s)")  # the output path and duration only
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="tpa-index")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -498,6 +506,13 @@ def main(argv=None) -> int:
     bench.add_argument("--video-id", required=True, help="the video to time (typed at run time, never stored)")
     bench.add_argument("--videos", help="videos YAML (default: config/videos.local.yaml)")
     bench.set_defaults(func=_benchmark)
+    ren = sub.add_parser("render-overlay", help="side-by-side 'models at work' MP4 of one stretch (faces blurred, "
+                                                "laptop models, no audio)")
+    ren.add_argument("--video-id", required=True)
+    ren.add_argument("--start", required=True, help="MM:SS (or H:MM:SS, or seconds)")
+    ren.add_argument("--duration", type=float, default=60, help="seconds (default 60)")
+    ren.add_argument("--out", help="output .mp4 outside the repo (default: OUTPUT_DIR/renders/)")
+    ren.set_defaults(func=_render_overlay)
     args = parser.parse_args(argv)
 
     install_redaction()

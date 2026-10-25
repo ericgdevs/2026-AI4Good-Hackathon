@@ -751,6 +751,16 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                 ex_msg = gr.Markdown(elem_id="export-msg")
                 ex_files = gr.File(label="Export files", file_count="multiple", interactive=False,
                                    elem_id="export-files")
+            # ---- Help: static questions from config/help.yaml (no model, no network) ----
+            with gr.Tab("Help", id="help", elem_id="help-tab"):
+                from tpa_index.config import load_help
+
+                help_items = load_help()
+                gr.Markdown("# Help", elem_id="help-title")
+                help_box = gr.Textbox(placeholder="Search the questions, for example: review, cut-off, export",
+                                      show_label=False, elem_id="help-search")
+                help_list = gr.HTML(ui_html.help_html(help_items), elem_id="help-list")
+                help_box.change(lambda q: ui_html.help_html(help_items, q), help_box, help_list)
         with gr.Row(elem_id="app-footer", equal_height=True):
             gr.Markdown(palette["credit"], elem_id="app-credit-footer")
             # the credit lives in the footer; this hidden copy keeps the header credit ID for existing checks

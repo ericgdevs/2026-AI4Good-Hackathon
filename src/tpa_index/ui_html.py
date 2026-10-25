@@ -249,6 +249,26 @@ def preview_panel(view: dict | None, labels: dict) -> str:
 <p class="tpa-small">In memory only: frames are blurred inside face boxes and never saved.</p></section>"""
 
 
+def filter_help(items: list[dict], query: str) -> list[dict]:
+    """Entries whose question or answer contains every word of the query (case-insensitive)."""
+    words = (query or "").lower().split()
+    return [it for it in items if all(w in f"{it['question']} {it['answer']}".lower() for w in words)]
+
+
+def help_html(items: list[dict], query: str = "") -> str:
+    """The Help list grouped by topic (in file order), each question an expandable item. Plain text only."""
+    found = filter_help(items, query)
+    if not found:
+        return '<div class="tpa-box tpa-pad"><p class="tpa-muted">No questions match that search.</p></div>'
+    parts = []
+    for topic in dict.fromkeys(it["topic"] for it in found):
+        rows = "".join(f'<details class="tpa-qa"><summary>{escape(it["question"])}</summary>'
+                       f'<p>{escape(it["answer"])}</p></details>' for it in found if it["topic"] == topic)
+        parts.append(f'<section class="tpa-box tpa-pad tpa-col"><p class="tpa-cap">{escape(topic)}</p>{rows}'
+                     '</section>')
+    return f'<div class="tpa-col" style="gap:16px">{"".join(parts)}</div>'
+
+
 def page_css() -> str:
     """Draft 3 look from the theme: deep-purple top bar and tabs, white boxes with a 1px border and 6px radius."""
     p = _p()
@@ -367,7 +387,12 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
 .tpa-meter {{ display: grid; grid-template-columns: 80px 1fr; align-items: center; gap: 8px; font-size: 13px;
   margin-top: 6px; }}
 .tpa-meter .tpa-bar {{ width: 100%; }}
-#process-title h1 {{ margin: 0; font-size: 26px; font-weight: 700; color: {p['text']}; }}
+#process-title h1, #help-title h1 {{ margin: 0; font-size: 26px; font-weight: 700; color: {p['text']}; }}
+.tpa-qa {{ border-top: 1px solid {p['track']}; padding: 10px 0; }}
+.tpa-qa:first-of-type {{ border-top: 0; }}
+.tpa-qa summary {{ cursor: pointer; font-size: 15px; font-weight: 600; color: {p['text']}; }}
+.tpa-qa p {{ margin: 8px 0 0; font-size: 14px; line-height: 1.6; color: {p['text']}; }}
+#help-list {{ padding: 0 !important; border: 0 !important; background: transparent !important; }}
 #process-msg p:last-child {{ font-size: 12px; color: {p['text_secondary']}; }}
 #process-intro p {{ margin: 0; font-size: 14px; color: {p['text_secondary']}; }}
 """

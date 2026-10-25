@@ -1,0 +1,101 @@
+# Help tab questions and answers. Plain text only, no links. TPA staff can edit this file without changing code:
+# each entry needs a topic, a question and an answer. Topics appear in the order they first appear here.
+help:
+  - topic: Getting started
+    question: What is this app?
+    answer: >-
+      It helps TPA staff find meaningful moments in long program videos, check what the AI suggests, and share
+      trusted results with funders. Everything runs on this computer.
+  - topic: Getting started
+    question: Does anything leave this computer?
+    answer: >-
+      No. Videos, results and reviews stay here. Nothing is sent to cloud services, no faces are stored, and no
+      transcript text is shown or saved.
+  - topic: Getting started
+    question: What is a clip? What is a moment?
+    answer: >-
+      A clip is an 8-second slice of a video. A moment is a run of neighbouring clips with the same activity, like
+      one song.
+
+  - topic: The tabs
+    question: What is the Scorecard?
+    answer: >-
+      A program-level summary: youth indicators by phase (early, mid camp, showcase), who was leading, and how much
+      has been checked by staff. It never shows anything about an individual young person.
+  - topic: The tabs
+    question: What is Search moments for?
+    answer: >-
+      Finding moments fast: search for an activity (for example "solo singing"), see how many there are and where
+      they happen, and click one to review it.
+  - topic: The tabs
+    question: What is the Review queue?
+    answer: >-
+      Where staff check the AI's suggestions: watch the clip, then accept, edit, reject or defer. Every decision is
+      saved with who made it and when.
+  - topic: The tabs
+    question: What is Process a video?
+    answer: >-
+      It runs all the models on one video on this computer. When it finishes, the new moments are ready to search
+      and review.
+  - topic: The tabs
+    question: What are Blind labels?
+    answer: >-
+      A quality check: you label clips without seeing the AI's answers, so the AI's accuracy can be measured fairly.
+      Staff use it occasionally, not every day.
+  - topic: The tabs
+    question: What does Export do?
+    answer: >-
+      It creates the full annotation data (JSON and CSV) with every label, time, decision and reviewer. The Word
+      report on the Scorecard is the plain-English summary for funders.
+
+  - topic: Reviewing
+    question: What do Accept, Edit, Reject and Defer mean?
+    answer: >-
+      Accept: the AI was right. Edit: save your corrections. Reject: the AI was wrong. Defer: someone else should
+      take a second look.
+  - topic: Reviewing
+    question: Do I have to review everything?
+    answer: >-
+      No. Review the moments you plan to use in reports or stories, and the ones marked "Needs review". Every review
+      makes the numbers more trustworthy.
+  - topic: Reviewing
+    question: What does "Needs review" mean?
+    answer: >-
+      The AI isn't sure: no activity clearly passed its cut-off, or two were too close to call.
+  - topic: Reviewing
+    question: What does "× above its cut-off" mean?
+    answer: >-
+      How strongly the AI matched that activity compared with the level it needs before suggesting it. Higher means
+      a stronger match. It is not a percentage.
+  - topic: Reviewing
+    question: What are the observation buttons (Confident, Positive…)?
+    answer: >-
+      Your own optional read of the moment, saved as a staff observation. The AI never fills these in.
+  - topic: Reviewing
+    question: Are there keyboard shortcuts?
+    answer: >-
+      A accept, E edit, R reject, D defer, ↓ next moment (not while typing in a text box).
+
+  - topic: Understanding the numbers
+    question: What do "Staff-verified", "Partly verified" and "AI estimate" mean?
+    answer: >-
+      Staff-verified: a person confirmed it. Partly verified: some of it was confirmed by staff, and the rest is AI.
+      AI estimate: only the AI so far; "unchecked" means no person has looked at it.
+  - topic: Understanding the numbers
+    question: What is youth voice time?
+    answer: >-
+      Minutes of young people speaking or singing, per hour of youth footage. Staff-led time is not counted.
+  - topic: Understanding the numbers
+    question: Why is staff-led time left out?
+    answer: >-
+      The indicators are about the young people, so time when staff are teaching or leading isn't counted.
+  - topic: Understanding the numbers
+    question: How accurate is the AI?
+    answer: >-
+      On clips a person labelled without seeing the AI's answers, the AI's main activity matched about 46% of the
+      time. That's why staff review matters: the AI finds the moments, and people confirm them.
+  - topic: Understanding the numbers
+    question: Why are expressions marked "unvalidated"?
+    answer: >-
+      They are AI estimates from faces in the footage, never checked by staff and never a statement about how anyone
+      feels.

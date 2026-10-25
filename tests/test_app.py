@@ -40,7 +40,8 @@ def test_app_builds_and_blind_tab_shows_only_config_labels(mock_env, labels):
     for i, (_, names) in enumerate(cl["groups"]):
         assert [v for _, v in by_id[f"blind-group-{i}"]["choices"]] == names
     blind_tab = [c for c in _components(demo)
-                 if not str(c["props"].get("elem_id") or "").startswith(("review-", "search-", "scorecard-", "export-", "process-"))]
+                 if not str(c["props"].get("elem_id") or "").startswith(("review-", "search-", "scorecard-", "export-",
+                                                                          "process-", "help-"))]
     page = json.dumps(blind_tab, default=str)
     model_names = [m.rsplit("/", 1)[-1] for m in mock_env["pipeline"]["models"]["main"].values()]
     for word in ("AI suggestion", "score", "confidence", *model_names):

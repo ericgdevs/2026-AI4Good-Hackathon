@@ -620,3 +620,20 @@ def check_guideline(labels: dict, path=None) -> str:
     if history[version] != fp:
         raise ConfigError(f"labels: vocabulary changed without bumping guideline_version ({version})")
     return f"guideline: ok ({version})"
+
+
+HELP = CONFIG_DIR / "help.yaml"
+
+
+def load_help(path=None) -> list[dict]:
+    """The Help tab's questions: each entry a topic, a question and an answer, in plain text with no links."""
+    items = _load(Path(path or HELP)).get("help")
+    if not isinstance(items, list) or not items:
+        raise ConfigError("help: 'help' must be a non-empty list")
+    for i, item in enumerate(items, 1):
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) and item[k].strip()
+                                                 for k in ("topic", "question", "answer")):
+            raise ConfigError(f"help entry {i}: needs a topic, a question and an answer")
+        if re.search(r"https?://|www\.", " ".join(item[k] for k in ("topic", "question", "answer")), re.IGNORECASE):
+            raise ConfigError(f"help entry {i}: links are not allowed (the app works offline)")
+    return items

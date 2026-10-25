@@ -751,16 +751,37 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                 ex_msg = gr.Markdown(elem_id="export-msg")
                 ex_files = gr.File(label="Export files", file_count="multiple", interactive=False,
                                    elem_id="export-files")
-            # ---- Help: static questions from config/help.yaml (no model, no network) ----
+            # ---- Help: questions from config/help.yaml, plus an optional local assistant (Ollama on 127.0.0.1) ----
             with gr.Tab("Help", id="help", elem_id="help-tab"):
+                from tpa_index import assistant
                 from tpa_index.config import load_help
 
                 help_items = load_help()
                 gr.Markdown("# Help", elem_id="help-title")
+                # optional: a local model (Ollama on 127.0.0.1) answers from help.yaml only; sees no app data
+                with gr.Group(elem_id="help-assistant"):
+                    gr.Markdown("**Help assistant** · runs on this computer", elem_id="help-assistant-title")
+                    with gr.Row(equal_height=True):
+                        ask_box = gr.Textbox(placeholder="Ask a question, for example: how do I export?",
+                                             show_label=False, max_length=assistant.MAX_QUESTION, scale=4,
+                                             elem_id="help-ask")
+                        ask_btn = gr.Button("Ask", variant="primary", scale=0, min_width=100, elem_id="help-ask-btn")
+                    ask_out = gr.HTML(elem_id="help-answer")
                 help_box = gr.Textbox(placeholder="Search the questions, for example: review, cut-off, export",
                                       show_label=False, elem_id="help-search")
                 help_list = gr.HTML(ui_html.help_html(help_items), elem_id="help-list")
                 help_box.change(lambda q: ui_html.help_html(help_items, q), help_box, help_list)
+
+                def ask_help(q):
+                    if not (q or "").strip():
+                        yield ""
+                        return
+                    yield ui_html.help_answer_html("Thinking…", [])
+                    yield ui_html.help_answer_html(*assistant.ask(q, help_items, help_model))
+
+                help_model = (blind.pipeline.get("help") or {}).get("model", assistant.DEFAULT_MODEL)
+                for trigger in (ask_btn.click, ask_box.submit):
+                    trigger(ask_help, ask_box, ask_out)
         with gr.Row(elem_id="app-footer", equal_height=True):
             gr.Markdown(palette["credit"], elem_id="app-credit-footer")
             # the credit lives in the footer; this hidden copy keeps the header credit ID for existing checks

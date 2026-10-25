@@ -269,6 +269,14 @@ def help_html(items: list[dict], query: str = "") -> str:
     return f'<div class="tpa-col" style="gap:16px">{"".join(parts)}</div>'
 
 
+def help_answer_html(answer: str, based_on: list[str]) -> str:
+    """The Help assistant's answer box, with the help.yaml questions it was grounded on."""
+    if not answer:
+        return ""
+    based = (f'<p class="tpa-small">Based on: {escape(" · ".join(based_on))}</p>' if based_on else "")
+    return f'<div class="tpa-box tpa-pad tpa-col" aria-live="polite"><p>{escape(answer)}</p>{based}</div>'
+
+
 def page_css() -> str:
     """Draft 3 look from the theme: deep-purple top bar and tabs, white boxes with a 1px border and 6px radius."""
     p = _p()

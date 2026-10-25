@@ -50,8 +50,10 @@ help:
   - topic: The tabs
     question: What does Export do?
     answer: >-
-      It creates the full annotation data (JSON and CSV) with every label, time, decision and reviewer. The Word
-      report on the Scorecard is the plain-English summary for funders.
+      It creates the annotation data as JSON and CSV: one row per moment with its video ID, start and end times,
+      labels, indicators, observations, AI confidence, source (AI or staff), review decision, guideline version,
+      reviewer note and review date. No reviewer names, faces or video filenames are included. The Word report on
+      the Scorecard is the plain-English summary for funders.
 
   - topic: Reviewing
     question: What do Accept, Edit, Reject and Defer mean?

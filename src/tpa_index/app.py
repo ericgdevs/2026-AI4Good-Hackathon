@@ -28,6 +28,11 @@ PAGE_JS = """
   const setHelp = (open) => {
     for (const el of document.querySelectorAll('#help-drawer, #help-fab')) el.classList.toggle('tpa-help-open', open);
     if (open) { const box = document.querySelector('#help-ask textarea, #help-ask input'); if (box) box.focus(); } };
+  // each new answer re-renders the conversation: keep the newest message in view
+  new MutationObserver((muts) => {
+    const c = document.querySelector('#help-chat');
+    if (c && muts.some((m) => c.contains(m.target))) c.scrollTop = c.scrollHeight;
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
   document.addEventListener('click', (e) => {
     if (e.target.closest && e.target.closest('#help-fab-btn')) setHelp(!helpOpen());
     else if (e.target.closest && e.target.closest('#help-close')) setHelp(false);

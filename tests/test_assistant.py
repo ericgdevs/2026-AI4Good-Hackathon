@@ -132,6 +132,35 @@ def _drawer_fn(demo):
     return fns, ids
 
 
+def test_system_prompt_answers_only_from_help_text():
+    s = assistant.SYSTEM
+    assert "Answer ONLY from the help text below" in s and "never guess" in s and "1-3 plain sentences" in s
+    assert f'If the help text does not say it, reply exactly: "{assistant.DONT_KNOW}"' in s
+
+
+def test_export_help_says_exactly_what_is_exported():
+    """The Export answer lists the real export fields and never claims reviewer names are included."""
+    from tpa_index.export import FIELDS
+
+    answer = next(it["answer"] for it in ITEMS if it["question"] == "What does Export do?")
+    assert "No reviewer names, faces or video filenames are included." in answer
+    assert "reviewer" not in answer.replace("No reviewer names", "").replace("reviewer note", "")
+    assert "reviewer" not in FIELDS and "video_file" not in FIELDS  # the claim matches the code
+    for words in ("video ID", "start and end times", "labels", "indicators", "observations", "confidence",
+                  "source", "review decision", "guideline version", "reviewer note", "review date"):
+        assert words in answer, words
+
+
+def test_drawer_message_list_scrolls_and_follows_the_newest():
+    from tpa_index.app import PAGE_JS, page_css
+
+    chat = page_css().split("\n#help-chat {", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 auto" in chat and "overflow-y: auto !important" in chat and "min-height: 0" in chat
+    assert "#help-drawer-input {" in page_css() and "flex: none" in page_css().split("#help-drawer-input {", 1)[1]
+    assert "c.scrollTop = c.scrollHeight" in PAGE_JS and "c.contains(m.target)" in PAGE_JS
+    assert 'class="tpa-chat"' in ui_html.help_chat_html([("q", "a", [])] * 9)
+
+
 def test_one_global_drawer_and_no_in_tab_panels():
     from tpa_index.app import build_app
 

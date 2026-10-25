@@ -20,9 +20,10 @@ UNAVAILABLE = ("The help assistant isn't available on this computer (start Ollam
 NO_MODEL = ("The help assistant isn't available on this computer (start Ollama and make sure the model {model} is "
             "installed). You can still browse the Help tab.")
 DONT_KNOW = "I don't know that one — try the questions below."
-SYSTEM = ("You answer questions from TPA staff about this app. Answer ONLY from the help entries below, in 1-3 plain "
-          "sentences. Never invent numbers, names or features. If the entries do not answer the question, reply "
-          f'exactly: "{DONT_KNOW}"')
+SYSTEM = ("You answer questions from TPA staff about this app. Answer ONLY from the help text below: use only facts it "
+          "states, and never guess or add anything it does not say (no extra numbers, names, fields or features). "
+          "Keep the answer to 1-3 plain sentences. If the help text does not say it, reply exactly: "
+          f'"{DONT_KNOW}"')
 TAB_NAMES = {"scorecard": "Scorecard", "search": "Search moments", "review": "Review queue",
              "process": "Process a video", "blind": "Blind labels", "export": "Export", "help": "Help"}
 TAB_BOOST = 2.0  # entries tagged for the tab the question was asked from

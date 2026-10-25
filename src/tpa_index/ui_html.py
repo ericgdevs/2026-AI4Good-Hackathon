@@ -444,7 +444,9 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
 .tpa-drawer-head strong {{ color: {p['accent_deep']}; }}
 #help-close {{ background: transparent; border: 0; font-size: 26px; line-height: 1; cursor: pointer;
   color: {p['text_secondary']}; padding: 0 4px; }}
-#help-chat {{ flex: 1 1 auto; overflow-y: auto; min-height: 0; }}
+/* the message list is the only scrolling part; header and input row stay pinned (!important: Gradio's .block
+   sets overflow: visible) */
+#help-chat {{ flex: 1 1 auto; overflow-y: auto !important; min-height: 0; }}
 .tpa-chat {{ display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; }}
 .tpa-chat-q {{ align-self: flex-end; max-width: 85%; background: {p['accent_soft']}; color: {p['text']};
   padding: 8px 12px; border-radius: 10px 10px 2px 10px; font-size: 14px; }}

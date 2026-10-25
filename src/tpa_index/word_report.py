@@ -107,7 +107,7 @@ def write_word_report(dest, root=None, sample: bool = False) -> Path:
     import docx
     from docx.shared import Pt
 
-    from tpa_index.report import INDEX_CAVEAT, show
+    from tpa_index.report import show
 
     ins = InsightsController(root)
     if not ins.available:
@@ -149,16 +149,6 @@ def write_word_report(dest, root=None, sample: bool = False) -> Path:
             p = doc.add_paragraph(style="List Bullet")
             p.add_run(PLAIN[ind][0] + ": ").bold = True
             p.add_run(PLAIN[ind][2])
-
-    doc.add_heading("TPA Expression Index (optional example)", level=1)
-    doc.add_paragraph(INDEX_CAVEAT)
-    if st["index"]:
-        _table(doc, ["Program phase", "Index (0-100)", "Label", "Label of its least-confirmed part"],
-               [[PHASE_NAMES.get(r["scope"], r["scope"]),
-                 show(_num(r["value"]), "index_0_100") if r["value"] != "" else r["status"], r["label"], r["tag"]]
-                for r in st["index"]])  # 005's order, never ranked
-    else:
-        doc.add_paragraph("Not available in these results.")
 
     doc.add_heading("How much of the footage was youth-led?", level=1)
     t = st["time"]

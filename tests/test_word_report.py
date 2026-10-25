@@ -12,7 +12,7 @@ from tpa_index.indicators import LIMITATIONS
 
 SECTIONS = ["What this report is", "Key findings at a glance",
             "What did young people do, from early sessions to the showcase?",
-            "TPA Expression Index (optional example)", "How much of the footage was youth-led?",
+            "How much of the footage was youth-led?",
             "How accurate is the AI?", "What the labels mean", "Limitations"]
 JARGON = ["F1", "kappa", "macro", "zero-shot", "ablation", "threshold"]
 
@@ -50,7 +50,7 @@ def test_report_sections_tags_and_findings(world, tmp_path):
     head = _rows(world["folder"] / "headline.csv")
     for r in head:
         assert f"{report.show(float(r['value']), r['unit'])} ({r['tag']})" in text
-    assert report.INDEX_CAVEAT in text
+    assert "Expression Index" not in text and report.INDEX_CAVEAT not in text
     for line in LIMITATIONS:
         assert line in text
     assert f"Results: {world['folder'].name}" in text and "Guideline version 0." in text

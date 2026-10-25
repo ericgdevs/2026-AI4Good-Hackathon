@@ -69,7 +69,6 @@ def test_reads_real_005_output_on_mock(results):
     tb = next(r for r in _rows(results["folder"] / "time_breakdown.csv") if r["scope_type"] == "all")
     staff = (float(tb["staff_led_verified_s"]) + float(tb["staff_led_model_s"])) / 60
     assert f"staff-led time {staff:.1f} min" in ins.context()
-    assert ins.index_table() and all(r[2] for r in ins.index_table())  # label column as 005 wrote it
     assert ins.ablation_table() == []  # no evaluate result yet
 
 
@@ -141,7 +140,7 @@ def test_insights_never_shows_transcript(results):
     _evaluate_folder(results["root"])
     ins = demo.InsightsController()
     texts = [t.get_text() for f in ins.figures() for ax in f.axes for t in [*ax.texts, ax.title]]
-    page = json.dumps([ins.source_line(), ins.table(), ins.context(), ins.index_table(), ins.ablation_table(), texts])
+    page = json.dumps([ins.source_line(), ins.table(), ins.context(), ins.ablation_table(), texts])
     page += json.dumps(build_app().config, default=str)
     assert SENTINEL not in page and SECRET not in page and "transcript_chars" not in page
     assert str(results["root"]) not in page  # the source line uses created_at, never the folder path
@@ -159,5 +158,5 @@ def test_judge_flow_is_fast(results):
     assert time.perf_counter() - t < 2 and figs
     assert all(name.startswith("Video ") for name, _ in tl.video_choices()[0])
     ids = [sid for v in results["world"]["ids"].values() for sid in v]
-    shown = json.dumps([rows, tl.moments_table("d01")[0], ins.table(), ins.index_table()])
+    shown = json.dumps([rows, tl.moments_table("d01")[0], ins.table()])
     assert not any(sid in shown for sid in ids)

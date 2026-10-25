@@ -557,13 +557,7 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
         if not ins.available or not a or not b:
             return "", "", ""
         cmp = ins.compare(a, b)
-        return ui_html.gauge(cmp), ui_html.drives(cmp), ui_html.facts(ins.facts())
-
-    def limitations():
-        return "\n".join(f"- {x}" for x in ins.state.get("limitations", [])) if ins.available else ""
-
-    def footer_line():
-        return ins.guideline_line().capitalize() if ins.available else ""
+        return ui_html.hero(cmp), ui_html.drives(cmp), ui_html.facts(ins.facts())
 
     def search(query, video_id, show_staff):
         found = tl.search(query, video_id or None, show_staff)
@@ -593,14 +587,11 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                 g0, d0, f0 = scorecard(a0, b0)
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=2, min_width=340):
-                        sc_gauge = gr.HTML(g0, elem_id="scorecard-gauge")
+                        sc_hero = gr.HTML(g0, elem_id="scorecard-hero")
                     with gr.Column(scale=3, min_width=480):
                         sc_drives = gr.HTML(d0, elem_id="scorecard-drives")
                 sc_facts = gr.HTML(f0, elem_id="scorecard-facts")
                 sc_local = gr.Markdown(local_note(root), elem_id="scorecard-local")
-                sc_foot = gr.Markdown(footer_line(), elem_id="scorecard-footer")
-                with gr.Accordion("Limitations", open=False, elem_id="scorecard-limitations-box"):
-                    sc_limits = gr.Markdown(limitations(), elem_id="scorecard-limitations")
             # ---- Search moments (same data and eval lock as Review) ----
             with gr.Tab("Search moments", id="search", elem_id="search-tab"):
                 s_choices, s_reason = tl.video_choices()
@@ -739,7 +730,7 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
 
         # ---- Scorecard handlers ----
         for comp in (sc_a, sc_b):
-            comp.change(scorecard, [sc_a, sc_b], [sc_gauge, sc_drives, sc_facts])
+            comp.change(scorecard, [sc_a, sc_b], [sc_hero, sc_drives, sc_facts])
 
         def download():
             path, msg = report_download(root)
@@ -853,11 +844,11 @@ def build_app(root=None, cutter=None, labels=None, pipeline=None):
                     gr.update(choices=[("All videos", "")] + choices, value=""), reason,
                     gr.update(choices=phase_choices(), value=a), gr.update(choices=phase_choices(), value=b),
                     ins.subtitle() if ins.available else "", ins.message(), gr.update(visible=ins.available),
-                    g, d, f, footer_line(), limitations(), strip_v, rows_v, hits_v, local_note(root),
+                    g, d, f, strip_v, rows_v, hits_v, local_note(root),
                     gr.update(choices=p_choices_v), p_note_v)
 
         reload_outputs = [queue_pick, topup_note, video, lock_note, s_video, s_lock, sc_a, sc_b, sc_sub, sc_empty, sc_dl,
-                          sc_gauge, sc_drives, sc_facts, sc_foot, sc_limits, s_strip, s_results, s_hits, sc_local,
+                          sc_hero, sc_drives, sc_facts, s_strip, s_results, s_hits, sc_local,
                           p_video, p_note_md]
         reload_btn.click(reload, None, reload_outputs)
 

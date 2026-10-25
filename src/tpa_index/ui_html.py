@@ -10,9 +10,8 @@ MEASURES = {"youth_voice_minutes_per_hour": ("Youth voice time", "min per hour")
             "solo_moments_minutes_per_hour": ("Solo moments", "min per hour"),
             "performance_share": ("Time spent performing", "share of youth time"),
             "positive_expression_rate": ("Positive expressions", "clips with faces (unvalidated)")}
-WEIGHTS_NOTE = "Each measure counts equally (25%). Shares are out of 100; minutes per hour are out of 60."
-INDEX_NOTE = ("A summary of the four measures on the right. It describes the footage, never a young person, and "
-              "rests partly on unvalidated AI suggestions.")
+HERO = "youth_voice_minutes_per_hour"
+HERO_TEXT = "Minutes of young people speaking or singing, per hour of youth footage."
 APP_NAME, APP_TAG = "This Is ME", "· TPA"
 
 
@@ -24,14 +23,25 @@ def phase_name(phase: str) -> str:
     return _PHASES.get(phase, phase)
 
 
-def tag_dot(tag: str) -> str:
-    """Dot colour for a tag (chart colours: accent = learned, teal = mixed, coral = unvalidated)."""
+def tag_kind(tag: str) -> tuple[str, str]:
+    """(short plain label, dot colour) for one of 005's tags (colours: deep accent = staff-verified, teal = mixed,
+    accent = learned, coral = unvalidated)."""
     p = _p()
     s = p["chart_series"]
-    colour = (p["accent_deep"] if tag == "staff-verified" else s[1] if tag.startswith("mixed") else
-              s[0] if tag == "model estimate (learned)" else s[2])
-    return (f'<span class="tpa-tag"><span class="tpa-dot" style="background:{colour}"></span>'
-            f'{escape(tag)}</span>')
+    if tag == "staff-verified":
+        return "Staff-verified", p["accent_deep"]
+    if tag.startswith("mixed"):
+        return "Partly verified", s[1]
+    if tag == "model estimate (learned)":
+        return "AI estimate (trained)", s[0]
+    return "AI estimate (unchecked)", s[2]
+
+
+def tag_dot(tag: str) -> str:
+    """A small dot and a short label; the exact 005 tag is the hover text."""
+    label, colour = tag_kind(tag)
+    return (f'<span class="tpa-tag" title="{escape(tag)}"><span class="tpa-dot" style="background:{colour}"></span>'
+            f'{escape(label)}</span>')
 
 
 def _fmt(v, unit) -> str:
@@ -40,46 +50,28 @@ def _fmt(v, unit) -> str:
     return f"{100 * v:.0f}%" if unit == "share" else f"{v:.1f}"
 
 
-def gauge(cmp: dict) -> str:
-    """Half-circle Expression Index gauge: phase b large, a tick for phase a."""
+def hero(cmp: dict) -> str:
+    """Youth voice time: phase b large, phase a beside it, the change, and the exact tag."""
     p = _p()
-    a, b, va, vb = cmp["a"], cmp["b"], cmp["index_a"], cmp["index_b"]
-    if vb is None:
-        return (f'<div class="tpa-box tpa-pad"><p class="tpa-cap">TPA Expression Index</p>'
-                f'<p class="tpa-muted">Not available for {escape(phase_name(b or ""))} in these results.</p></div>')
-    arc = math.pi * 120
-    dash = f"{arc * vb / 100:.1f} {arc:.1f}"
-    tick = ""
-    if va is not None:
-        th = math.pi * (1 - va / 100)
-        c, s = math.cos(th), math.sin(th)
-        tick = (f'<line x1="{150 + 104 * c:.1f}" y1="{150 - 104 * s:.1f}" x2="{150 + 136 * c:.1f}" '
-                f'y2="{150 - 136 * s:.1f}" stroke="{p["text"]}" stroke-width="3"></line>')
-    change = ""
-    if va is not None:
-        d = round(vb) - round(va)
-        change = f"{'+' if d >= 0 else '−'}{abs(d)} points from {escape(phase_name(a).lower())}. "
-    legend_a = (f'<span class="tpa-legend"><span style="width:14px;height:3px;background:{p["text"]}"></span>'
-                f'{escape(phase_name(a))}: <strong class="tpa-mono">{va:.0f}</strong></span>' if va is not None else "")
-    return f"""<section class="tpa-box tpa-pad tpa-col" aria-label="Expression Index">
-<div class="tpa-row-between"><p class="tpa-cap">TPA Expression Index</p>{tag_dot(cmp["index_tag"])}</div>
-<div style="display:flex;justify-content:center">
-<svg width="300" height="176" viewBox="0 0 300 176" role="img"
- aria-label="{escape(phase_name(b))} {vb:.0f} out of 100{f'; {escape(phase_name(a))} {va:.0f}' if va is not None else ''}">
-<path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="{p["track"]}" stroke-width="22"></path>
-<path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="{p["accent"]}" stroke-width="22"
- stroke-dasharray="{dash}"></path>{tick}
-<text x="150" y="128" text-anchor="middle" class="tpa-mono" font-size="46" font-weight="600"
- fill="{p["text"]}">{vb:.0f}</text>
-<text x="150" y="152" text-anchor="middle" font-size="13" fill="{p["text_secondary"]}">{escape(phase_name(b).lower())} · out of 100</text>
-<text x="22" y="172" class="tpa-mono" font-size="11" fill="{p["text_secondary"]}">0</text>
-<text x="262" y="172" class="tpa-mono" font-size="11" fill="{p["text_secondary"]}">100</text>
-</svg></div>
-<div style="display:flex;justify-content:center;gap:24px;font-size:14px">{legend_a}
-<span class="tpa-legend"><span style="width:14px;height:10px;border-radius:2px;background:{p["accent"]}"></span>
-{escape(phase_name(b))}: <strong class="tpa-mono">{vb:.0f}</strong></span></div>
-<p class="tpa-muted" style="text-align:center;margin:4px 0 0">{change}{INDEX_NOTE}
-<br>Label: {escape(cmp["index_label"])}</p></section>"""
+    r = next((x for x in cmp["rows"] if x["indicator"] == HERO), None)
+    title = MEASURES[HERO][0]
+    if r is None or r["b"] is None:
+        why = escape((r or {}).get("b_status") or "not in these results")
+        return (f'<section class="tpa-box tpa-pad tpa-col"><p class="tpa-cap">{title}</p>'
+                f'<p class="tpa-muted">Not available for {escape(phase_name(cmp["b"]))}: {why}.</p></section>')
+    a, b = phase_name(cmp["a"]), phase_name(cmp["b"])
+    change = (f"×{r['ratio']:.1f} since {escape(a.lower())}" if r["ratio"] is not None else
+              f"new since {escape(a.lower())}" if r["new"] else "")
+    before = (f'<span class="tpa-muted">{escape(a)}: <strong class="tpa-mono">{r["a"]:.1f}</strong> min per hour</span>'
+              if r["a"] is not None else "")
+    return f"""<section class="tpa-box tpa-pad tpa-col" aria-label="{title}">
+<p class="tpa-cap">{title}</p>
+<div class="tpa-hero"><span class="tpa-mono tpa-hero-num">{r["b"]:.1f}</span>
+<span class="tpa-hero-unit">min per hour<br><span class="tpa-small">{escape(b)}</span></span></div>
+<div class="tpa-row-between" style="align-items:center">{before}
+<span class="tpa-mono" style="color:{p["accent_deep"]};font-weight:600">{change}</span></div>
+<p class="tpa-muted" style="margin:0">{HERO_TEXT}</p>
+<p class="tpa-small" style="margin:0">Source: {escape(r["tag"])}</p></section>"""
 
 
 def drives(cmp: dict) -> str:
@@ -100,11 +92,21 @@ def drives(cmp: dict) -> str:
 <td class="tpa-mono" style="font-weight:600">{eb}</td>
 <td><div style="display:flex;align-items:center;gap:8px"><div class="tpa-bar"><div style="width:{width}%;background:{p["accent"]}"></div></div>
 <span class="tpa-mono" style="font-size:13px">{change}</span></div></td><td>{tag_dot(r["tag"])}</td></tr>""")
-    return f"""<section class="tpa-box" aria-label="What drives the index" style="padding:4px 0 0">
-<div class="tpa-row-between" style="padding:20px 20px 8px"><p class="tpa-cap">What drives it</p>
-<span class="tpa-small">{WEIGHTS_NOTE}</span></div><div style="overflow-x:auto">
+    return f"""<section class="tpa-box" aria-label="Youth indicators by phase" style="padding:4px 0 0">
+<div class="tpa-row-between" style="padding:20px 20px 8px"><p class="tpa-cap">Youth indicators by phase</p></div>
+<div style="overflow-x:auto">
 <table class="tpa-table"><thead><tr><th>Measure</th><th>{escape(a)}</th><th>{escape(b)}</th><th>Change</th>
-<th>Source</th></tr></thead><tbody>{"".join(body)}</tbody></table></div></section>"""
+<th>Source</th></tr></thead><tbody>{"".join(body)}</tbody></table></div>{legend(r["tag"] for r in cmp["rows"])}</section>"""
+
+
+def legend(tags) -> str:
+    """One line under the table: each dot and short label next to the exact tag it stands for."""
+    parts = []
+    for t in dict.fromkeys(t for t in tags if t):
+        label, colour = tag_kind(t)
+        parts.append(f'<span class="tpa-tag"><span class="tpa-dot" style="background:{colour}"></span>'
+                     f'{escape(label)} = {escape(t)}</span>')
+    return f'<div class="tpa-legend-line">{" ".join(parts)}</div>' if parts else ""
 
 
 def facts(items: list[dict]) -> str:
@@ -265,13 +267,13 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
   align-items: center; }}
 #app-footer p {{ font-size: 12px; color: {p['text_secondary']}; margin: 0; }}
 /* our HTML pieces draw their own boxes: no extra block padding or border around them */
-#scorecard-gauge, #scorecard-drives, #scorecard-facts, #search-strip, #review-noticed, #search-try,
+#scorecard-hero, #scorecard-drives, #scorecard-facts, #search-strip, #review-noticed, #search-try,
 #review-hint, #process-status, #process-preview {{ padding: 0 !important; border: 0 !important;
   background: transparent !important; }}
-#scorecard-gauge > div, #scorecard-drives > div, #scorecard-facts > div, #search-strip > div,
+#scorecard-hero > div, #scorecard-drives > div, #scorecard-facts > div, #search-strip > div,
 #review-noticed > div, #process-status > div, #process-preview > div {{ padding: 0 !important; }}
-#scorecard-gauge, #scorecard-drives, #scorecard-gauge > div, #scorecard-drives > div, #scorecard-gauge .prose,
-#scorecard-drives .prose, #scorecard-gauge .tpa-box, #scorecard-drives .tpa-box {{ height: 100%; }}
+#scorecard-hero, #scorecard-drives, #scorecard-hero > div, #scorecard-drives > div, #scorecard-hero .prose,
+#scorecard-drives .prose, #scorecard-hero .tpa-box, #scorecard-drives .tpa-box {{ height: 100%; }}
 .tpa-table th, .tpa-table td {{ border-left: 0 !important; border-right: 0 !important; border-top: 0 !important;
   background: transparent !important; }}
 .tpa-table, .tpa-table tr, .tpa-table thead, .tpa-table tbody {{ border: 0 !important; margin: 0 !important;
@@ -307,9 +309,13 @@ h1, h2, h3 {{ color: {p['accent_deep']}; }}
   color: {p['text_secondary']}; text-align: left; padding: 12px; border-bottom: 1px solid {p['border']}; }}
 .tpa-table td {{ font-size: 15px; padding: 14px 12px; border-bottom: 1px solid {p['track']}; vertical-align: middle; }}
 .tpa-table td:last-child {{ width: 26%; }}
-.tpa-table td:last-child .tpa-tag {{ align-items: flex-start; }}
+.tpa-table td:last-child .tpa-tag {{ align-items: center; }}
 .tpa-bar {{ width: 70px; height: 8px; border-radius: 2px; background: {p['track']}; overflow: hidden; }}
 .tpa-bar > div {{ height: 100%; }}
+.tpa-hero {{ display: flex; align-items: baseline; gap: 12px; margin: 8px 0; }}
+.tpa-hero-num {{ font-size: 64px; font-weight: 600; line-height: 1; color: {p['text']}; }}
+.tpa-hero-unit {{ font-size: 15px; color: {p['text']}; }}
+.tpa-legend-line {{ display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 12px 16px 16px; }}
 .tpa-facts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }}
 .tpa-fact {{ padding: 20px 24px; border-right: 1px solid {p['track']}; }}
 .tpa-noticed {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;

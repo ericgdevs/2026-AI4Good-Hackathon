@@ -253,7 +253,6 @@ def strength_text(st: float | None) -> str:
 # ---- Insights tab: reads 005 result folders (contracts/results.md) by file only ----
 HEADLINE_COLUMNS = ("indicator", "phase", "value", "unit", "tag", "verified_share", "change_vs_early")
 TABLE_HEADERS = ["indicator", "phase", "value", "tag", "change vs early"]
-INDEX_HEADERS = ["phase", "Expression Index (0-100)", "label", "tag (weakest component)"]
 ABLATION_HEADERS = ["system", "segments", "primary accuracy (95% CI)", "macro-F1 activity (95% CI)", "kappa primary",
                     "tag"]
 EMPTY = "Insights are not available yet. Run the insights step first."
@@ -315,18 +314,19 @@ class InsightsController:
             self.state = {"status": "unsupported"}
             return self.state
         extra = json.loads((folder / "indicators.json").read_text()) if (folder / "indicators.json").exists() else {}
-        index = (_read_csv(folder / "expression_index.csv") if (folder / "expression_index.csv").exists() else [])
         ev = latest_result("evaluate", self.root)
         inds = _read_csv(folder / "indicators.csv") if (folder / "indicators.csv").exists() else []
         self.state = {
             "videos": sorted({r["scope"] for r in inds if r["scope_type"] == "video"}),
             "coverage_reviewed": next((_num(r["value"]) for r in inds if r["indicator"] == "coverage_reviewed"
                                        and r["scope_type"] == "all"), None),
+            # every clip in the result: the denominator of 005's coverage_reviewed over all videos
+            "clips": next((round(_num(r["denominator"])) for r in inds if r["indicator"] == "coverage_reviewed"
+                           and r["scope_type"] == "all" and r["denominator"] != ""), None),
             "status": "available", "created_at": manifest["created_at"], "limitations": manifest["limitations"],
             "folder": folder.name, "guideline_versions": manifest.get("guideline_versions", []),
             "headline": head, "model_tag": extra.get("model_tag", UNVALIDATED),
             "time": next((r for r in _read_csv(folder / "time_breakdown.csv") if r["scope_type"] == "all"), None),
-            "index": [r for r in index if r["scope_type"] == "phase" and r["component"] == "expression_index"],
             "ablation": _read_csv(ev / "ablation.csv") if ev and (ev / "ablation.csv").exists() else [],
         }
         return self.state
@@ -341,8 +341,7 @@ class InsightsController:
         return (ph[0] if ph else None), (ph[-1] if len(ph) > 1 else None)
 
     def compare(self, a: str, b: str) -> dict:
-        """Expression Index for phases a and b, and the four headline measures side by side (values as written)."""
-        idx = {r["scope"]: r for r in self.state.get("index", [])}
+        """The headline measures for phases a and b side by side (values and tags as written)."""
         rows = []
         for ind in dict.fromkeys(r["indicator"] for r in self.state.get("headline", [])):
             by = {r["phase"]: r for r in self.state["headline"] if r["indicator"] == ind}
@@ -355,10 +354,7 @@ class InsightsController:
                          "a_status": ra["status"] if ra and va is None else "",
                          "b_status": rb["status"] if rb and vb is None else "",
                          "new": va == 0 and bool(vb), "tag": (rb if vb is not None else ra or {}).get("tag", "")})
-        ia, ib = idx.get(a), idx.get(b)
-        return {"a": a, "b": b, "rows": rows,
-                "index_a": _num(ia["value"]) if ia else None, "index_b": _num(ib["value"]) if ib else None,
-                "index_tag": (ib or ia or {}).get("tag", ""), "index_label": (ib or ia or {}).get("label", "")}
+        return {"a": a, "b": b, "rows": rows}
 
     def agreement_row(self) -> dict | None:
         """The ablation row for the AI version behind the insights numbers (learned when that was the fallback)."""
@@ -376,10 +372,12 @@ class InsightsController:
             out.append({"cap": "AI agreed with staff", "value": "n/a", "note": "no comparison with staff labels yet"})
         else:
             lo, hi = _num(r["primary_accuracy_ci_low"]), _num(r["primary_accuracy_ci_high"])
-            rng = f", range {100 * lo:.0f}–{100 * hi:.0f}" if lo is not None and hi is not None else ""
-            out.append({"cap": "AI agreed with staff", "value": f"{100 * v:.0f}/100", "note": f"clips{rng}"})
+            m = round(_num(r["n_segments"]) or 0)
+            rng = f" · range {100 * lo:.0f}–{100 * hi:.0f}%" if lo is not None and hi is not None else ""
+            out.append({"cap": "AI agreed with staff", "value": f"{100 * v:.0f}%",
+                        "note": f"{round(v * m)} of {m} blind-labelled clips matched the staff label{rng}"})
         out.append({"cap": "Checked on", "value": r["n_segments"] if r else "n/a",
-                    "note": "clips labeled blind, on videos the AI never tuned on" if r else "not available"})
+                    "note": "blind-labelled clips, on videos the AI never tuned on" if r else "not available"})
         t = self.state.get("time")
         if t:
             youth, staff = _num(t["youth_s"]) / 60, (_num(t["staff_led_verified_s"]) + _num(t["staff_led_model_s"])) / 60
@@ -391,18 +389,16 @@ class InsightsController:
         return out
 
     def subtitle(self) -> str:
-        """`<camp> · N videos · youth time only`; the camp only when every counted video shares one cohort."""
+        """`<camp> · N videos · M clips · youth time only`; the camp only when every counted video shares one
+        cohort."""
         from tpa_index.schema import read_official
 
         vids = self.state.get("videos", [])
         cohorts = {v["cohort"] for v in read_official("videos", root=self.root).to_pylist() if v["video_id"] in vids}
         camp = f"{cohorts.pop()} · " if len(cohorts) == 1 and None not in cohorts else ""
-        return f"{camp}{len(vids)} video{'s' if len(vids) != 1 else ''} · youth time only"
-
-    def guideline_line(self) -> str:
-        versions = ", ".join(self.state.get("guideline_versions", [])) or \
-            f"{load_labels()['guideline_version']} (current vocabulary)"
-        return f"guideline v{versions}"
+        n = self.state.get("clips")
+        clips = f"{n} clip{'s' if n != 1 else ''} · " if n is not None else ""
+        return f"{camp}{len(vids)} video{'s' if len(vids) != 1 else ''} · {clips}youth time only"
 
     @property
     def available(self) -> bool:
@@ -473,13 +469,6 @@ class InsightsController:
                          f"{idle:.1f} min.")
         lines += ["", "**Limitations**", "", *[f"- {x}" for x in self.state["limitations"]]]
         return "\n".join(lines)
-
-    def index_table(self) -> list[list]:
-        """The optional Expression Index per phase, in 005's order (never ranked). Empty if the file is absent."""
-        from tpa_index.report import show
-
-        return [[r["scope"], show(_num(r["value"]), "index_0_100") if r["value"] != "" else r["status"], r["label"],
-                 r["tag"]] for r in self.state.get("index", [])]
 
     def ablation_table(self) -> list[list]:
         return [[r["system"], r["n_segments"], _pct_ci(r, "primary_accuracy"), _pct_ci(r, "macro_f1_activity"),

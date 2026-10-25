@@ -28,7 +28,7 @@ def test_no_filenames_anywhere(tmp_path, monkeypatch):
     out = [tl.video_choices(), tl.note]
     for _, vid in tl.video_choices()[0]:
         out += [tl.moments_table(vid), tl.segments_table(vid, show_staff=True)]
-    out += [ins.source_line(), ins.message(), ins.table(), ins.context(), ins.index_table(), ins.ablation_table(),
+    out += [ins.source_line(), ins.message(), ins.table(), ins.context(), ins.ablation_table(),
             [t.get_text() for f in ins.figures() for ax in f.axes for t in [*ax.texts, ax.title]]]
     texts["controllers"] = json.dumps(out)
     texts["word report"] = document_text(word_report.write_word_report(tmp_path / "report.docx"))

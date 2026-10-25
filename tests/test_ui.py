@@ -1,7 +1,6 @@
 """006 UI redesign (Draft 3): tab order, Scorecard compare and download, Search filter, Review decisions and
 observations, offline fonts. Mock world only (tests/insights_fixtures.py plus a real 005 insights run)."""
 import json
-import re
 
 import docx
 import pytest
@@ -51,15 +50,25 @@ def test_compare_dropdowns(world):
         assert r["a"] == pytest.approx(float(head[(r["indicator"], "early")]["value"]))
         assert r["tag"] == head[(r["indicator"], "showcase")]["tag"]
     drives = ui_html.drives(cmp)
-    assert all(re.escape(r["tag"]) and r["tag"] in drives for r in cmp["rows"])
-    assert ui_html.WEIGHTS_NOTE in drives and "Youth voice time" in drives
-    idx = {r["scope"]: float(r["value"]) for r in ins.state["index"]}
-    gauge = ui_html.gauge(cmp)
-    assert f">{idx['showcase']:.0f}<" in gauge and f"{round(idx['showcase']) - round(idx['early']):d} points from early" in gauge
-    assert "never a young person" in gauge and cmp["index_tag"] in gauge
-    swapped = ins.compare("showcase", "early")
-    assert swapped["index_b"] == pytest.approx(idx["early"])
-    assert "Not available" in ui_html.gauge(ins.compare("early", "mid"))  # a phase with no videos
+    assert "Youth indicators by phase" in drives and "Youth voice time" in drives
+    assert "What drives it" not in drives and "25%" not in drives and "Expression Index" not in drives
+    for r in cmp["rows"]:  # short label shown, exact tag on hover and in the legend
+        label, _ = ui_html.tag_kind(r["tag"])
+        assert f'title="{r["tag"]}"' in drives and label in drives and f"{label} = {r['tag']}" in drives
+    assert {ui_html.tag_kind(t)[0] for t in ("staff-verified", "mixed (40% staff-verified)", "model estimate (learned)",
+                                             "model estimate (unvalidated)")} == {
+        "Staff-verified", "Partly verified", "AI estimate (trained)", "AI estimate (unchecked)"}
+
+    voice = {ph: float(head[("youth_voice_minutes_per_hour", ph)]["value"]) for ph in ("early", "showcase")}
+    hero = ui_html.hero(cmp)
+    assert f">{voice['showcase']:.1f}<" in hero and f">{voice['early']:.1f}<" in hero
+    assert f"×{voice['showcase'] / voice['early']:.1f} since early sessions" in hero
+    assert head[("youth_voice_minutes_per_hour", "showcase")]["tag"] in hero and ui_html.HERO_TEXT in hero
+    swapped = ui_html.hero(ins.compare("showcase", "early"))
+    assert f">{voice['early']:.1f}<" in swapped and "since showcase" in swapped
+    assert "Not available" in ui_html.hero(ins.compare("early", "mid"))  # a phase with no videos
+    page = json.dumps(_app(world).config, default=str)
+    assert "Expression Index" not in page and "scorecard-limitations" not in page and "current vocabulary" not in page
 
 
 def test_scorecard_facts(world):
@@ -69,10 +78,13 @@ def test_scorecard_facts(world):
     _evaluate_folder(report.latest_result("insights").parent)
     ins.load()
     facts = {f["cap"]: f for f in ins.facts()}
-    assert facts["AI agreed with staff"]["value"] == "70/100" and "range 50–85" in facts["AI agreed with staff"]["note"]
+    agreed = facts["AI agreed with staff"]
+    assert agreed["value"] == "70%"
+    assert agreed["note"] == "21 of 30 blind-labelled clips matched the staff label · range 50–85%"  # 0.7 x 30
     assert facts["Checked on"]["value"] == "30"
     assert "staff-led left out" in facts["Youth time counted"]["note"]
-    assert ins.subtitle() == "4 videos · youth time only"  # the mock videos have no cohort
+    clips = read_official("segments").num_rows  # every official clip in the mock world
+    assert ins.subtitle() == f"4 videos · {clips} clips · youth time only"  # the mock videos have no cohort
 
 
 def test_download_writes_word_report(world, tmp_path, monkeypatch):

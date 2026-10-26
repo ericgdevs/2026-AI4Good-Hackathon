@@ -4,7 +4,7 @@ A local tool that turns long youth-program videos into a searchable, staff-check
 
 Built at the 2026 AI4Good Hackathon (FL-DSSG), Problem Case #1, The Performance Academy. Team Sandwich: Eric Good and Aditya Ghosh.
 
-Result: 1st place, 2026 AI4Good Hackathon (Problem Case #1, The Performance Academy).
+Result: **🏆 1st place, 2026 AI4Good Hackathon** · Problem Case #1, The Performance Academy · [Devpost](https://devpost.com/software/spotlight-mb6wkf)
 
 Devpost: https://devpost.com/software/spotlight-mb6wkf
 

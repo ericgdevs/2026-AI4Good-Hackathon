@@ -27,33 +27,33 @@ This system turns long program videos into a **searchable, staff-verified timeli
 - **No identification.** No face recognition, no face embeddings, no tracking of a person within or across videos. The unit of analysis is a time segment, never a person.
 - **No judgments about people.** No psychological, clinical, health, demographic or mental-state inference. Expression labels describe what a camera sees (for example, a smile). They are never feelings, and are always shown as "AI suggestion, unvalidated".
 - **No individual scores or rankings** of participants, and no measure of performance quality.
-- **No cloud AI.** No hosted inference, no cloud storage, no generative AI services. Open model weights run on private machines we control (a university compute node and our laptop).
-- **No transcript text** leaves the private compute folder: it is never shown in the app or exported.
+- **No cloud AI.** No hosted inference, no cloud storage, no generative AI services. Open-source AI models run locally on private machines we control.
+- **No transcript text** leaves the private GPU machine: it is never shown in the app or exported.
 
 ## Data
 
 - **12 TPA program videos, about 5 hours**, referred to only as **v01–v12**. They give 2,373 eight-second windows (clips). Video kinds are live, edited, clip and promo. Each video has a program phase (early, mid, showcase or unknown), assigned per video by the team and stored in a local, git-ignored config.
 - **Split by video**: v04 and v07 are the 2 held-out evaluation (eval) videos. The other 10 are development (dev) videos, used for threshold tuning. No video is in both sets.
 - **Where data lives**:
-  - videos on a private external drive and in a private university compute folder;
+  - videos on a private external drive and on a private GPU machine;
   - per-window numeric outputs in the same private locations;
-  - transcripts in the private compute folder only;
+  - transcripts on the private GPU machine only;
   - faces never saved;
   - the review database on the team laptop;
   - results folders hold aggregates only;
   - real video names appear in only one git-ignored local file.
 
-  Footage, frames, audio, transcripts and metadata are never committed to git and never given to any AI assistant or cloud service. The GitHub repo is private and holds code, mock data and docs only.
+  Footage, frames, audio, transcripts and metadata are never committed to git and never given to any AI assistant or cloud service. The GitHub repo is public and holds code, mock data and docs only.
 - **Public samples** (the Devpost sample export, screenshots) are generated from mock data only.
 
 ## Pipeline and models
 
-All models are open source. Weights are downloaded once, checked against a pinned sha256 where not hosted on Hugging Face, and run offline on private machines we control. The university compute node uses larger models. The laptop runs smaller versions of the same models, with the same pipeline and commands, so the system fits a 16 GB laptop that TPA can own.
+All models are open source. Weights are downloaded once, checked against a pinned sha256 where not hosted on Hugging Face, and run offline on private machines we control. A private GPU machine runs the larger models. A laptop runs smaller versions of the same models, with the same pipeline and commands, so the system fits a 16 GB laptop that TPA can own.
 
-| Stage | What it produces | Model (compute node / laptop) | Source | Licence |
+| Stage | What it produces | Model (private GPU machine / laptop) | Source | Licence |
 |---|---|---|---|---|
 | Visual labels | per-window score for every label prompt | SigLIP2 so400m-patch14-384 / SigLIP2 base-patch16-224 | Hugging Face `google/siglip2-*` | Apache-2.0 |
-| Transcript | speech yes/no and a character count per window (the text stays in the private compute folder) | faster-whisper large-v3 / small | HF `Systran/faster-whisper-*` | MIT (OpenAI Whisper weights) |
+| Transcript | speech yes/no and a character count per window (the text stays on the private GPU machine) | faster-whisper large-v3 / small | HF `Systran/faster-whisper-*` | MIT (OpenAI Whisper weights) |
 | Audio cues | singing voice, music, speech, applause, silence | AST AudioSet 10-10-0.4593 (both) | HF `MIT/ast-finetuned-audioset-10-10-0.4593` | BSD-3-Clause |
 | People | number of visible people per window (counts only) | YOLO11m / YOLO11n | GitHub `ultralytics/assets` v8.3.0 | **AGPL-3.0**: swap for an Apache-licensed detector before deployment |
 | Faces | face boxes, for the expression step only (never stored) | YuNet 2023mar | HF `opencv/face_detection_yunet` (pinned revision) | MIT |
@@ -108,7 +108,6 @@ On top of the models:
 | Solo moments, minutes per hour | 13.6 | 24.8 | 23.0 |
 | Performance share of youth time | 12% | 26% | 76% |
 | Positive expression rate (unvalidated) | 28% | 35% | 34% |
-| TPA Expression Index (equal weights, optional example) | 21 | 34 | 50 |
 
 - **Time**: 150.4 minutes of youth time. Staff-led time is reported separately: 3.5 minutes staff-verified and 77.3 minutes by model rule.
 - These describe these videos at the footage level. They are not proof of change and not measures of individual youth.
@@ -130,7 +129,7 @@ On top of the models:
 
 ## Efficiency
 
-Measured full run on a university compute node (GPU): all 12 videos, about 5 hours, 2,373 clips.
+Measured full run on a private GPU machine: all 12 videos, about 5 hours, 2,373 clips.
 
 | Step | Models | Time for all 12 videos |
 |---|---|---|

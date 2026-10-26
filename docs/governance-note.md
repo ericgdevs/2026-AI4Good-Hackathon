@@ -9,7 +9,7 @@ These rules are part of the project constitution, and the code and tests enforce
 - **No identification.** No face recognition, no face embeddings, no re-identification, no "same person" matching within or across videos.
 - **No tracking.** The unit of analysis is a time segment. People are counted per segment and never followed over time.
 - **No face storage.** Faces are detected only to read an expression suggestion, in memory. No face images, crops, landmarks or embeddings are saved.
-- **Transcripts stay in the private compute folder.** Speech is transcribed on our university compute node only to tell whether someone is speaking. The text stays in that private run folder. It is never synced to a laptop, shown in the app, written to logs or exported. Only "speech yes/no" and a character count leave it.
+- **Transcripts stay on the private GPU machine.** Speech is transcribed on a private GPU machine we control only to tell whether someone is speaking. The text stays in that private run folder. It is never synced to a laptop, shown in the app, written to logs or exported. Only "speech yes/no" and a character count leave it.
 - **Expressions are observations, not feelings.** Labels such as "positive" describe what a camera sees (for example, a smile). They are always shown as "AI suggestion, unvalidated", and are never used as a measure of anyone's emotions, wellbeing or ability.
 - **No clinical claims.** No psychological, clinical, health, disability, demographic or mental-state inference, including as hidden features or prompts.
 - **No individual scores or rankings.** All indicators are program-level aggregates (per video or per program phase). Nothing is reported per participant, and performance quality is not measured.
@@ -18,15 +18,15 @@ These rules are part of the project constitution, and the code and tests enforce
 
 ## Data handling and retention
 
-- **Where data lives**: only on private machines we control (a university compute node and our laptop).
-  - Videos are on a private external drive and in a private university compute folder.
+- **Where data lives**: only on private machines we control.
+  - Videos are on a private external drive and on a private GPU machine.
   - Per-window numeric outputs are in the same private locations.
-  - Transcripts are in the private compute folder only, and faces are never saved.
+  - Transcripts are on the private GPU machine only, and faces are never saved.
   - The review database is on the team laptop.
   - Results folders hold aggregates only.
   - Real video names appear in only one git-ignored local file. Everywhere else, videos are v01–v12.
 
-  No cloud storage, no cloud or hosted AI, and nothing from the dataset in git or in any AI assistant's context. Assistants are denied read access to the data folders by configuration. The GitHub repo is private and holds code, mock data and docs only.
+  No cloud storage, no cloud or hosted AI, and nothing from the dataset in git or in any AI assistant's context. Assistants are denied read access to the data folders by configuration. The GitHub repo is public and holds code, mock data and docs only.
 - **Local processing**: all models are open source, downloaded once and run offline. Smaller versions of the same models run on a laptop for TPA, with the same pipeline and commands.
 - **Privacy freeze after the event**: the data is frozen. The organizers have not yet decided the retention period, so nothing has been deleted. **No data will be deleted until the organizers decide.**
 - **No reuse**: the footage and all derived annotations will not be reused for portfolios, papers or other projects without TPA's written permission.

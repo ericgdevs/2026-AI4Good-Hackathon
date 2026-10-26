@@ -258,3 +258,6 @@ slurm-*.out
 
 # Playwright MCP browser snapshots and screenshots
 .playwright-mcp/
+
+# Local-only design mockups
+design-mockups/

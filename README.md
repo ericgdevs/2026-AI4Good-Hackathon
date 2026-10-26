@@ -4,9 +4,9 @@ A local tool that turns long youth-program videos into a searchable, staff-check
 
 Built at the 2026 AI4Good Hackathon (FL-DSSG), Problem Case #1, The Performance Academy. Team Sandwich: Eric and Aditya Ghosh.
 
-Result: <RESULT>
+Result: 1st place, 2026 AI4Good Hackathon (Problem Case #1, The Performance Academy).
 
-Devpost: <DEVPOST_LINK>
+Devpost: https://devpost.com/software/spotlight-mb6wkf
 
 ## What it does
 
@@ -31,7 +31,7 @@ Ranges are 95% block-bootstrap confidence intervals (resampled over blocks of 10
 
 ## Privacy by design
 
-- Runs only on private machines we control (a university compute node and a laptop). No cloud AI.
+- Open-source AI models run locally on private machines we control. No cloud AI.
 - Footage, faces and transcripts never leave those machines and never enter git.
 - Videos are called v01 to v12 everywhere.
 - The live preview blurs faces and the head area of each person, and nothing from it is saved.
@@ -68,13 +68,13 @@ The laptop uses smaller versions of these models.
 
 ## Developer guide
 
-### Install (Mac or UNF HPC)
+### Install (Mac or Linux)
 
 ```bash
 uv sync    # Linux pulls CUDA 13.0 torch wheels; macOS pulls default (MPS) wheels
 ```
 
-On HPC, keep uv's cache off a small home quota: `export UV_CACHE_DIR=/path/to/scratch/uv-cache`.
+On the server, keep uv's cache off a small home quota: `export UV_CACHE_DIR=/path/to/scratch/uv-cache`.
 
 ### Configure
 
@@ -114,10 +114,10 @@ Every visual label gets a 0–1 score per segment. `uncertain_mixed` (per segmen
 ```bash
 uv run tpa-index signals                                    # transcript, audio, people, expression for every mapped video
 uv run tpa-index signals --stages transcript,audio --video-id v01 --kind promo --force
-sbatch scripts/slurm/signals.sbatch                         # on HPC, one GPU
+sbatch scripts/slurm/signals.sbatch                         # on the server, one GPU
 ```
 
-Each stage writes its own run per video, and finished pairs are skipped unless `--force` is given. Transcript text is written on HPC (cuda) only. Laptop runs keep speech yes/no and a character count. People are counted, never tracked, and expression is unvalidated.
+Each stage writes its own run per video, and finished pairs are skipped unless `--force` is given. Transcript text is written on the server (cuda) only. Laptop runs keep speech yes/no and a character count. People are counted, never tracked, and expression is unvalidated.
 
 ### Official runs and calibration
 
@@ -131,7 +131,7 @@ uv run tpa-index moments                      # rebuild idle flags + moments wit
 
 Label thresholds are the higher of a dev-score percentile (`calibrate.top_pct`) and a floor (`calibrate.min_threshold`); calibrate lists labels that hit the floor. The idle threshold uses its own percentile (`idle.calibrate_top_pct`); `idle.change_threshold` stays hand-set. List the new `moments` runs under `moments:` to use them.
 
-### Compute node (UNF HPC, Slurm)
+### Optional GPU server (Slurm)
 
 ```bash
 sbatch scripts/slurm/job.sbatch tpa-index check
@@ -142,11 +142,11 @@ The job requests one GPU on the `gpu` partition with a time limit; logs go to `s
 
 ```bash
 scripts/sync_code_to_hpc.sh --dry-run && scripts/sync_code_to_hpc.sh   # Mac -> ~/tpa-work/repo (code only)
-sbatch scripts/slurm/predict.sbatch                                    # on HPC: predict on one GPU (HF_HOME=~/hf-cache)
-scripts/sync_outputs_from_hpc.sh --dry-run && scripts/sync_outputs_from_hpc.sh   # HPC run folders -> local OUTPUT_DIR
+sbatch scripts/slurm/predict.sbatch                                    # on the server: predict on one GPU (HF_HOME=~/hf-cache)
+scripts/sync_outputs_from_hpc.sh --dry-run && scripts/sync_outputs_from_hpc.sh   # server run folders -> local OUTPUT_DIR
 ```
 
-The sync scripts read `HPC_USER`, `HPC_HOST` and `HPC_OUTPUT_DIR` from `.env` (see `.env.example`). Code sync never sends `.env`, `config/*.local.yaml`, data, weights or outputs (`scripts/sync.exclude`). Output sync copies only run-folder Parquet files, never overwrites a local run, never copies `reviews.duckdb`, and merges HPC's calibrated thresholds per model. HPC keeps its own `.env` and `config/videos.local.yaml`; they are never synced.
+The sync scripts read `HPC_USER`, `HPC_HOST` and `HPC_OUTPUT_DIR` from `.env` (see `.env.example`). Code sync never sends `.env`, `config/*.local.yaml`, data, weights or outputs (`scripts/sync.exclude`). Output sync copies only run-folder Parquet files, never overwrites a local run, never copies `reviews.duckdb`, and merges the server's calibrated thresholds per model. The server keeps its own `.env` and `config/videos.local.yaml`; they are never synced.
 
 ### Review app (003)
 
@@ -209,7 +209,7 @@ Writes a side-by-side "models at work" MP4 of one stretch, using the laptop mode
 uv run tpa-index benchmark --video-id <id>   # type the id at run time; never commit it
 ```
 
-Runs segment, predict, transcript, audio, people, expression and moments for one video on this machine (Mac model sizes from `pipeline.yaml`). Use a promo that already has every official stage, because the signal stages and moments work on the official segments. Each stage writes its usual runs row (`tpa-index runs`). The summary (`OUTPUT_DIR/benchmarks/benchmark-*.md/.json`) compares the Mac with the official HPC runs per hour of video, per stage and end to end. Processing time excludes model loading, which is shown once per stage. Benchmark runs never go into `config/official_runs.yaml`.
+Runs segment, predict, transcript, audio, people, expression and moments for one video on this machine (Mac model sizes from `pipeline.yaml`). Use a promo that already has every official stage, because the signal stages and moments work on the official segments. Each stage writes its usual runs row (`tpa-index runs`). The summary (`OUTPUT_DIR/benchmarks/benchmark-*.md/.json`) compares the Mac with the official runs from a private GPU machine per hour of video, per stage and end to end. Processing time excludes model loading, which is shown once per stage. Benchmark runs never go into `config/official_runs.yaml`.
 
 ### App tabs (006 redesign)
 

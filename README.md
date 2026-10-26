@@ -2,11 +2,17 @@
 
 A local tool that turns long youth-program videos into a searchable, staff-checked timeline of performance moments and program-level indicators for The Performance Academy (TPA).
 
-Built at the 2026 AI4Good Hackathon (FL-DSSG), Problem Case #1, The Performance Academy. Team Sandwich: Eric and Aditya Ghosh.
+Built at the 2026 AI4Good Hackathon (FL-DSSG), Problem Case #1, The Performance Academy. Team Sandwich: Eric Good and Aditya Ghosh.
 
 Result: 1st place, 2026 AI4Good Hackathon (Problem Case #1, The Performance Academy).
 
 Devpost: https://devpost.com/software/spotlight-mb6wkf
+
+## Why
+
+TPA's "This Is ME" is a 3-week expressive arts program. Staff see youth change over those three weeks: more confidence, more self-expression, standing in front of an audience and sharing original work. TPA asked for a way to show that change to funders, with evidence funders can believe.
+
+This tool turns the program footage into that evidence. It compares observable, program-level measures from early sessions through mid-program to the final showcase: time youth spend singing or speaking for an audience, solo moments, and the share of youth time spent performing. Youth voice time, for example, rose from 13.6 to 31.3 minutes per hour of footage. Every number describes the footage at the program level, never any individual young person, and staff check the moments behind it.
 
 ## What it does
 
